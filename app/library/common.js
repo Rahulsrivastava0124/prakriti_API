@@ -1226,6 +1226,7 @@ const calculateProductPriceReport = async (
   tax_info,
   fromCart
 ) => {
+  console.log("price_by_role : ", price_by_role);
   let price_type = "",
     discount_type = "",
     making_dis_type = "";
@@ -1282,13 +1283,19 @@ const calculateProductPriceReport = async (
     if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
       let materialPrice = materialPriceObj.materialPricePurities[0];
       //mrp = parseFloat(materialPrice.per_gram_price);
+      console.log('price_type:', price_type);
+      console.log('materialPrice : ', JSON.stringify(materialPrice));
       mrp = parseFloat(materialPrice[price_type]);
+      console.log('material mrp : ', mrp);
       unit_based_mrp = convertPerGramPriceToPerUnit(
         mrp,
         unit_name
       );
+      console.log('material unit_based_mrp : ', unit_based_mrp);
       discount_percent = parseFloat(materialPrice[discount_type]);
+      console.log('material : ', JSON.stringify(materials[i]));
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
+      console.log('material total_gram : ', total_gram);
       if (!fromCart) {
         if (isMaterial) {
           let perWeight =
@@ -1306,7 +1313,9 @@ const calculateProductPriceReport = async (
         (mrp * discount_percent) / 100;
       price = priceFormat(price * parseFloat(total_gram));
       total_price += price;
-      total_mrp += priceFormat(
+      total_mrp += unit_name.toLowerCase() !== "gm" ? priceFormat(
+        parseFloat(mrp) * parseFloat(materials[i].weight)
+      ):priceFormat(
         parseFloat(mrp) * parseFloat(total_gram)
       );
       discount_amount = priceFormat(
@@ -1316,7 +1325,9 @@ const calculateProductPriceReport = async (
       total_material_discount += discount_amount;
       total_discount += discount_amount;
 
-      total_mrp_price += priceFormat(
+      total_mrp_price += unit_name.toLowerCase() !== "gm" ? priceFormat(
+        parseFloat(mrp) * parseFloat(materials[i].weight)
+      ):priceFormat(
         parseFloat(mrp) * parseFloat(total_gram)
       );
       total_sale_price += price;
