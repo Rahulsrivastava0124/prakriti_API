@@ -13,6 +13,10 @@ const { StocksCollection } = require("@resources/superadmin/StocksCollection");
 const {
   StocksMaterialCollection,
 } = require("@resources/superadmin/StocksMaterialCollection");
+const { StocksReportCollection } = require("@resources/superadmin/StocksCollection");
+const {
+  StocksMaterialReportCollection,
+} = require("@resources/superadmin/StocksMaterialCollection");
 const stocksModel = db.stocks;
 const {
   isEmpty,
@@ -72,8 +76,10 @@ exports.currentStockReportPdf = async (req, res) => {
 
     // Determine user scope for stocks
     let userID = await getStockUserID(req);
-
-    let role = await Role.findByPk(req.userId);
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
     let roleName = role ? role.name : "user";
 
     let conditions = { type };
@@ -135,8 +141,8 @@ exports.currentStockReportPdf = async (req, res) => {
 
     const items =
       type == "product" || type == "return"
-        ? await StocksCollection(rows, req.userId, roleName)
-        : await StocksMaterialCollection(rows, req.userId, roleName);
+        ? await StocksReportCollection(rows, req.userId, roleName)
+        : await StocksMaterialReportCollection(rows, req.userId, roleName);
 
     const normalizeMaterialKey = (mat) => {
       const materialName = mat.material_name ? String(mat.material_name).trim().toLowerCase() : String(mat.material_id || '').trim();
@@ -236,7 +242,8 @@ exports.currentStockReportPdf = async (req, res) => {
     // overall totals across all products
     let overallTotals = { total_qty: 0, total_weight: 0, total_value: 0 };
     for (let it of reportItems) {
-      let key = it.sub_category || it.category || "Others";
+      // Use the name property of sub_category/category objects instead of the objects themselves
+      let key = (it.sub_category && it.sub_category.name) || (it.category && it.category.name) || "Others";
       if (!groups[key]) groups[key] = { items: [], total_qty: 0, total_weight: 0, total_value: 0 };
       groups[key].items.push(it);
       groups[key].total_qty += Number(it.quantity || 0);
@@ -278,11 +285,11 @@ exports.currentStockReportPdf = async (req, res) => {
             <div style="display: table; width: 100%;">
                 <div style="width: 65%; display: table-cell; vertical-align: bottom;">
                     <img src="data:image/png;base64,${logo}" style="width: 220px; margin-left: 10px;">
-                    <h3 style="margin: 0; font-weight: 400; font-size: 12px;">Corporate Office - Patna, Bihar</h3>
+                    <h3 style="margin: 0; font-weight: 400; font-size: 12px;">Corporate Office - ${userAddress}, ${userCity} - ${userPincode}</h3>
                 </div>
                 <div style="width: 35%; display: table-cell; vertical-align: middle; text-align: left;">
                     <h3 style="margin: 0;">
-                        <span style="font-size: 16px; font-weight: 600;">Prakriti Patna</span>
+                        <span style="font-size: 16px; font-weight: 600;">${userCompany}</span>
                     </h3>
                     <h3 style="margin: 0; font-weight: 400; font-size: 14px;">GST No - 
                         <span style="font-weight: 600;">${userGst}</span>
@@ -326,8 +333,8 @@ exports.currentStockReportPdf = async (req, res) => {
                                     <span style="font-weight: 500; font-size: 12px; margin: 0;">${userCity}</span></li>
                                 <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Pin -</span>
                                     <span style="font-weight: 500; font-size: 12px; margin: 0;">${userPincode}</span></li>
-                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Total Categories -</span>
-                                    <span style="font-weight: 600; font-size: 12px; margin: 0;">${Object.keys(groups).length}</span></li>
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Total Products -</span>
+                                  <span style="font-weight: 600; font-size: 12px; margin: 0;">${reportItems.length}</span></li>
                             </ul>
                         </div>
                     </td>
@@ -392,9 +399,9 @@ exports.currentStockReportPdf = async (req, res) => {
     html += `<table cellspacing="0" cellpadding="5" border="0" align="center"><thead><tr>
       <th style="text-align:left;width:30px;">#</th>
       <th style="text-align:left;">Product Name</th>
-      <th style="text-align:left;">Material</th>
       <th style="text-align:left;width:80px;">Qty(pcs)</th>
-      <th style="text-align:left;width:100px;">Total Wt(gm)</th>
+      <th style="text-align:left;">Material</th>
+      <th style="text-align:left;width:100px;">Gross Wt</th>
       <th style="text-align:left;width:100px;">Price</th>
       </tr></thead><tbody>`;
 
@@ -412,10 +419,11 @@ exports.currentStockReportPdf = async (req, res) => {
           const unit = m.unit_name || '';
           mparts.push(`${mName} - ${weightFormat(w)} ${unit}`);
 
-          const materialKey = mName.toString().trim().toLowerCase();
+              const materialKey = (mName.toString().trim().toLowerCase() + "||" + (unit || "").toString().trim().toLowerCase());
           if (!materialTotals[materialKey]) {
             materialTotals[materialKey] = {
               name: mName,
+              unit_name: unit,
               product_count: 0,
               total_product_qty: 0,
               total_product_weight: 0,
@@ -437,9 +445,9 @@ exports.currentStockReportPdf = async (req, res) => {
       }
 
       html += `<tr style="background-color:${i % 2 == 0 ? '#fff' : '#f2f2f2'}"><td style="padding:6px;">${i + 1}</td>
-          <td style="padding:6px;">${r.name || ''} ${r.size_name?` - ${r.size_name}`:''}</td>
-          <td style="padding:6px;">${materialCell}</td>
+          <td style="padding:6px;">${r.name || ''}</td>
           <td style="padding:6px;">${r.quantity || 0}</td>
+          <td style="padding:6px;">${materialCell}</td>
           <td style="padding:6px;">${r.total_weight_display || r.total_weight || 0}</td>
           <td style="padding:6px;">${r.mrp_display || displayAmount(r.mrp, false, true, true) || (displayAmount(0, false, true, true))}</td>
       </tr>`;
@@ -451,16 +459,20 @@ exports.currentStockReportPdf = async (req, res) => {
       let matParts = [];
       for (let mn of Object.keys(materialTotals)) {
         const m = materialTotals[mn];
-        matParts.push(`${m.name}: ${m.total_product_qty} pcs, ${weightFormat(m.total_material_weight)} gm`);
+        const unitDisplay = m.unit_name ? ` ${m.unit_name}` : ' gm';
+        matParts.push(`${m.name}: ${weightFormat(m.total_material_weight)}${unitDisplay}`);
       }
-      materialSummary = matParts.join(' <br/> ');
+      materialSummary = matParts.join(' <br/> <br/> ');
     }
 
     html += `</tbody>
-          <tr style="font-weight:600;background:#e9e9e9;">
+          <tr style="font-weight:600;background:#e9e9e9; padding-top:20px;">
+            <td colspan="6" style="padding-top:50px;"></td>
+          </tr>
+          <tr style="font-weight:600;background:#e9e9e9; border-top: 1px solid #ccc;">
             <td colspan="2" style="padding:6px;">TOTAL</td>
-            <td style="padding:6px;font-size:11px;">${materialSummary}</td>
             <td style="padding:6px;font-size:11px;">${overallTotals.total_qty}</td>
+            <td style="padding:6px;font-size:11px;">${materialSummary}</td>
             <td style="padding:6px;font-size:11px;">${weightFormat(overallTotals.total_weight)+" gm"}</td>
             <td style="padding:6px;font-size:11px;">${displayAmount(overallTotals.total_value, false, true, true)}</td>
           </tr>
@@ -495,6 +507,11 @@ exports.currentStockReportPdf = async (req, res) => {
             {
               file_name: filename,
               url: getFileAbsulatePathPDF(file_path),
+              items: items,
+              report_items: reportItems,
+              groups: groups,
+              material_totals: materialTotals,
+              overall_totals: overallTotals,
             },
             "Current stock report"
           )
