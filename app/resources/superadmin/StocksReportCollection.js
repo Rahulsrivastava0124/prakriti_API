@@ -1,6 +1,6 @@
 const { isObject, isEmpty, displayAmount, priceFormat, weightFormat } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
-const {calculateProductPriceCartNew, getSuperAdminId, canStockAddCart} = require("@library/common");
+const {calculateProductPriceReport, getSuperAdminId, canStockAddCart} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const {getFileAbsulatePath} = require("../../helpers/helper");
@@ -9,19 +9,19 @@ const sequelize = db.sequelize;
 const cartsModel = db.carts;
 // getFileAbsulatePath()
 
-const StocksCollection = async (data, user_id) => {
+const StocksCollection = async (data, user_id, roleName = null) => {
     if(isObject(data)){
-        return await getModelObject(data, user_id);
+        return await getModelObject(data, user_id, roleName);
     }else{
         let arr = []; 
         for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], user_id));
+            arr.push(await getModelObject(data[i], user_id, roleName));
         }
         return arr;
     }
 }
 
-const getModelObject = async (data, user_id) => {
+const getModelObject = async (data, user_id, roleName = null) => {
     //console.log("STOCK COLLECTION-----data get modal object ",JSON.stringify(data));
     let materialItem = [], materialString = [];
     let taxInfo = null;
@@ -34,7 +34,7 @@ const getModelObject = async (data, user_id) => {
         }
     }
     
-    let priceMaterials = await calculateProductPriceCartNew(data.stockMaterials, data.product.sub_category, data.product.type == "material" || isEmpty(data.certificate_no), null, taxInfo);
+    let priceMaterials = await calculateProductPriceReport(data.stockMaterials, data.product.sub_category, data.product.type == "material" || isEmpty(data.certificate_no), roleName, taxInfo);
     let weight_display = [], unit_display = [], purity_display = [];
     for(let item of data.stockMaterials){
         //let str = item.material.name + ' <span style="padding-right: 18px; float: right;">' + weightFormat(item.weight) +(item.unit ? (' '+item.unit.name) : '') + '</span>';
