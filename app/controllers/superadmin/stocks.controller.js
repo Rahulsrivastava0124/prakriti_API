@@ -13,10 +13,10 @@ const { StocksCollection } = require("@resources/superadmin/StocksCollection");
 const {
   StocksMaterialCollection,
 } = require("@resources/superadmin/StocksMaterialCollection");
-const { StocksReportCollection } = require("@resources/superadmin/StocksCollection");
+const { StocksReportCollection } = require("@resources/superadmin/StocksReportCollection");
 const {
   StocksMaterialReportCollection,
-} = require("@resources/superadmin/StocksMaterialCollection");
+} = require("@resources/superadmin/StocksMaterialReportCollection");
 const stocksModel = db.stocks;
 const {
   isEmpty,
@@ -648,6 +648,13 @@ exports.index = async (req, res) => {
         ? req.userId
         : await getWorkingUserID(req)
       : user_id;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
+
     let conditions = { type: type };
 
     let superAdminRoleId = getRoleId("superadmin");
@@ -1045,8 +1052,8 @@ exports.index = async (req, res) => {
         let result = {
           items:
             type == "product" || type == "return"
-              ? await StocksCollection(data.rows, userID)
-              : await StocksMaterialCollection(data.rows, userID),
+              ? await StocksReportCollection(data.rows, userID, roleName)
+              : await StocksMaterialReportCollection(data.rows, userID, roleName),
           total: data.count,
         };
         /* compactLog("result : ", result);
@@ -1094,6 +1101,12 @@ exports.index = async (req, res) => {
  */
 exports.view = async (req, res) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+  console.log("req.userId : ", req.userId);
+  let userDtls = await UserModel.findByPk(req.userId);
+  let role = await Role.findByPk(userDtls.role_id);
+  console.log('role : ', role);
+  let roleName = role ? role.name : "user";
+
   let stock = await stocksModel.findOne({
     where: { user_id: await getStockUserID(req, userID), id: req.params.id },
     include: [
@@ -1147,7 +1160,7 @@ exports.view = async (req, res) => {
       .send(formatErrorResponse("Stock not found"));
   }
   res.send(
-    formatResponse(await StocksCollection(stock, userID), "Stock details")
+    formatResponse(await StocksReportCollection(stock, userID, roleName), "Stock details")
   );
 };
 
@@ -1328,6 +1341,13 @@ exports.getStockPriceByCategory = async (req, res) => {
     total_avl_stock,
     manager,
   } = req.query;
+
+  console.log("req.userId : ", req.userId);
+  let userDtls = await UserModel.findByPk(req.userId);
+  let role = await Role.findByPk(userDtls.role_id);
+  console.log('role : ', role);
+  let roleName = role ? role.name : "user";
+
   compactLog("by_specific : ", by_specific);
   type = isEmpty(type) ? "product" : type;
   let userID = null;
@@ -1477,7 +1497,7 @@ exports.getStockPriceByCategory = async (req, res) => {
     userIdArr = [userID];
   }
 
-  let result = await getTotalStockPriceByUser(true, userIdArr, type);
+  let result = await getTotalStockPriceByUser(true, userIdArr, type, roleName);
 
   return res.send(formatResponse(result));
 };
@@ -1609,6 +1629,12 @@ exports.moveToStock = async (req, res) => {
 exports.updateImage = async (req, res) => {
   try {
     let data = req.body;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
     
     // Validate certificate_no
     if (isEmpty(data.certificate_no)) {
@@ -1721,7 +1747,7 @@ exports.updateImage = async (req, res) => {
     
     res.send(
       formatResponse(
-        await StocksCollection(updatedStock, userID),
+        await StocksReportCollection(updatedStock, userID, roleName),
         "Stock image updated successfully!"
       )
     );
@@ -1743,6 +1769,13 @@ exports.updateImage = async (req, res) => {
 exports.updateImageByCertificateNo = async (req, res) => {
   try {
     let data = req.body;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
+
     let certificate_no = req.params.certificate_no;
     
     // Validate certificate_no from URL parameter
@@ -1856,7 +1889,7 @@ exports.updateImageByCertificateNo = async (req, res) => {
     
     res.send(
       formatResponse(
-        await StocksCollection(updatedStock, userID),
+        await StocksReportCollection(updatedStock, userID, roleName),
         "Stock image updated successfully!"
       )
     );
@@ -1879,6 +1912,12 @@ exports.updateImageById = async (req, res) => {
   try {
     let data = req.body;
     let stockId = req.params.id;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
     
     // Validate stock ID from URL parameter
     if (isEmpty(stockId)) {
@@ -1993,7 +2032,7 @@ exports.updateImageById = async (req, res) => {
     
     res.send(
       formatResponse(
-        await StocksCollection(updatedStock, userID),
+        await StocksReportCollection(updatedStock, userID, roleName),
         "Stock image updated successfully!"
       )
     );

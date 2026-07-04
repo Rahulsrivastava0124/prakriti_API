@@ -9,7 +9,7 @@ const sequelize = db.sequelize;
 const cartsModel = db.carts;
 // getFileAbsulatePath()
 
-const StocksCollection = async (data, user_id, roleName = null) => {
+const StocksReportCollection = async (data, user_id, roleName = null) => {
     if(isObject(data)){
         return await getModelObject(data, user_id, roleName);
     }else{
@@ -104,5 +104,5 @@ const getModelObject = async (data, user_id, roleName = null) => {
 }
 
 module.exports = {
-    StocksCollection
+    StocksReportCollection
 }
