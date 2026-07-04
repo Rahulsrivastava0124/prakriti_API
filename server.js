@@ -124,11 +124,8 @@ const pusher = new Pusher({
 });
 
 
-app.use((req, res, next) => {
-  req.io = io;
-  req.pusher = pusher;
-  return next();
-});
+// Attach io and pusher to requests later, after io is initialized.
+// (This must be done after the HTTP server and socket.io are created.)
 
 
 /**
@@ -141,6 +138,8 @@ app.use(demoLogger);
 app.get("/", (req, res) => {
   res.json({ message: "Welcome to our PRAKRITI API application server."});
 });
+
+// (No temporary /api test routes remain)
 
 // File upload endpoint
 app.post("/public", (req, res) => {
@@ -197,6 +196,37 @@ app.use(function(req, res, next) {
 });
 
 /**
+ * Socket Server
+ */
+let server = http.createServer(app);
+// let server;
+// if(process.env.IS_SSL_ON == "true"){
+//   const https_options = {
+//     key: fs.readFileSync( process.env.SSLCertificateKey),
+//     cert: fs.readFileSync(process.env.SSLCertificateFile)
+//   };
+//   server = https.createServer(https_options, app);
+// }else{
+//   server = http.createServer(app);
+// }
+
+let io = socketIO(server);
+
+// Now that io exists, attach it and pusher to incoming requests so
+// controllers and middleware can use `req.io` and `req.pusher` safely.
+app.use((req, res, next) => {
+  req.io = io;
+  req.pusher = pusher;
+  return next();
+});
+
+io.sockets.on('connection', function (socket) {
+  socket.on('echo', function (data) {
+
+  });
+});
+
+/**
  * Routes
  */
 //super admin
@@ -228,30 +258,6 @@ require("./app/routes/employee.routes")(app, express);
 
 //team
 require("./app/routes/team.routes")(app, express);
-
-
-
-/**
- * Socket Server
- */
-let server = http.createServer(app);
-// let server;
-// if(process.env.IS_SSL_ON == "true"){
-//   const https_options = {
-//     key: fs.readFileSync( process.env.SSLCertificateKey),
-//     cert: fs.readFileSync(process.env.SSLCertificateFile)
-//   };
-//   server = https.createServer(https_options, app);
-// }else{
-//   server = http.createServer(app);
-// }
-
-let io = socketIO(server)
-io.sockets.on('connection', function (socket) {
-  socket.on('echo', function (data) {
-
-  });
-});
 
 
 //set timezone

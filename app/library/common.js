@@ -639,6 +639,8 @@ const calculateProductPrice = async (
       //let materialPrice = materialPriceObj.materialPricePurities[0];
       //console.log("materials[i].material.material_price.materialPricePurities : ", materials[i].material.material_price.materialPricePurities);
       let materialPrice = materialPricePurity;
+      //mrp = parseFloat(materialPrice.per_gram_price);
+      //mrp = parseFloat(materialPrice[price_type]);
       mrp = parseFloat(materialPrice.per_gram_price);
 
       unit_based_mrp = convertPerGramPriceToPerUnit(
@@ -656,8 +658,8 @@ const calculateProductPrice = async (
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
-
-      total_weight += parseFloat(total_gram);
+      //total_gram = unit_name.toLowerCase() !== "gm" ? parseFloat(materials[i].weight) : parseFloat(total_gram);
+      total_weight += total_gram;
       total_quantity += parseInt(materials[i].quantity);
       price =
         materialPrice.per_gram_price -
@@ -747,8 +749,12 @@ const calculateProductPriceCartNew = async (
   tax_info,
   fromCart
 ) => {
+  const stockData = stock && !Array.isArray(stock) ? stock : null;
+  const materials = Array.isArray(stock)
+    ? stock
+    : (stockData && Array.isArray(stockData.stockMaterials) ? stockData.stockMaterials : []);
+  const stockSize = stockData && stockData.size ? stockData.size : null;
 
-  let materials = stock.stockMaterials
   console.log("role_id : ", role_id);
   let price_type = "",
     discount_type = "",
@@ -757,7 +763,7 @@ const calculateProductPriceCartNew = async (
     price_type = "distributor_price";
     discount_type = "distributor_discount";
     making_dis_type = "distributor_discount";
-  } else if (role_id == 2) { // admin
+  } else if (role_id == 2 || role_id == 1) { // admin or superadmin
     price_type = "admin_price";
     discount_type = "admin_discount";
     making_dis_type = "admin_discount";
@@ -935,7 +941,7 @@ const calculateProductPriceCartNew = async (
   }
   /* product weight */
   let product_weight_display = "";
-  if (isMaterial) {
+  if (isMaterial && materialsNew[0]) {
     product_weight_display =
       materialsNew[0].weight +
       " " +
@@ -1022,8 +1028,8 @@ const calculateProductPriceCartNew = async (
     : 0;
 
   return {
-    size_id: stock.size.id,
-    size_name: stock.size.name,
+    size_id: stockSize && stockSize.id ? stockSize.id : null,
+    size_name: stockSize && stockSize.name ? stockSize.name : "",
     price: total_price,
     making_charge: priceFormat(total_making_charge),
     making_charge_mrp : priceFormat(
@@ -1226,6 +1232,7 @@ const calculateProductPriceReport = async (
   tax_info,
   fromCart
 ) => {
+  console.log("price_by_role : ", price_by_role);
   let price_type = "",
     discount_type = "",
     making_dis_type = "";
@@ -1282,13 +1289,20 @@ const calculateProductPriceReport = async (
     if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
       let materialPrice = materialPriceObj.materialPricePurities[0];
       //mrp = parseFloat(materialPrice.per_gram_price);
-      mrp = parseFloat(materialPrice[price_type]);
+      console.log('price_type:', price_type);
+      console.log('materialPrice : ', JSON.stringify(materialPrice));
+      //mrp = parseFloat(materialPrice[price_type]);
+      mrp = parseFloat(materialPrice.price);
+      console.log('material mrp : ', mrp);
       unit_based_mrp = convertPerGramPriceToPerUnit(
         mrp,
         unit_name
       );
+      console.log('material unit_based_mrp : ', unit_based_mrp);
       discount_percent = parseFloat(materialPrice[discount_type]);
+      console.log('material : ', JSON.stringify(materials[i]));
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
+      console.log('material total_gram : ', total_gram);
       if (!fromCart) {
         if (isMaterial) {
           let perWeight =
@@ -1298,15 +1312,18 @@ const calculateProductPriceReport = async (
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
-
+      
       total_weight += parseFloat(total_gram);
+      total_gram = unit_name.toLowerCase() !== "gm" ? parseFloat(materials[i].weight) : parseFloat(total_gram);
       total_quantity += parseInt(materials[i].quantity);
       price =
         mrp -
         (mrp * discount_percent) / 100;
       price = priceFormat(price * parseFloat(total_gram));
       total_price += price;
-      total_mrp += priceFormat(
+      total_mrp += unit_name.toLowerCase() !== "gm" ? priceFormat(
+        parseFloat(mrp) * parseFloat(materials[i].weight)
+      ):priceFormat(
         parseFloat(mrp) * parseFloat(total_gram)
       );
       discount_amount = priceFormat(
@@ -1316,7 +1333,9 @@ const calculateProductPriceReport = async (
       total_material_discount += discount_amount;
       total_discount += discount_amount;
 
-      total_mrp_price += priceFormat(
+      total_mrp_price += unit_name.toLowerCase() !== "gm" ? priceFormat(
+        parseFloat(mrp) * parseFloat(materials[i].weight)
+      ):priceFormat(
         parseFloat(mrp) * parseFloat(total_gram)
       );
       total_sale_price += price;
@@ -1525,7 +1544,7 @@ const getSuperAdminId = async () => {
   return user.id;
 };
 
-const getTotalStockPriceByUser = async (byCategory, userId, type) => {
+const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admin") => {
   type = type !== undefined ? type : "product";
   let conditions = { type: type };
   if (isArray(userId)) {
@@ -1655,7 +1674,7 @@ const getTotalStockPriceByUser = async (byCategory, userId, type) => {
       stock.stockMaterials,
       sub_category,
       isMaterial,
-      "admin",
+      roleName,
       taxInfo,
       true
     );

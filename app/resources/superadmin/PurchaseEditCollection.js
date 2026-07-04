@@ -19,6 +19,8 @@ const PurchaseEditCollection = async(data, req) => {
 const getModelObject = async(data, req) => {
 
     let products = [], total_sub_total = 0;
+    let total_amount_acc = 0;
+    let tax_acc = 0;
     for(let i = 0; i < data.purchaseProducts.length; i++){
         let item = data.purchaseProducts[i];
         let materials = [];
@@ -117,6 +119,9 @@ const getModelObject = async(data, req) => {
         });
         total_sub_total += parseFloat(item.sub_price);
         total_sub_total += parseFloat(item.making_charge);
+        // accumulate product totals and tax for defensive recomputation
+        total_amount_acc += parseFloat(item.total || 0);
+        tax_acc += parseFloat(item.tax || 0);
     }
 
     let supplier = data.supplier;
@@ -149,16 +154,18 @@ const getModelObject = async(data, req) => {
         invoice_number: data.invoice_number,
         invoice_date: formatDateTime(data.invoice_date, 9),
         notes: data.notes,
-        total_amount: data.total_amount,
         payment_mode: data.payment_mode,
         transaction_no: data.transaction_no,
         tax: data.tax,
         discount: data.discount,
         paid_amount: data.paid_amount,
         products: products,
-        taxable_amount: data.taxable_amount,
-        total_payable: data.total_payable,
-        due_amount: data.due_amount,
+        taxable_amount: priceFormat(data.taxable_amount || 0),
+        // compute total_amount from products and derive total_payable defensively
+        total_amount: priceFormat(total_amount_acc),
+        tax: priceFormat(tax_acc),
+        total_payable: priceFormat((total_amount_acc || 0) - (parseFloat(data.discount || 0) || 0) - (parseFloat(data.return_amount || 0) || 0)),
+        due_amount: priceFormat(data.due_amount),
         due_date: formatDateTime(data.due_date, 9),
         total_sub_total: priceFormat(total_sub_total),
         have_return_charge: !isEmpty(data.sale_id) ? true : false,

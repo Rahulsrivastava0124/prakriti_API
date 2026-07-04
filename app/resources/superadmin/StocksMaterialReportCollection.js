@@ -1,7 +1,7 @@
 const { isObject, isEmpty, displayAmount, priceFormat, weightFormat, noImage } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
 const {PurityCollection} = require("@resources/superadmin/PurityCollection");
-const {calculateProductPriceCartNew, getSuperAdminId, canStockAddCart} = require("@library/common");
+const {calculateProductPriceReport, getSuperAdminId, canStockAddCart} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const stockModel = db.stocks;
@@ -9,24 +9,24 @@ const sequelize = db.sequelize;
 const cartsModel = db.carts;
 
 
-const StocksMaterialCollection = async (data, user_id) => {
+const StocksMaterialReportCollection = async (data, user_id, roleName = null) => {
     if(isObject(data)){
-        return await getModelObject(data, user_id);
+        return await getModelObject(data, user_id, roleName);
     }else{
         let arr = [];
         for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], user_id));
+            arr.push(await getModelObject(data[i], user_id, roleName));
         }
         return arr;
     }
 }
 
-const getModelObject = async (data, user_id) => {
+const getModelObject = async (data, user_id, roleName = null) => {
     console.log(data)
     let sub_category = null, isMaterial = true;
     let materialItem = [], materialString = [];
     let taxInfo = null, purity_name = '';
-    let priceMaterials = await calculateProductPriceCartNew(data.stockMaterials, sub_category, isMaterial, null, taxInfo);
+    let priceMaterials = await calculateProductPriceReport(data.stockMaterials, sub_category, isMaterial, roleName, taxInfo);
     let weight_display = [], unit_display = [];
     for(let item of data.stockMaterials){
         //let str = item.material.name + ' <span style="padding-right: 18px; float: right;">' + weightFormat(item.weight) +(item.unit ? (' '+item.unit.name) : '') + '</span>';
@@ -85,5 +85,5 @@ const getModelObject = async (data, user_id) => {
 }
 
 module.exports = {
-    StocksMaterialCollection
+    StocksMaterialReportCollection
 }

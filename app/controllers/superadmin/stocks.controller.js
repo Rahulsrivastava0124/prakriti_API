@@ -13,6 +13,10 @@ const { StocksCollection } = require("@resources/superadmin/StocksCollection");
 const {
   StocksMaterialCollection,
 } = require("@resources/superadmin/StocksMaterialCollection");
+const { StocksReportCollection } = require("@resources/superadmin/StocksReportCollection");
+const {
+  StocksMaterialReportCollection,
+} = require("@resources/superadmin/StocksMaterialReportCollection");
 const stocksModel = db.stocks;
 const {
   isEmpty,
@@ -72,8 +76,10 @@ exports.currentStockReportPdf = async (req, res) => {
 
     // Determine user scope for stocks
     let userID = await getStockUserID(req);
-
-    let role = await Role.findByPk(req.userId);
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
     let roleName = role ? role.name : "user";
 
     let conditions = { type };
@@ -135,8 +141,99 @@ exports.currentStockReportPdf = async (req, res) => {
 
     const items =
       type == "product" || type == "return"
-        ? await StocksCollection(rows, req.userId, roleName)
-        : await StocksMaterialCollection(rows, req.userId, roleName);
+        ? await StocksReportCollection(rows, req.userId, roleName)
+        : await StocksMaterialReportCollection(rows, req.userId, roleName);
+
+    const normalizeMaterialKey = (mat) => {
+      const materialName = mat.material_name ? String(mat.material_name).trim().toLowerCase() : String(mat.material_id || '').trim();
+      const unitName = mat.unit_name ? String(mat.unit_name).trim().toLowerCase() : '';
+      const purityName = mat.purity_name ? String(mat.purity_name).trim().toLowerCase() : '';
+      return `${materialName}||${unitName}||${purityName}`;
+    };
+
+    const mergeMaterialTotals = (existing, incoming) => {
+      const map = {};
+      existing.forEach((mat) => {
+        const key = normalizeMaterialKey(mat);
+        map[key] = {
+          ...mat,
+          weight: Number(mat.weight || 0),
+          quantity: Number(mat.quantity || 0),
+        };
+      });
+      incoming.forEach((mat) => {
+        const key = normalizeMaterialKey(mat);
+        if (!map[key]) {
+          map[key] = {
+            ...mat,
+            weight: Number(mat.weight || 0),
+            quantity: Number(mat.quantity || 0),
+          };
+        } else {
+          map[key].weight += Number(mat.weight || 0);
+          map[key].quantity += Number(mat.quantity || 0);
+        }
+      });
+      return Object.values(map);
+    };
+
+    const aggregateSameProducts = (rows) => {
+      const grouped = {};
+      for (const item of rows) {
+        const key = `${item.product_id || ''}`;
+        const qty = Number(item.quantity || 0);
+        const weight = Number(item.total_weight || 0);
+        const price = Number(item.mrp || 0);
+        if (!grouped[key]) {
+          grouped[key] = {
+            ...item,
+            quantity: qty,
+            total_weight: weight,
+            mrp: price,
+            stock_materials: mergeMaterialTotals([], item.stock_materials || []),
+          };
+        } else {
+          grouped[key].quantity += qty;
+          grouped[key].total_weight += weight;
+          grouped[key].mrp += price;
+          grouped[key].stock_materials = mergeMaterialTotals(grouped[key].stock_materials, item.stock_materials || []);
+        }
+      }
+      return Object.values(grouped).map((item) => {
+        return {
+          ...item,
+          total_weight_display:
+            item.stock_materials && item.stock_materials.length === 1
+              ? `${weightFormat(item.stock_materials[0].weight)} ${item.stock_materials[0].unit_name || ''}`
+              : `${weightFormat(item.total_weight)} gm`,
+          mrp_display: displayAmount(item.mrp, false, true, true),
+        };
+      });
+    };
+
+    const reportItems = aggregateSameProducts(items);
+
+    const aggregateMaterialDisplay = (materials) => {
+      const map = {};
+      for (const mat of materials || []) {
+        const materialName = mat.material_name ? String(mat.material_name).trim() : String(mat.material_id || 'Unknown').trim();
+        const unitName = mat.unit_name ? String(mat.unit_name).trim() : '';
+        const key = `${materialName.toLowerCase()}||${unitName.toLowerCase()}`;
+        const weight = Number(mat.weight || mat.quantity || 0) || 0;
+        if (!map[key]) {
+          map[key] = {
+            ...mat,
+            material_name: materialName,
+            weight,
+            quantity: Number(mat.quantity || 0) || 0,
+          };
+        } else {
+          map[key].weight += weight;
+          map[key].quantity += Number(mat.quantity || 0) || 0;
+        }
+      }
+      return Object.values(map);
+    };
 
     // group by sub category
     let groups = {};
@@ -144,8 +241,9 @@ exports.currentStockReportPdf = async (req, res) => {
     let materialTotals = {};
     // overall totals across all products
     let overallTotals = { total_qty: 0, total_weight: 0, total_value: 0 };
-    for (let it of items) {
-      let key = it.sub_category || it.category || "Others";
+    for (let it of reportItems) {
+      // Use the name property of sub_category/category objects instead of the objects themselves
+      let key = (it.sub_category && it.sub_category.name) || (it.category && it.category.name) || "Others";
       if (!groups[key]) groups[key] = { items: [], total_qty: 0, total_weight: 0, total_value: 0 };
       groups[key].items.push(it);
       groups[key].total_qty += Number(it.quantity || 0);
@@ -159,6 +257,16 @@ exports.currentStockReportPdf = async (req, res) => {
 
     console.log("group stocks : ", groups);
 
+    // Fetch logged-in user details
+    const user = await UserModel.findByPk(req.userId);
+    const userName = user ? user.name : "User";
+    const userCompany = user ? user.company_name : "Prakriti Patna";
+    const userAddress = user ? (user.address || "Patna, Bihar") : "Patna, Bihar";
+    const userCity = user ? (user.city || "Patna") : "Patna";
+    const userPincode = user ? (user.pincode || "800020") : "800020";
+    const userGst = user ? (user.gst || "10CIUPK2654L1ZY") : "10CIUPK2654L1ZY";
+    const userMobile = user ? (user.mobile || "N/A") : "N/A";
+
     // Build HTML using purchase invoice design for consistent printable layout
     const cwd = process.cwd();
     const logoUrl = `public/images/logo.png`;
@@ -170,6 +278,107 @@ exports.currentStockReportPdf = async (req, res) => {
       // ignore if logo not found
       logo = "";
     }
+    
+    // Header HTML matching purchase invoice format
+    let headerhtml = `
+        <table cellspacing="0" cellpadding="0" border="0" align="center" width="100%">
+            <div style="display: table; width: 100%;">
+                <div style="width: 65%; display: table-cell; vertical-align: bottom;">
+                    <img src="data:image/png;base64,${logo}" style="width: 220px; margin-left: 10px;">
+                    <h3 style="margin: 0; font-weight: 400; font-size: 12px;">Corporate Office - ${userAddress}, ${userCity} - ${userPincode}</h3>
+                </div>
+                <div style="width: 35%; display: table-cell; vertical-align: middle; text-align: left;">
+                    <h3 style="margin: 0;">
+                        <span style="font-size: 16px; font-weight: 600;">${userCompany}</span>
+                    </h3>
+                    <h3 style="margin: 0; font-weight: 400; font-size: 14px;">GST No - 
+                        <span style="font-weight: 600;">${userGst}</span>
+                    </h3>
+                    <h3 style="margin: 0; font-weight: 400; font-size: 12px;">User Id - <span>${userName}</span></h3>
+                    <h3 style="margin: 0; font-weight: 400; font-size: 12px;">Address - ${userAddress}</h3>
+                    <h3 style="font-weight: 600; font-size: 12px; margin: 0;">
+                        support@Prakriti.com, +91 98744 45878
+                    </h3>
+                </div>
+            </div>
+        </table>
+        <table cellspacing="0" cellpadding="5" border="0" align="center" width="100%">
+            <tbody>
+                <tr>
+                    <hr style="border: 1px solid #1E2757">
+                </tr>
+            </tbody>
+        </table>
+        <table cellspacing="0" cellpadding="5" border="0" align="center" width="100%">
+            <tbody>
+                <tr>
+                    <td style="padding: 0;">
+                        <div class="comp-part-one">
+                            <ul style="margin: 0; padding: 0; list-style: none; display: flex; gap: 15px; justify-content: space-between;">
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Company -</span>
+                                    <span style="font-weight: 600; font-size: 12px; margin: 0;">${userCompany}</span></li>
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">GST IN</span>
+                                    <span style="font-weight: 600; font-size: 12px; margin: 0;">${userGst}</span></li>
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Contact -</span>
+                                    <span style="font-weight: 600; font-size: 12px; margin: 0;">${userMobile}</span></li>
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Generated Date -</span>
+                                    <span style="font-weight: 600; font-size: 12px; margin: 0;">${new Date().toLocaleDateString()}</span></li>
+                            </ul>
+                        </div>
+                        <div class="comp-part-two" style="margin-top: 8px;">
+                            <ul style="margin: 0; padding: 0; list-style: none; display: flex; gap: 15px; justify-content: space-between;">
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Address -</span>
+                                    <span style="font-weight: 500; font-size: 12px; margin: 0;">${userAddress}</span></li>
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">City -</span>
+                                    <span style="font-weight: 500; font-size: 12px; margin: 0;">${userCity}</span></li>
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Pin -</span>
+                                    <span style="font-weight: 500; font-size: 12px; margin: 0;">${userPincode}</span></li>
+                                <li><span style="font-weight: 400; font-size: 12px; margin: 0;">Total Products -</span>
+                                  <span style="font-weight: 600; font-size: 12px; margin: 0;">${reportItems.length}</span></li>
+                            </ul>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    `;
+
+    // Footer HTML matching purchase invoice format with terms and conditions
+    let footerhtml = `
+        <div class="invoice" style="width: 1000px; padding: 15px; margin: 0px; position: absolute; bottom: 0px; background-color: #f9f9f9;">
+            <hr/>
+            <table cellpadding="0" cellspacing="1" width="1000px" style="margin: auto;">
+                <tbody>
+                    <tr>
+                        <td>
+                            <table cellspacing="0" cellpadding="0" border="0" align="center" width="90%">
+                                <div style="display: table; width: 100%; font-size: 11px;">
+                                    <div style="display: table-cell; width: 65%;">
+                                        <h5 style="margin: 0px; font-size: 11px; font-weight: 600; text-transform: uppercase;">NOTE</h5>
+                                        <ul style="margin: 0; padding: 0px; list-style: none;">
+                                            <span style="margin: 0; text-align: left; font-size: 11px; font-weight: 400;">* This is an auto-generated Current Stock Inventory Report</span>
+                                            <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">Report generated on ${new Date().toLocaleString()}</li>
+                                            <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">Prakriti Inventory Management System</li>
+                                            <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">All disputes are subject to Patna Jurisdiction only</li>
+                                            <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">For inquiries, contact: support@Prakriti.com</li>
+                                        </ul>
+                                    </div>
+                                    <div style="display: table-cell; width: 35%;">
+                                        <div style="margin-top: 5px">
+                                            <p style="font-size: 11px; margin: 0; line-height: 1.2;"><strong>Company Name -</strong> ${userCompany}</p>
+                                            <p style="font-size: 11px; margin: 0; line-height: 1.2;">${userCompany}, ${userCity}</p>
+                                            <p style="font-size: 11px; margin: 0; line-height: 1.2;"><strong>GST -</strong> ${userGst}</p>
+                                            <p style="font-size: 11px; margin: 0; line-height: 1.2;"><strong>Contact -</strong> ${userMobile}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </table>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
 
     let html = `<!DOCTYPE html>
     <html lang="en">
@@ -182,125 +391,95 @@ exports.currentStockReportPdf = async (req, res) => {
         </head>
         <body>
             <div class="invoice">
-                <table><tr><td>
-                    <div style="display:table;width:100%;">
-                        <div style="width:65%;display:table-cell;vertical-align:bottom;">
-                            ${logo?`<img src="data:image/png;base64,${logo}" style="width:220px;margin-left:10px;">`:""}
-                            <h3 style="margin:0;font-weight:400;font-size:12px;">Current Stock Report</h3>
-                        </div>
-                        <div style="width:35%;display:table-cell;vertical-align:middle;text-align:left;">
-                            <h3 style="margin:0;font-weight:600;font-size:16px;">Prakriti Patna</h3>
-                            <h3 style="margin:0;font-weight:400;font-size:12px;">Generated: ${new Date().toLocaleString()}</h3>
-                        </div>
-                    </div>
-                </td></tr></table>
-                <hr style="border:1px solid #1E2757" />`;
+                ${headerhtml}
+                </div>
+            <div class="invoice" style="margin-top:20px;">`;
 
-    // For each subcategory render a table similar to purchase layout
-    for (let sub of Object.keys(groups)) {
-      let g = groups[sub];
-      html += `<h4 style="margin:8px 0;font-size:13px;">Sub Category: ${sub} (Items: ${g.items.length})</h4>`;
-      // add Material column into main table
-      html += `<table cellspacing="0" cellpadding="5" border="0" align="center"><thead><tr>
-        <th style="text-align:left;width:30px;">#</th>
-        <th style="text-align:left;">Product Name</th>
-        <th style="text-align:left;">Material</th>
-        <th style="text-align:left;width:100px;">Certificate</th>
-        <th style="text-align:left;width:80px;">Qty(pcs)</th>
-        <th style="text-align:left;width:100px;">Total Wt(gm)</th>
-        <th style="text-align:left;width:100px;">Price</th>
-        </tr></thead><tbody>`;
+    // Single table with all products
+    html += `<table cellspacing="0" cellpadding="5" border="0" align="center"><thead><tr>
+      <th style="text-align:left;width:30px;">#</th>
+      <th style="text-align:left;">Product Name</th>
+      <th style="text-align:left;width:80px;">Qty(pcs)</th>
+      <th style="text-align:left;">Material</th>
+      <th style="text-align:left;width:100px;">Gross Wt</th>
+      <th style="text-align:left;width:100px;">Price</th>
+      </tr></thead><tbody>`;
 
-      for (let i = 0; i < g.items.length; i++) {
-        const r = g.items[i];
-        // build material cell text and accumulate global material totals
-        let materialCell = '';
-        let seenMaterials = new Set();
-        if (r.stock_materials && r.stock_materials.length) {
-          let mparts = [];
-          for (let m of r.stock_materials) {
-            const mName = m.material_name || m.material_id || 'Unknown';
-            const w = Number(m.weight || m.quantity || 0) || 0;
-            const unit = m.unit_name || '';
-            mparts.push(`${mName} - ${weightFormat(w)} ${unit}`);
+    // Render all items from reportItems
+    for (let i = 0; i < reportItems.length; i++) {
+      const r = reportItems[i];
+      let materialCell = '';
+      let seenMaterials = new Set();
+      const aggregatedMaterials = r.stock_materials ? aggregateMaterialDisplay(r.stock_materials) : [];
+      if (aggregatedMaterials.length) {
+        let mparts = [];
+        for (let m of aggregatedMaterials) {
+          const mName = m.material_name || m.material_id || 'Unknown';
+          const w = Number(m.weight || m.quantity || 0) || 0;
+          const unit = m.unit_name || '';
+          mparts.push(`${mName} - ${weightFormat(w)} ${unit}`);
 
-            // initialize material totals map
-            if (!materialTotals[mName]) {
-              materialTotals[mName] = {
-                product_count: 0,
-                total_product_qty: 0,
-                total_product_weight: 0,
-                total_material_weight: 0,
-                total_price: 0,
-              };
-            }
-
-            // accumulate material specific sums
-            if (!seenMaterials.has(mName)) {
-              materialTotals[mName].product_count += 1;
-              materialTotals[mName].total_product_qty += Number(r.quantity || 0);
-              //materialTotals[mName].total_product_weight += Number(r.total_weight || 0);
-              materialTotals[mName].total_price += Number(r.mrp || 0);
-              seenMaterials.add(mName);
-            }
-            materialTotals[mName].total_material_weight += Number(w || 0);
+              const materialKey = (mName.toString().trim().toLowerCase() + "||" + (unit || "").toString().trim().toLowerCase());
+          if (!materialTotals[materialKey]) {
+            materialTotals[materialKey] = {
+              name: mName,
+              unit_name: unit,
+              product_count: 0,
+              total_product_qty: 0,
+              total_product_weight: 0,
+              total_material_weight: 0,
+              total_price: 0,
+            };
           }
-          materialCell = mparts.join('<br>');
-        }
 
-        html += `<tr style="background-color:${i % 2 == 0 ? '#fff' : '#f2f2f2'}"><td style="padding:6px;">${i + 1}</td>
-            <td style="padding:6px;">${r.name || ''} ${r.size_name?` - ${r.size_name}`:''}</td>
-            <td style="padding:6px;">${materialCell}</td>
-            <td style="padding:6px;">${r.certificate_no || ''}</td>
-            <td style="padding:6px;">${r.quantity || 0}</td>
-            <td style="padding:6px;">${r.total_weight_display || r.total_weight || 0}</td>
-            <td style="padding:6px;">${r.mrp_display || displayAmount(r.mrp, false, true, true) || (displayAmount(0, false, true, true))}</td>
-        </tr>`;
+          // accumulate material specific sums
+          if (!seenMaterials.has(materialKey)) {
+            materialTotals[materialKey].product_count += 1;
+            materialTotals[materialKey].total_product_qty += Number(r.quantity || 0);
+            materialTotals[materialKey].total_price += Number(r.mrp || 0);
+            seenMaterials.add(materialKey);
+          }
+          materialTotals[materialKey].total_material_weight += Number(w || 0);
+        }
+        materialCell = mparts.join('<br>');
       }
 
-      // Render totals as a normal row inside tbody to avoid repeating footers across pages
-      html += `</tbody>
-            <tr style="font-weight:600;background:#e9e9e9;">
-              <td colspan="2" style="padding:6px;">Totals</td>
-              <td style="padding:6px;"></td>
-              <td style="padding:6px;"></td>
-              <td style="padding:6px;">${g.total_qty}</td>
-              <td style="padding:6px;">${weightFormat(g.total_weight)+" gm"}</td>
-              <td style="padding:6px;">${displayAmount(g.total_value, false, true, true)}</td>
-            </tr>
-        </table><div style="height:12px"></div>`;
+      html += `<tr style="background-color:${i % 2 == 0 ? '#fff' : '#f2f2f2'}"><td style="padding:6px;">${i + 1}</td>
+          <td style="padding:6px;">${r.name || ''}</td>
+          <td style="padding:6px;">${r.quantity || 0}</td>
+          <td style="padding:6px;">${materialCell}</td>
+          <td style="padding:6px;">${r.total_weight_display || r.total_weight || 0}</td>
+          <td style="padding:6px;">${r.mrp_display || displayAmount(r.mrp, false, true, true) || (displayAmount(0, false, true, true))}</td>
+      </tr>`;
     }
 
-    // Final overall totals row (All products)
-    html += `<table cellspacing="0" cellpadding="5" border="0" align="center"><tbody>
-      <tr style="font-weight:700;background:#dfe6f7;">
-        <td colspan="2" style="padding:6px;">All Products Total</td>
-        <td style="padding:6px;"></td>
-        <td style="padding:6px;"></td>
-        <td style="padding:6px;">${overallTotals.total_qty}</td>
-        <td style="padding:6px;">${weightFormat(overallTotals.total_weight)+" gm"}</td>
-        <td style="padding:6px;">${displayAmount(overallTotals.total_value, false, true, true)}</td>
-      </tr>
-    </tbody></table><div style="height:12px"></div>`;
-
-    // material-wise totals summary (global across report)
+    // Overall totals row with material-wise summary in Material column
+    let materialSummary = '';
     if (materialTotals && Object.keys(materialTotals).length) {
-      html += `<h4 style="margin:8px 0;font-size:13px;">Material Wise Totals</h4>`;
-      html += `<table cellspacing="0" cellpadding="5" border="0" align="center" style="margin-bottom:10px;border-collapse:collapse;color:#000;font-size:11px;"><thead><tr style="background:#1E2757;color:#fff;"><th style="text-align:left;">Material</th><th style="text-align:left;width:80px;">Product Qty(pcs)</th><th style="text-align:left;width:120px;">Total Material Wt(gm)</th><th style="text-align:left;width:120px;">Total Price</th></tr></thead><tbody>`;
+      let matParts = [];
       for (let mn of Object.keys(materialTotals)) {
         const m = materialTotals[mn];
-        html += `<tr style="background-color:#fff"><td style="padding:6px;">${mn}</td><td style="padding:6px;">${m.total_product_qty}</td><td style="padding:6px;">${weightFormat(m.total_material_weight)+" gm"}</td><td style="padding:6px;">${displayAmount(m.total_price, false, true, true)}</td></tr>`;
+        const unitDisplay = m.unit_name ? ` ${m.unit_name}` : ' gm';
+        matParts.push(`${m.name}: ${weightFormat(m.total_material_weight)}${unitDisplay}`);
       }
-      html += `</tbody></table><div style="height:12px"></div>`;
+      materialSummary = matParts.join(' <br/> <br/> ');
     }
 
-    // footer
-    html += `<div style="width:100%;padding-top:10px;border-top:1px solid #ddd;font-size:11px;">
-        <div style="display:flex;justify-content:space-between;">
-          <div>Generated by Prakriti System</div>
-          <div>Total Subcategories: ${Object.keys(groups).length}</div>
-        </div>
-      </div>`;
+    html += `</tbody>
+          <tr style="font-weight:600;background:#e9e9e9; padding-top:20px;">
+            <td colspan="6" style="padding-top:50px;"></td>
+          </tr>
+          <tr style="font-weight:600;background:#e9e9e9; border-top: 1px solid #ccc;">
+            <td colspan="2" style="padding:6px;">TOTAL</td>
+            <td style="padding:6px;font-size:11px;">${overallTotals.total_qty}</td>
+            <td style="padding:6px;font-size:11px;">${materialSummary}</td>
+            <td style="padding:6px;font-size:11px;">${weightFormat(overallTotals.total_weight)+" gm"}</td>
+            <td style="padding:6px;font-size:11px;">${displayAmount(overallTotals.total_value, false, true, true)}</td>
+          </tr>
+      </table><div style="height:12px"></div>`;
+
+    // Add footer with company details
+    html += footerhtml;
 
     html += `</div></body></html>`;
 
@@ -328,6 +507,11 @@ exports.currentStockReportPdf = async (req, res) => {
             {
               file_name: filename,
               url: getFileAbsulatePathPDF(file_path),
+              items: items,
+              report_items: reportItems,
+              groups: groups,
+              material_totals: materialTotals,
+              overall_totals: overallTotals,
             },
             "Current stock report"
           )
@@ -464,6 +648,13 @@ exports.index = async (req, res) => {
         ? req.userId
         : await getWorkingUserID(req)
       : user_id;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
+
     let conditions = { type: type };
 
     let superAdminRoleId = getRoleId("superadmin");
@@ -861,8 +1052,8 @@ exports.index = async (req, res) => {
         let result = {
           items:
             type == "product" || type == "return"
-              ? await StocksCollection(data.rows, userID)
-              : await StocksMaterialCollection(data.rows, userID),
+              ? await StocksReportCollection(data.rows, userID, roleName)
+              : await StocksMaterialReportCollection(data.rows, userID, roleName),
           total: data.count,
         };
         /* compactLog("result : ", result);
@@ -910,6 +1101,12 @@ exports.index = async (req, res) => {
  */
 exports.view = async (req, res) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+  console.log("req.userId : ", req.userId);
+  let userDtls = await UserModel.findByPk(req.userId);
+  let role = await Role.findByPk(userDtls.role_id);
+  console.log('role : ', role);
+  let roleName = role ? role.name : "user";
+
   let stock = await stocksModel.findOne({
     where: { user_id: await getStockUserID(req, userID), id: req.params.id },
     include: [
@@ -963,7 +1160,7 @@ exports.view = async (req, res) => {
       .send(formatErrorResponse("Stock not found"));
   }
   res.send(
-    formatResponse(await StocksCollection(stock, userID), "Stock details")
+    formatResponse(await StocksReportCollection(stock, userID, roleName), "Stock details")
   );
 };
 
@@ -1144,6 +1341,13 @@ exports.getStockPriceByCategory = async (req, res) => {
     total_avl_stock,
     manager,
   } = req.query;
+
+  console.log("req.userId : ", req.userId);
+  let userDtls = await UserModel.findByPk(req.userId);
+  let role = await Role.findByPk(userDtls.role_id);
+  console.log('role : ', role);
+  let roleName = role ? role.name : "user";
+
   compactLog("by_specific : ", by_specific);
   type = isEmpty(type) ? "product" : type;
   let userID = null;
@@ -1293,7 +1497,7 @@ exports.getStockPriceByCategory = async (req, res) => {
     userIdArr = [userID];
   }
 
-  let result = await getTotalStockPriceByUser(true, userIdArr, type);
+  let result = await getTotalStockPriceByUser(true, userIdArr, type, roleName);
 
   return res.send(formatResponse(result));
 };
@@ -1425,6 +1629,12 @@ exports.moveToStock = async (req, res) => {
 exports.updateImage = async (req, res) => {
   try {
     let data = req.body;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
     
     // Validate certificate_no
     if (isEmpty(data.certificate_no)) {
@@ -1537,7 +1747,7 @@ exports.updateImage = async (req, res) => {
     
     res.send(
       formatResponse(
-        await StocksCollection(updatedStock, userID),
+        await StocksReportCollection(updatedStock, userID, roleName),
         "Stock image updated successfully!"
       )
     );
@@ -1559,6 +1769,13 @@ exports.updateImage = async (req, res) => {
 exports.updateImageByCertificateNo = async (req, res) => {
   try {
     let data = req.body;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
+
     let certificate_no = req.params.certificate_no;
     
     // Validate certificate_no from URL parameter
@@ -1672,7 +1889,7 @@ exports.updateImageByCertificateNo = async (req, res) => {
     
     res.send(
       formatResponse(
-        await StocksCollection(updatedStock, userID),
+        await StocksReportCollection(updatedStock, userID, roleName),
         "Stock image updated successfully!"
       )
     );
@@ -1695,6 +1912,12 @@ exports.updateImageById = async (req, res) => {
   try {
     let data = req.body;
     let stockId = req.params.id;
+
+    console.log("req.userId : ", req.userId);
+    let userDtls = await UserModel.findByPk(req.userId);
+    let role = await Role.findByPk(userDtls.role_id);
+    console.log('role : ', role);
+    let roleName = role ? role.name : "user";
     
     // Validate stock ID from URL parameter
     if (isEmpty(stockId)) {
@@ -1809,7 +2032,7 @@ exports.updateImageById = async (req, res) => {
     
     res.send(
       formatResponse(
-        await StocksCollection(updatedStock, userID),
+        await StocksReportCollection(updatedStock, userID, roleName),
         "Stock image updated successfully!"
       )
     );

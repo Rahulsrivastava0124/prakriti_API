@@ -1247,26 +1247,38 @@ exports.downloadTxnLedger = async (req, res) => {
       const options = { format: "A4" };
 
       (async () => {
-        const file = { content: html };
+        try {
+          const file = { content: html };
 
-        // Generate PDF
-        const pdfBuffer = await html_to_pdf.generatePdf(file, options);
+          // Generate PDF
+          const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
-        // Save PDF to file
-        fs.writeFileSync(file_path, pdfBuffer);
-        compactLog("PDF generated successfully!");
+          // Ensure the destination directory exists before writing
+          fs.mkdirSync(file_path.substring(0, file_path.lastIndexOf("/")), {
+            recursive: true,
+          });
 
-        res.send(
-          formatResponse(
-            {
-              file_name: filename,
-              url: getFileAbsulatePathPDF(file_path),
-              items: passbook,
-              total: passbook.length,
-            },
-            "Ledger pdf",
-          ),
-        );
+          // Save PDF to file
+          fs.writeFileSync(file_path, pdfBuffer);
+          compactLog("PDF generated successfully!");
+
+          res.send(
+            formatResponse(
+              {
+                file_name: filename,
+                url: getFileAbsulatePathPDF(file_path),
+                items: passbook,
+                total: passbook.length,
+              },
+              "Ledger pdf",
+            ),
+          );
+        } catch (error) {
+          compactLog("PDF generation failed!", error);
+          return res
+            .status(errorCodes.default)
+            .send(formatErrorResponse(error.toString()));
+        }
       })();
     } catch (error) {
       return res
@@ -1540,6 +1552,27 @@ exports.store = async (req, res) => {
         paid_amount = parseFloat(data.total_payable);
       }
     }
+    // Compute totals defensively from provided products
+    let total_amount_acc = 0;
+    let tax_acc = 0;
+    let taxable_amount_acc = 0;
+    let total_sub_total_acc = 0;
+    for (let i = 0; i < (data.products || []).length; i++) {
+      let p = data.products[i];
+      let sub_price = parseFloat(p.sub_price) || 0;
+      let making_charge = parseFloat(p.making_charge) || 0;
+      let tax = parseFloat(p.tax) || 0;
+      let total = parseFloat(p.total) || sub_price + making_charge + tax;
+      total_amount_acc += total;
+      tax_acc += tax;
+      taxable_amount_acc += sub_price + making_charge;
+      total_sub_total_acc += sub_price + making_charge;
+    }
+    let discount_val = parseFloat(data.discount) || 0;
+    let return_amount_val = parseFloat(data.return_amount) || 0;
+    let computed_total_payable = priceFormat(
+      (total_amount_acc || 0) - (discount_val || 0) - (return_amount_val || 0),
+    );
     // compactLog("data is Current image ", data.current_image)
     /* let current_image =
       data.current_image == undefined
@@ -1557,13 +1590,14 @@ exports.store = async (req, res) => {
       notes: data.notes,
       payment_mode: data.payment_mode,
       transaction_no: data.transaction_no,
-      total_amount: priceFormat(data.total_amount),
-      tax: priceFormat(data.tax),
-      discount: priceFormat(data.discount),
+      // Persist computed totals (defensive)
+      total_amount: priceFormat(total_amount_acc),
+      tax: priceFormat(tax_acc),
+      discount: priceFormat(discount_val),
       paid_amount: paid_amount,
-      taxable_amount: priceFormat(data.taxable_amount),
-      bill_amount: priceFormat(data.total_payable),
-      total_payable: priceFormat(data.total_payable),
+      taxable_amount: priceFormat(taxable_amount_acc),
+      bill_amount: priceFormat(computed_total_payable),
+      total_payable: priceFormat(computed_total_payable),
       due_amount: due_amount,
       due_date: dueDate ? dueDate.format("YYYY-MM-DD") : null,
       status: status,
@@ -3283,6 +3317,27 @@ exports.update = async (req, res) => {
       } else {
         due_amount = priceFormat(data.total_payable);
       }
+      // Compute totals defensively from provided products for update
+      let total_amount_acc = 0;
+      let tax_acc = 0;
+      let taxable_amount_acc = 0;
+      let total_sub_total_acc = 0;
+      for (let i = 0; i < (data.products || []).length; i++) {
+        let p = data.products[i];
+        let sub_price = parseFloat(p.sub_price) || 0;
+        let making_charge = parseFloat(p.making_charge) || 0;
+        let tax = parseFloat(p.tax) || 0;
+        let total = parseFloat(p.total) || sub_price + making_charge + tax;
+        total_amount_acc += total;
+        tax_acc += tax;
+        taxable_amount_acc += sub_price + making_charge;
+        total_sub_total_acc += sub_price + making_charge;
+      }
+      let discount_val = parseFloat(data.discount) || 0;
+      let return_amount_val = parseFloat(data.return_amount) || 0;
+      let computed_total_payable = priceFormat(
+        (total_amount_acc || 0) - (discount_val || 0) - (return_amount_val || 0),
+      );
       let purchaseObj = {
         //supplier_id: data.supplier_id,
         //user_id: userID,
@@ -3291,13 +3346,13 @@ exports.update = async (req, res) => {
         notes: data.notes,
         payment_mode: data.payment_mode,
         transaction_no: data.transaction_no,
-        total_amount: priceFormat(data.total_amount),
-        tax: priceFormat(data.tax),
-        discount: priceFormat(data.discount),
+        total_amount: priceFormat(total_amount_acc),
+        tax: priceFormat(tax_acc),
+        discount: priceFormat(discount_val),
         paid_amount: paid_amount,
-        taxable_amount: priceFormat(data.taxable_amount),
-        bill_amount: priceFormat(data.total_payable),
-        total_payable: priceFormat(data.total_payable),
+        taxable_amount: priceFormat(taxable_amount_acc),
+        bill_amount: priceFormat(computed_total_payable),
+        total_payable: priceFormat(computed_total_payable),
         due_amount: due_amount,
         //due_date: moment(data.due_date).format('YYYY-MM-DD'),
         status: status,
@@ -3828,7 +3883,7 @@ exports.returnProducts = async (req, res) => {
           ],
         });
 
-        //insert into return product table
+        // insert into return product table
         let returnProduct = await ReturnProductModel.create(
           {
             return_id: returnObj.id,
@@ -3852,20 +3907,19 @@ exports.returnProducts = async (req, res) => {
           );
         }
 
-        //insert into return product materials table
+        // insert into return product materials table
         for (let x = 0; x < return_data.products[i].materials.length; x++) {
           let thisQty =
             return_data.products[i].product_type == "material" ||
-            (return_data.products[i].product_type != "material" &&
-              isEmpty(return_data.products[i].certificate_no))
+            isEmpty(return_data.products[i].certificate_no)
               ? parseFloat(return_data.products[i].materials[x].return_qty)
               : return_data.products[i].materials[x].quantity;
           let thisWeight =
             return_data.products[i].product_type == "material" ||
-            (return_data.products[i].product_type != "material" &&
-              isEmpty(return_data.products[i].certificate_no))
+            isEmpty(return_data.products[i].certificate_no)
               ? parseFloat(return_data.products[i].materials[x].return_weight)
               : return_data.products[i].materials[x].weight;
+
           await ReturnProductMaterialModel.create(
             {
               return_id: returnObj.id,
@@ -6026,27 +6080,39 @@ exports.downloadInvoiceInfo = async (req, res) => {
     const options = { format: "A4" };
 
     (async () => {
-      const file = { content: html };
+      try {
+        const file = { content: html };
 
-      // Generate PDF
-      const pdfBuffer = await html_to_pdf.generatePdf(file, options);
+        // Generate PDF
+        const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
-      // Save PDF to file
-      fs.writeFileSync(file_path, pdfBuffer);
-      compactLog("PDF generated successfully!");
+        // Ensure the destination directory exists before writing
+        fs.mkdirSync(file_path.substring(0, file_path.lastIndexOf("/")), {
+          recursive: true,
+        });
 
-      res.send(
-        formatResponse(
-          {
-            file_name: purchaseData.invoice_number + "_tax.pdf",
-            url: getFileAbsulatePathPDF(file_path),
-            purchase,
-            purchaseData,
-            payments,
-          },
-          "Invoice pdf",
-        ),
-      );
+        // Save PDF to file
+        fs.writeFileSync(file_path, pdfBuffer);
+        compactLog("PDF generated successfully!");
+
+        res.send(
+          formatResponse(
+            {
+              file_name: purchaseData.invoice_number + "_tax.pdf",
+              url: getFileAbsulatePathPDF(file_path),
+              purchase,
+              purchaseData,
+              payments,
+            },
+            "Invoice pdf",
+          ),
+        );
+      } catch (error) {
+        compactLog("PDF generation failed!", error);
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse(error.toString()));
+      }
     })();
   } catch (error) {
     return res
@@ -6789,26 +6855,38 @@ exports.downloadInvoiceItemList = async (req, res) => {
     const options = { format: "A4" };
 
     (async () => {
-      const file = { content: html };
+      try {
+        const file = { content: html };
 
-      // Generate PDF
-      const pdfBuffer = await html_to_pdf.generatePdf(file, options);
+        // Generate PDF
+        const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
-      // Save PDF to file
-      fs.writeFileSync(file_path, pdfBuffer);
-      compactLog("PDF generated successfully!");
+        // Ensure the destination directory exists before writing
+        fs.mkdirSync(file_path.substring(0, file_path.lastIndexOf("/")), {
+          recursive: true,
+        });
 
-      res.send(
-        formatResponse(
-          {
-            file_name: purchaseData.invoice_number + "_item_list.pdf",
-            url: getFileAbsulatePathPDF(file_path),
-            html: html,
-            purchaseData,
-          },
-          "Invoice pdf",
-        ),
-      );
+        // Save PDF to file
+        fs.writeFileSync(file_path, pdfBuffer);
+        compactLog("PDF generated successfully!");
+
+        res.send(
+          formatResponse(
+            {
+              file_name: purchaseData.invoice_number + "_item_list.pdf",
+              url: getFileAbsulatePathPDF(file_path),
+              html: html,
+              purchaseData,
+            },
+            "Invoice pdf",
+          ),
+        );
+      } catch (error) {
+        compactLog("PDF generation failed!", error);
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse(error.toString()));
+      }
     })();
   } catch (error) {
     return res
@@ -8436,26 +8514,38 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
     const options = { format: "A4" };
 
     (async () => {
-      const file = { content: html };
+      try {
+        const file = { content: html };
 
-      // Generate PDF
-      const pdfBuffer = await html_to_pdf.generatePdf(file, options);
+        // Generate PDF
+        const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
-      // Save PDF to file
-      fs.writeFileSync(file_path, pdfBuffer);
-      compactLog("PDF generated successfully!");
+        // Ensure the destination directory exists before writing
+        fs.mkdirSync(file_path.substring(0, file_path.lastIndexOf("/")), {
+          recursive: true,
+        });
 
-      res.send(
-        formatResponse(
-          {
-            file_name: purchaseData.invoice_number + "_item_details.pdf",
-            url: getFileAbsulatePathPDF(file_path),
-            purchaseData,
-            payments,
-          },
-          "Invoice pdf",
-        ),
-      );
+        // Save PDF to file
+        fs.writeFileSync(file_path, pdfBuffer);
+        compactLog("PDF generated successfully!");
+
+        res.send(
+          formatResponse(
+            {
+              file_name: purchaseData.invoice_number + "_item_details.pdf",
+              url: getFileAbsulatePathPDF(file_path),
+              purchaseData,
+              payments,
+            },
+            "Invoice pdf",
+          ),
+        );
+      } catch (error) {
+        compactLog("PDF generation failed!", error);
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse(error.toString()));
+      }
     })();
 
     /*const doc = new jsPDF();
