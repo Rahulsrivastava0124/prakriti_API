@@ -9,7 +9,7 @@ const sequelize = db.sequelize;
 const cartsModel = db.carts;
 
 
-const StocksMaterialCollection = async (data, user_id, roleName = null) => {
+const StocksMaterialReportCollection = async (data, user_id, roleName = null) => {
     if(isObject(data)){
         return await getModelObject(data, user_id, roleName);
     }else{
@@ -85,5 +85,5 @@ const getModelObject = async (data, user_id, roleName = null) => {
 }
 
 module.exports = {
-    StocksMaterialCollection
+    StocksMaterialReportCollection
 }
