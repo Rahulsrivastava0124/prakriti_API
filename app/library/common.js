@@ -640,7 +640,8 @@ const calculateProductPrice = async (
       //console.log("materials[i].material.material_price.materialPricePurities : ", materials[i].material.material_price.materialPricePurities);
       let materialPrice = materialPricePurity;
       //mrp = parseFloat(materialPrice.per_gram_price);
-      mrp = parseFloat(materialPrice[price_type]);
+      //mrp = parseFloat(materialPrice[price_type]);
+      mrp = parseFloat(materialPrice.per_gram_price);
 
       unit_based_mrp = convertPerGramPriceToPerUnit(
         parseFloat(materialPrice.per_gram_price),
@@ -762,7 +763,7 @@ const calculateProductPriceCartNew = async (
     price_type = "distributor_price";
     discount_type = "distributor_discount";
     making_dis_type = "distributor_discount";
-  } else if (role_id == 2) { // admin
+  } else if (role_id == 2 || role_id == 1) { // admin or superadmin
     price_type = "admin_price";
     discount_type = "admin_discount";
     making_dis_type = "admin_discount";
@@ -1290,7 +1291,8 @@ const calculateProductPriceReport = async (
       //mrp = parseFloat(materialPrice.per_gram_price);
       console.log('price_type:', price_type);
       console.log('materialPrice : ', JSON.stringify(materialPrice));
-      mrp = parseFloat(materialPrice[price_type]);
+      //mrp = parseFloat(materialPrice[price_type]);
+      mrp = parseFloat(materialPrice.price);
       console.log('material mrp : ', mrp);
       unit_based_mrp = convertPerGramPriceToPerUnit(
         mrp,
