@@ -1,6 +1,6 @@
 const { isObject, isEmpty, displayAmount, priceFormat, weightFormat } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
-const {calculateProductPriceReport, getSuperAdminId, canStockAddCart} = require("@library/common");
+const {calculateProductPriceReport, calculateProductPriceCart, getSuperAdminId, canStockAddCart} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const {getFileAbsulatePath} = require("../../helpers/helper");
@@ -34,7 +34,42 @@ const getModelObject = async (data, user_id, roleName = null) => {
         }
     }
     
-    let priceMaterials = await calculateProductPriceReport(data.stockMaterials, data.product.sub_category, data.product.type == "material" || isEmpty(data.certificate_no), roleName, taxInfo);
+    let isMaterialStock = data.product.type == "material" || isEmpty(data.certificate_no);
+
+    /**
+     * Stock list price must equal the sale page item price after add-to-cart.
+     * The sale page starts from the cart calculation (calculateProductPriceCart),
+     * so we use the SAME function + the SAME role mapping the cart uses
+     * (see CartCollection: superadmin -> admin, admin -> distributor, distributor -> retailer).
+     * We then add the (discounted) making charge and GST on top of the material price,
+     * because the plain material MRP is "without making cost and tax".
+     */
+    let priceRole = "admin";
+    if (roleName === "admin") {
+        priceRole = "distributor";
+    } else if (roleName === "distributor") {
+        priceRole = "retailer";
+    }
+
+    let priceMaterials = await calculateProductPriceCart(data.stockMaterials, data.product.sub_category, isMaterialStock, priceRole, null, true);
+
+    // net material price + net (discounted) making charge = sale page "Price" (pre-tax)
+    let netMaterialPrice = priceMaterials.price;
+    let netMakingCharge = priceMaterials.making_charge;
+    let priceBeforeTax = priceFormat(netMaterialPrice + netMakingCharge);
+
+    // GST: no customer/state context on the stock list, so default to IGST -
+    // this mirrors the admin sale page's calculateGST() default (falls back to cgst+sgst).
+    let stockTaxAmount = 0;
+    if (taxInfo) {
+        let gstPercent = !isEmpty(taxInfo.igst)
+            ? parseFloat(taxInfo.igst)
+            : (parseFloat(taxInfo.cgst || 0) + parseFloat(taxInfo.sgst || 0));
+        stockTaxAmount = priceFormat((priceBeforeTax * gstPercent) / 100, true);
+    }
+
+    // material + making cost + tax, all added up
+    let stockSalePrice = priceFormat(priceBeforeTax + stockTaxAmount);
     let weight_display = [], unit_display = [], purity_display = [];
     for(let item of data.stockMaterials){
         //let str = item.material.name + ' <span style="padding-right: 18px; float: right;">' + weightFormat(item.weight) +(item.unit ? (' '+item.unit.name) : '') + '</span>';
@@ -92,8 +127,10 @@ const getModelObject = async (data, user_id, roleName = null) => {
         total_weight_display: total_weight_display,
         stock_materials: materialItem,
         stock_material_display: materialString,
-        mrp: priceMaterials.mrp,
-        mrp_display: displayAmount(priceMaterials.mrp),
+        mrp: stockSalePrice,
+        mrp_display: displayAmount(stockSalePrice),
+        tax_prize: stockTaxAmount,
+        tax_prize_display: displayAmount(stockTaxAmount),
         can_add_cart: can_add_cart,
         current_image:(data.current_image==null?null:getFileAbsulatePath(data.current_image)),
         weight_display: weight_display,
