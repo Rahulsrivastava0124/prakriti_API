@@ -59,8 +59,23 @@ exports.signin = async (req, res) => {
     return res.send(formatResponse({user: UserCollection(user)}));
   }
 
+  /**
+   * The token stays valid only until the next 9:00 AM (IST).
+   * If it's already past today's 9 AM, it expires at tomorrow's 9 AM;
+   * otherwise it expires at today's 9 AM. After that the token is rejected
+   * by authJwt.verifyToken (401) and the user must log in again.
+   */
+  let tokenExpireAt = moment(
+    moment().format(`YYYY-MM-DD ${globalConfig.employee_token_expire_at}`),
+    'YYYY-MM-DD HH:mm:ss'
+  );
+  if (!moment().isBefore(tokenExpireAt)) {
+    tokenExpireAt = tokenExpireAt.add(1, 'days');
+  }
+  let expiresInSeconds = tokenExpireAt.diff(moment(), 'seconds');
+
   var token = jwt.sign({ id: user.id, role: user.role_id}, config.secret, {
-    expiresIn: 86400 * config.login_expire_days
+    expiresIn: expiresInSeconds
   });
 
 
@@ -100,7 +115,7 @@ exports.signin = async (req, res) => {
   res.send(formatResponse({
     user: UserCollection(user),
     access_token: token,
-    expiresOn: moment(moment().format('YYYY-MM-DD 10:59:59'), 'YYYY-MM-DD HH:mm:ss').toDate().getTime()
+    expiresOn: tokenExpireAt.toDate().getTime()
   }, "Login successfully!"));
 
 };
