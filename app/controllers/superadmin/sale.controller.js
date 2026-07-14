@@ -6647,6 +6647,9 @@ exports.downloadInvoice = async (req, res) => {
       // Generate PDF
       const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
+      // Ensure the directory exists before writing the file
+      fs.mkdirSync("public/invoices", { recursive: true });
+
       // Save PDF to file
       fs.writeFileSync(file_path, pdfBuffer);
       compactLog("PDF generated successfully!");
@@ -8125,6 +8128,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
       // Generate PDF
       const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
+      // Ensure the directory exists before writing the file
+      fs.mkdirSync("public/invoices", { recursive: true });
+
       // Save PDF to file
       fs.writeFileSync(file_path, pdfBuffer);
       compactLog("PDF generated successfully!");
@@ -8865,6 +8871,9 @@ exports.downloadInvoiceItemList = async (req, res) => {
 
       // Generate PDF
       const pdfBuffer = await html_to_pdf.generatePdf(file, options);
+
+      // Ensure the directory exists before writing the file
+      fs.mkdirSync("public/invoices", { recursive: true });
 
       // Save PDF to file
       fs.writeFileSync(file_path, pdfBuffer);
@@ -10450,6 +10459,9 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
 
       // Generate PDF
       const pdfBuffer = await html_to_pdf.generatePdf(file, options);
+
+      // Ensure the directory exists before writing the file
+      fs.mkdirSync("public/invoices", { recursive: true });
 
       // Save PDF to file
       fs.writeFileSync(file_path, pdfBuffer);
