@@ -1248,6 +1248,7 @@ exports.downloadTxnLedger = async (req, res) => {
         const pdfBuffer = await html_to_pdf.generatePdf(file, options);
 
         // Save PDF to file
+        fs.mkdirSync("public/sales", { recursive: true });
         fs.writeFileSync(file_path, pdfBuffer);
         compactLog("PDF generated successfully!");
 
