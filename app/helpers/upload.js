@@ -5,6 +5,10 @@ const axios = require("axios");
 
 const base64FileUpload = async (file, filepath) => {
   try {
+    if (!file) {
+      console.error("Error in base64FileUpload: file is undefined or null");
+      return false;
+    }
     const file_path = "public/uploads/" + filepath;
     let extension = file.split(";")[0].split("/")[1];
     const file_name = uuidv4() + "." + extension;
