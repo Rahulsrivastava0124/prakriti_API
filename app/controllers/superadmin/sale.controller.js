@@ -732,7 +732,7 @@ exports.downloadTxnLedger = async (req, res) => {
     const logo = bitmap.toString("base64");
 
     let footerhtml = `
-                <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; position: absolute; bottom: 0px; background-color: #f9f9f9;">
+                <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; background-color: #f9f9f9;">
                     <hr/>
                     <table cellpadding="0" cellspacing="1" width="1000px" style="margin:auto;" >
                         <tbody>
@@ -901,6 +901,9 @@ exports.downloadTxnLedger = async (req, res) => {
             html {
               -webkit-print-color-adjust: exact;
             }
+            tbody tr { page-break-inside: avoid; }
+            thead { display: table-header-group; }
+            .table-footer-area { page-break-inside: avoid; }
             </style>
         </head>
         <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -936,21 +939,17 @@ exports.downloadTxnLedger = async (req, res) => {
                                             left;">
                                             <h3 style="margin: 0;">
                                                 <span style="font-size: 16px;
-                                                    font-weight: 600;">Prakriti
-                                                    Patna</span></h3>
+                                                    font-weight: 600;">Prakriti Head Office</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 14px;">GST No -
-                                                <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                                <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 12px;">User Id - <span>${user.name}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
-                                                font-size: 12px;">Address - G100
-                                                RBI CPC Colony Kankarbagh Patna
-                                                Bihar 800 020</h3>
+                                                font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                             <h3 style="font-weight: 600; font-size:
                                                 12px; margin: 0;">
-                                                support@Prakriti.com, +91 98744
-                                                45878
+                                                support@Prakriti.one, +91 9117799755
                                             </h3>
                                         </div>
                                     </div>
@@ -5252,7 +5251,7 @@ exports.downloadInvoice = async (req, res) => {
 
   let footerhtml = `
           
-              <div class="invoice" style="max-width: 800px; margin-top:800px; padding:auto;
+              <div class="invoice" style="max-width: 800px; margin-top: 20px; padding:auto;
                   background-color: #f9f9f9;">
                   <hr/>
                   <table cellpadding="0" cellspacing="1" width="550px" style="margin:auto;" >
@@ -5437,6 +5436,9 @@ exports.downloadInvoice = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -5472,21 +5474,17 @@ exports.downloadInvoice = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti
-                                                  Patna</span></h3>
+                                                  font-weight: 600;">Prakriti Head Office</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${saleData.sale_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - G100
-                                              RBI CPC Colony Kankarbagh Patna
-                                              Bihar 800 020</h3>
+                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.com, +91 98744
-                                              45878
+                                              support@Prakriti.one, +91 9117799755
                                           </h3>
                                       </div>
                                   </div>
@@ -6372,6 +6370,9 @@ exports.downloadInvoice = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -6831,7 +6832,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   const logo = bitmap.toString("base64");
 
   let footerhtml = `
-              <div class="invoice" style="width: 100%; margin: 0; padding: 15px; position: absolute; left:0px; bottom: 0px; background-color: #f9f9f9;">
+              <div class="invoice" style="width: 100%; margin: 0; padding: 15px; background-color: #f9f9f9; page-break-inside: avoid;">
                   <hr/>
                   <table cellpadding="0" cellspacing="1"  style="margin:auto; width:100%" >
                       <tbody>
@@ -7014,6 +7015,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
               html {
                 -webkit-print-color-adjust: exact;
               }
+              tbody tr { page-break-inside: avoid; }
+              thead { display: table-header-group; }
+              .table-footer-area { page-break-inside: avoid; }
               </style>
           </head>
           <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -7049,21 +7053,17 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti
-                                                  Patna</span></h3>
+                                                  font-weight: 600;">Prakriti Head Office</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${saleData.sale_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - G100
-                                              RBI CPC Colony Kankarbagh Patna
-                                              Bihar 800 020</h3>
+                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.com, +91 98744
-                                              45878
+                                              support@Prakriti.one, +91 9117799755
                                           </h3>
                                       </div>
                                   </div>
@@ -7197,6 +7197,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                       </tr>
                                   </tbody>
                               </table>`;
+  let metalHtml = "";
   if (saleData.subCatItems.length == 0) {
     html += `<table cellspacing="0" cellpadding="5"  style="margin-top:10px"
                                 border="0"
@@ -7491,131 +7492,151 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                     </tbody>
                                 </table>`;
   } else {
-    html += `<table cellspacing="0" cellpadding="5"  style="margin-top:10px"
+    /* Build making charge (after discount) lookup from products by sub_category_hsn */
+    let makingChargeMap = {};
+    if (saleData.products) {
+      saleData.products.forEach((p) => {
+        const key = p.sub_category_hsn || "";
+        if (!makingChargeMap[key]) makingChargeMap[key] = 0;
+        makingChargeMap[key] += (parseFloat(p.making_charge) || 0) - (parseFloat(p.making_charge_discount_amount) || 0);
+      });
+    }
+
+    html += `<table cellspacing="0" cellpadding="5" style="margin-top:10px; border-collapse: collapse;"
                                       border="0"
                                       align="center" width="100%">
                               <thead style="background-color: #1E2757;">
                                   <tr style="background-color: #1E2757;">
-                                      <th style="text-align: left; color:
-                                          #fff; border: 1px solid #1E2757;
-                                          font-size: 12px; font-weight:
-                                          400;background-color: #1E2757; width: 50px;">SL</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width:
-                                          150px;">Product Name</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 50px;">QTY</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 50px;">HSN</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 150px;"">Material</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 50px">WT</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 50px"">Unit</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 50px"">Rate</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 50px"">Tax@</th>
-                                      <th style="text-align: left; color:
-                                          #fff; font-size: 12px;
-                                          font-weight: 400; width: 50px"">Taxable Amt.</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 32px; padding: 5px 3px;">S.No.</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 110px; padding: 5px 3px;">Product Name</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 40px; padding: 5px 3px;">Qty<br/>(Pcs)</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Code</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 95px; padding: 5px 3px;">Description</th>
+                                      <th colspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; padding: 5px 3px;">Gross Weight</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 38px; padding: 5px 3px;">Unit</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 50px; padding: 5px 3px;">Rate</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 65px; padding: 5px 3px;">Making<br/>(-Dis.)</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Tax<br/>%</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 75px; padding: 5px 3px;">Amount (₹)</th>
+                                  </tr>
+                                  <tr style="background-color: #1E2757;">
+                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Per Pc</th>
+                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 60px; padding: 5px 3px;">Total (GM)</th>
                                   </tr>
                               </thead>
                               <tbody>`;
     let fine_metals = 0;
+    let totalGrossWeight = 0;
+    let materialTotals = {};
+    let totalTaxableAmt = 0;
+    let totalMakingCharge = 0;
+    let totalTax = 0;
+
+    /* Sum making_charge after discount from products */
+    if (saleData.products) {
+      saleData.products.forEach((product) => {
+        totalMakingCharge += (parseFloat(product.making_charge) || 0) - (parseFloat(product.making_charge_discount_amount) || 0);
+      });
+    }
+
     for (let i = 0; i < saleData.subCatItems.length; i++) {
-      saleData.subCatItems[i].material.map((itm) => {
+      let item = saleData.subCatItems[i];
+      item.material.map((itm) => {
         if (itm.id == 1) {
           fine_metals += parseFloat(itm.weight);
         }
       });
 
-      let materialNames = saleData.subCatItems[i].material
-        .map((itm) => itm.name)
-        .join("<br/ >");
-      let materialWts = saleData.subCatItems[i].material
-        .map((itm) => itm.weight.toFixed(2))
-        .join("<br/ >");
-      let materialUnits = saleData.subCatItems[i].material
-        .map((itm) => itm.unit)
-        .join("<br/ >");
-      let materialRates = saleData.subCatItems[i].material
-        .map((itm) => itm.rate.toFixed(2))
-        .join("<br/ >");
-      let materialCosts = saleData.subCatItems[i].material
-        .map((itm) => itm.material_cost.toFixed(2))
-        .join("<br/ >");
-      let bgTrColor = i % 2 == 0 ? "#C1BDBD" : "#C4BEED";
+      /* Calculate GW for this row */
+      let rowGrossWeight = 0;
+      item.material.forEach((mat) => {
+        rowGrossWeight += convertUnitToGram(mat.unit, mat.weight);
+        totalGrossWeight += convertUnitToGram(mat.unit, mat.weight);
+      });
 
-      html += `<tr style="background-color: ${bgTrColor};">
-                                      <td style="text-align: left;
-                                          font-size: 14px;
-                                          font-weight: 400;">
-                                          ${i + 1}
-                                      </td>
-                                      <td style="text-align: left;
-                                          font-size: 14px;
-                                          font-weight: 400;">
-                                          ${saleData.subCatItems[i].name}
-                                      </td>
-                                      <td style="text-align: left;
-                                          font-size: 14px;
-                                          font-weight: 400;">
-                                          ${saleData.subCatItems[i].qty}
-                                      </td>
-                                      <td style="text-align:
-                                          left; font-size: 14px;
-                                          font-weight: 400;">
-                                          ${
-                                            saleData.subCatItems[i].hsn
-                                              ? saleData.subCatItems[i].hsn
-                                              : ""
-                                          }
-                                      </td>
-                                      <td style="text-align:
-                                          left; font-size: 14px;
-                                          font-weight: 400;">
-                                          ${materialNames}
-                                      </td>
-                                      <td style="text-align:
-                                          left; font-size: 14px;
-                                          font-weight: 400;">
-                                          ${materialWts}
-                                      </td>
-                                      <td style="text-align:
-                                          left; font-size: 14px;
-                                          font-weight: 400;">
-                                          ${materialUnits}
-                                      </td>
-                                      <td style="text-align:
-                                          left; font-size: 14px;
-                                          font-weight: 400;">
-                                          ${materialRates}
-                                      </td>
-                                      <td style="text-align:
-                                          left; font-size: 14px;
-                                          font-weight: 400;">
-                                          ${saleData.subCatItems[i].tax}
-                                      </td>
-                                      <td style="text-align:
-                                          left; font-size: 14px;
-                                          font-weight: 400;">
-                                          ${saleData.subCatItems[
-                                            i
-                                          ].taxableAmount.toFixed(2)}
-                                      </td>
+      /* Accumulate material totals */
+      let taxableAmt = parseFloat(item.taxableAmount) || 0;
+      let taxPercent = parseFloat(item.tax) || 0;
+      totalTaxableAmt += taxableAmt;
+      totalTax += (taxableAmt * taxPercent) / 100;
+      item.material.forEach((mat) => {
+        const key = mat.name;
+        if (!materialTotals[key]) {
+          materialTotals[key] = { weight: 0, unit: mat.unit, rate: parseFloat(mat.rate) || 0, amount: 0, isGold: key.toLowerCase().includes("gold") };
+        }
+        materialTotals[key].weight += parseFloat(mat.weight) || 0;
+        materialTotals[key].amount += (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0);
+      });
 
-                                    </tr>`;
+      let materialNames = item.material.map((itm) => itm.name).join("<br/>");
+      let materialWts = item.material.map((itm) => itm.weight.toFixed(3)).join("<br/>");
+      let materialUnits = item.material.map((itm) => itm.unit).join("<br/>");
+      let materialRates = item.material.map((itm) => itm.rate.toFixed(2)).join("<br/>");
+      let bgTrColor = i % 2 == 0 ? "#f5f5f5" : "#ffffff";
+      let slNo = (i + 1) <= 9 ? "0" + (i + 1) : (i + 1);
+      let makingCharge = makingChargeMap[item.hsn] || 0;
+
+      html += `<tr style="background-color: ${bgTrColor}; border-bottom: 1px solid #e0e0e0;">
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${slNo}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.name}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.qty}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.hsn ? item.hsn : ""}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialNames}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialWts}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 600; padding: 6px 4px; border: 1px solid #e0e0e0;">${rowGrossWeight.toFixed(3)}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialUnits}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialRates}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${makingCharge > 0 ? makingCharge.toFixed(2) : "-"}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.tax}%</td>
+                  <td style="text-align: right; font-size: 11px; font-weight: 600; padding: 6px 4px; border: 1px solid #e0e0e0; color: #1E2746;">${item.taxableAmount.toFixed(2)}</td>
+              </tr>`;
     }
+
+    /* Summary rows below the table */
+    html += `<tr><td colspan="12" style="border-bottom: none; padding: 4px;"></td></tr>`;
+
+    /* Total Gross Weight */
+    html += `<tr>
+                <td colspan="5" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; border-bottom: 1px solid #e0e0e0;">Total Gross Weight (GW)</td>
+                <td colspan="2" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #e0e0e0;">${totalGrossWeight.toFixed(3)} gm</td>
+                <td colspan="5" style="border-bottom: 1px solid #e0e0e0;"></td>
+            </tr>`;
+
+    /* Material-wise totals (gold first) */
+    let matEntries = Object.entries(materialTotals).sort((a, b) => {
+      const aIsGold = a[0].toLowerCase().includes("gold") ? 1 : 0;
+      const bIsGold = b[0].toLowerCase().includes("gold") ? 1 : 0;
+      return aIsGold - bIsGold;
+    });
+    for (let idx = 0; idx < matEntries.length; idx++) {
+      let [name, data] = matEntries[idx];
+      let isGold = name.toLowerCase().includes("gold");
+      let fontWeight = isGold ? "600" : "400";
+      let fontColor = isGold ? "#1E2746" : "#555";
+      html += `<tr>
+                  <td colspan="4" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; border-bottom: 1px solid #eeeeee;">${name}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.weight.toFixed(3)} ${data.unit}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">x ${data.rate.toFixed(2)}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.amount.toFixed(2)}</td>
+                  <td colspan="2" style="border-bottom: 1px solid #eeeeee;"></td>
+              </tr>`;
+    }
+
+    /* Making Charge */
+    if (totalMakingCharge > 0) {
+      html += `<tr>
+                  <td colspan="8" style="font-size: 12px; color: #555; padding: 4px;">Making Charge</td>
+                  <td colspan="2" style="font-size: 12px; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${totalMakingCharge.toFixed(2)}</td>
+                  <td colspan="2"></td>
+              </tr>`;
+    }
+
+    /* Taxable Amount total */
+    html += `<tr style="border: none;">
+                <td colspan="9" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">Taxable Amt.</td>
+                <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">${totalTaxableAmt.toFixed(2)}</td>
+            </tr>`;
+
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
@@ -7643,75 +7664,40 @@ exports.downloadInvoiceInfo = async (req, res) => {
       (totalReportCharge * parseFloat(saleData.report_tax_percentage)) / 100;
     let afterTaxTotalReportCharge = totalReportCharge + taxOnReportCharge;
 
-    html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="6"
-                                          style="
-                                          border:none;">
-
-                                      </td>
-                                  </tr>`;
     if (saleData.report_qty > 0) {
-      html += `<tr style="
-                                        vertical-align: top;
-                                        background-color: #0A8AB8;
-                                        font-size: 12px; 
-                                        font-weight:400;
-                                        color:#ffffff;
-                                        ">
-                                        <td colspan="2"></td>
-                                        <td colspan="3">Rate</td>
-                                        <td colspan="2">Total</td>
-                                        <td colspan="1">Tax(%)</td>
-                                        <td colspan="1">Tax</td>
-                                        <td colspan="2">Total</td>
-                                        
-                                    </tr>`;
-      html += `<tr style="
-                                        vertical-align: top;
-                                        font-size: 14px; 
-                                        font-weight:400;
-                                        ">
-                                        <td colspan="2" style="background-color: #C1BDBD;">Report Charges : </td>
-                                        <td colspan="3" style="background-color: #C1BDBD;">${saleData.report_qty} Pics x ${saleData.report_charge.toFixed(2)} = </td>
-                                        <td colspan="2" style="background-color: #C1BDBD;">${totalReportCharge.toFixed(2)}</td>
-                                        <td colspan="1" style="background-color: #C1BDBD;">${saleData.report_tax_percentage.toFixed(2)}</td>
-                                        <td colspan="1" style="background-color: #C1BDBD;">${taxOnReportCharge.toFixed(2)}</td>
-                                        <td colspan="2" style="background-color: #C1BDBD;">${afterTaxTotalReportCharge.toFixed(2)}</td>
-                                        
-                                    </tr>`;
+      html += `<tr style="border: none;">
+                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges :</td>
+                  <td colspan="7" style="font-size: 12px; color: #555; padding: 2px 4px; border: none;">${saleData.report_qty} Pics x ${saleData.report_charge.toFixed(2)} =</td>
+                  <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">${totalReportCharge.toFixed(2)}</td>
+              </tr>`;
     }
-    html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="6"
-                                          style="
-                                          border:none;">
 
-                                      </td>
-                                  </tr>`;
-    if (metalExists) {
-      html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="2" style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 12px; font-weight:400; color:#ffffff;">Fine Metals : </td>
-                                      <td colspan="2" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;">${fine_metals.toFixed(2)} GM</td>
-                                      <td colspan="8" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;"></td>
-                                  </tr>`;
+    /* Discount */
+    let reportAmt = totalReportCharge;
+    let reportTax = taxOnReportCharge;
+    let totalBeforeDiscount = totalTaxableAmt + reportAmt + totalTax + reportTax;
+    let totalPayableVal = parseFloat(String(saleData.bill_amount || "").replace(/[^0-9.-]+/g, "")) || 0;
+    let discountAmt = Math.round((totalBeforeDiscount - totalPayableVal) * 100) / 100;
+    if (discountAmt > 0) {
+      html += `<tr style="border: none;">
+                  <td colspan="9" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Discount</td>
+                  <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">- ${discountAmt.toFixed(2)}</td>
+              </tr>`;
     }
+
     if (metalExists) {
-      html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="2" style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 12px; font-weight:400; color:#ffffff;">Receive Fine Metal : </td>
-                                      <td colspan="2" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;">${receive_metal.toFixed(2)} GM</td>
-                                      <td colspan="8" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;"></td>
-                                  </tr>`;
-    }
-    if (metalExists) {
-      html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="2" style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 12px; font-weight:400; color:#ffffff;">Rest : </td>
-                                      <td colspan="2" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;">${rest_metal.toFixed(2)} GM</td>
-                                      <td colspan="8" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;"></td>
-                                  </tr>`;
+      metalHtml = `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse;">`;
+      [
+        ["Fine Metals :", fine_metals],
+        ["Receive Fine Metal :", receive_metal],
+        ["Rest :", rest_metal],
+      ].forEach(([label, val]) => {
+        metalHtml += `<tr>
+                  <td style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 11px; font-weight: 400; color: #ffffff; padding: 5px 8px; width: 30%;">${label}</td>
+                  <td style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 12px; font-weight: 400; padding: 5px 8px;">${val.toFixed(2)} GM</td>
+              </tr>`;
+      });
+      metalHtml += `</table>`;
     }
 
     html += ` </tbody>
@@ -7719,395 +7705,79 @@ exports.downloadInvoiceInfo = async (req, res) => {
   }
 
   html += `
-                        <div class="table-footer-area" style="display: table; width:
-                            100%; position:absolute ; bottom: 400px">
-                            <hr/>
-                          </div>
                           <div
-
                             class="table-footer-area"
-                            style="display: table; width:
-                            100%; position:absolute ;bottom:${
-                              payments.length == 0
-                                ? 180
-                                : payments.length == 1
-                                  ? 180
-                                  : payments.length == 2
-                                    ? 180
-                                    : payments.length == 3
-                                      ? 180
-                                      : payments.length == 4
-                                        ? 180
-                                        : payments.length == 5
-                                          ? 180
-                                          : 180
-                            }px">
-                            
-                            <div style="display:
-                                table-cell; width:
-                                74%">
-                                <div style="
-                                    display: block;
-                                    justify-content: flex-end;
-                                    gap: 10px; 
-                                    width: 80%;
-                                    position:absolute; 
-                                    bottom:${
-                                      payments.length == 0
-                                        ? 100
-                                        : payments.length == 1
-                                          ? 130
-                                          : payments.length == 2
-                                            ? 120
-                                            : payments.length == 3
-                                              ? 110
-                                              : payments.length == 4
-                                                ? 95
-                                                : payments.length == 5
-                                                  ? 80
-                                                  : 180
-                                    }px;
-                                ">
-                                    `;
+                            style="display: table; width: 100%; table-layout: fixed; margin-top: 8px; page-break-inside: avoid;">
+                            <div style="display: table-cell; width: 68%; vertical-align: top; padding-right: 12px;">
+                                ${metalHtml}
+                                <div style="display: block; width: 100%; margin-top: 8px;">`;
   if (payments.length) {
-    html += `<table cellspacing="0"
-                                        cellpadding="3"
-                                        rules="rows"
-                                        align="left"
-                                        width="80%"
-                                        style=" margin-right:40px;">
-                                        <tr
-                                            style="background-color:
-                                            #1E2757;
-                                            color: #fff;">
-                                            <th
-                                                style="font-weight:
-                                                400; font-size: 12px; text-align: left;">SL</th>
-                                            <th
-                                                style="font-weight:
-                                                400; font-size: 12px; text-align: left;">PayDate</th>
-                                            <th
-                                                style="font-weight:
-                                                400; font-size: 12px; text-align: left;"> Mode</th>
-                                            <th
-                                                style="font-weight:
-                                                400; font-size: 12px; text-align: left;"> Note</th>
-                                            <th
-                                                style="font-weight:
-                                                400; font-size: 12px; text-align: left;">Amount</th>
-                                            `;
+    html += `<table cellspacing="0" cellpadding="3" rules="rows" align="left" width="100%">
+                <tr style="background-color: #1E2757; color: #fff;">
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">SL</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">PayDate</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">Mode</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">Note</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">Amount</th>
+                </tr>`;
     for (let i = 0; i < payments.length; i++) {
-      html += `<tr
-                                            style=" ">
-                                            <td
-                                                style="border-right:
-                                                none; font-size: 12px;">${
-                                                  i + 1
-                                                }</td>
-                                            <td
-                                                style="border-right:
-                                                none; font-size: 12px;">${
-                                                  payments[i].payment_date
-                                                }</td>
-                                            
-                                            <td
-                                                style="border-right:
-                                                none; font-size: 12px;">${
-                                                  payments[i].payment_mode
-                                                }</td>
-                                            <td
-                                                style="border-right:
-                                                none; font-size: 12px;">${
-                                                  payments[i].notes
-                                                }</td>
-                                            <td
-                                                style="border-right:
-                                                none; font-size: 12px;">${
-                                                  payments[
-                                                    i
-                                                  ].payment_mode.toLowerCase() ==
-                                                    "metal" &&
-                                                  payments[i].weight != null
-                                                    ? payments[i].weight
-                                                    : payments[i].amount
-                                                }</td>
-                                        </tr>`;
+      html += `<tr>
+                    <td style="font-size: 12px;">${i + 1}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_date}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_mode}</td>
+                    <td style="font-size: 12px;">${payments[i].notes}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
+                </tr>`;
     }
     html += `</table>`;
   }
   html += `</div>
                             </div>
-                            <div style="display:
-                                table-cell;
-                                width:26%;
-                                position:absolute ;
-                                bottom: 50px
-                                "
-                                >
-                                <div style="display: inline-table;
-                                    justify-content: flex-end;
-                                    ">
-                                    <div>
-                                        <h4 style="margin:
-                                            0;
-                                            text-align:
-                                            right;
-                                            font-size:
-                                            12px;
-                                            font-weight:
-                                            400; margin-bottom:
-                                            5px;margin-right:10px ;">
-                                            Total <span
-                                                style="">
-                                                <input
-                                                    type="text"
-                                                    value="${saleData.taxable_amount}"
-                                                    style="max-width:
-                                                    80px;font-Weight:600"></span></h4>
-                                    </div>`;
+                <div style="display: table-cell; width: 32%; vertical-align: top;">
+                  <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
+  const amtRow = (label, value, bold = false) =>
+    `<tr>
+      <td style="width: 54%; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 3px 6px 3px 0; white-space: nowrap;">${label}</td>
+      <td style="width: 46%; padding: 3px 0;"><input type="text" value="${value}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 2px 4px;"></td>
+    </tr>`;
+  html += amtRow("Total", saleData.taxable_amount, true);
   if (saleData.is_same_state_trnx && saleData.cgst_tax) {
-    html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              CGST Amt <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${saleData.cgst_tax_display}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
+    html += amtRow("CGST Amt", saleData.cgst_tax_display);
   }
   if (saleData.is_same_state_trnx && saleData.sgst_tax) {
-    html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              SGST Amt <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${saleData.sgst_tax_display}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
+    html += amtRow("SGST Amt", saleData.sgst_tax_display);
   }
   if (!saleData.is_same_state_trnx && saleData.igst_tax) {
-    html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              IGST Amt <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${saleData.igst_tax_display}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
+    html += amtRow("IGST Amt", saleData.igst_tax_display);
   }
-  html += `<div>
-                                        
-                                    </div>
-                                    <div>
-                                        <h4 style="margin:
-                                            0;
-                                            text-align:
-                                            right;
-                                            font-size:
-                                            12px;
-                                            font-weight:
-                                            400; margin-bottom:
-                                            5px;margin-right:10px ;">
-                                            Sub Total <span
-                                                style=""
-                                                
-                                                >
-                                                <input
-                                                    type="text"
-                                                    value="${saleData.total_amount}"
-                                                    style="max-width:
-                                                    80px;"></span></h4>
-                                    </div>
-                                    <div>
-                                        <h4 style="margin:
-                                            0;
-                                            text-align:
-                                            right;
-                                            font-size:
-                                            12px;
-                                            font-weight:
-                                            400; margin-bottom:
-                                            5px;margin-right:10px ;">
-                                            Cash Dist <span
-                                                style="">
-                                                <input
-                                                    type="text"
-                                                    value="${saleData.discount}"
-                                                    style="max-width:
-                                                    80px;"></span></h4>
-                                    </div>
-                                    <div>
-                                        <h4 style="margin:
-                                            0;
-                                            text-align:
-                                            right;
-                                            font-size:
-                                            12px;
-                                            font-weight:
-                                            600; margin-bottom:
-                                            5px;margin-right:10px ;">
-                                            Total Payable <span
-                                                style="">
-                                                <input
-                                                    type="text"
-                                                    value="${saleData.bill_amount}"
-                                                    style="max-width:
-                                                    80px;font-Weight:600"></span></h4>
-                                    </div>
-                                </div>
+  html += amtRow("Sub Total", saleData.total_amount);
+  html += amtRow("Cash Dist", saleData.discount);
+  html += amtRow("Total Payable", saleData.bill_amount, true);
+  html += `</table>
                             </div>
-                            <div
-                              class="table-footer-area"
-                              style="display: table; width:
-                              100%; position:absolute; bottom:-30px; left: 0px;">
-                              <div style="display:
-                                  table-cell; width:
-                                  74%">
-                                  <div style="display: inline-flex;
-                                      justify-content: flex-end;
-                                      gap: 10px;">
-                                      <div>
-                                          <h4 style="margin:
-                                              0;
-                                              text-align:
-                                              left;
-                                              font-size:
-                                              12px;
-                                              font-weight:
-                                              400; margin-bottom:
-                                              5px;">
-                                              Due Date : 
-                                              <span
-                                                  style="">
-                                                  <input
-                                                      type="text"
-                                                      value="${saleData.due_date}"
-                                                      style="max-width:
-                                                      80px;"></span>
-                                              </h4>
-                                      </div>
-                                      <div>
-                                          <h4 style="margin:
-                                              0;
-                                              text-align:
-                                              left;
-                                              font-size:
-                                              12px;
-                                              font-weight:
-                                              400; margin-bottom:
-                                              5px;">
-                                              Settlement Date : 
-                                              <span
-                                                  style="">
-                                                  <input
-                                                      type="text"
-                                                      value="${saleData.settlement_date}"
-                                                      style="max-width:
-                                                      80px;"></span>
-                                              </h4>
-                                      </div>
-                                  </div>
-                              </div>
-                              <div style="display:
-                                  table-cell; width:
-                                  26%">
-                                  <div style="display: inline-table;
-                                      justify-content: flex-end;
-                                      ">
-                                      <div>
-                                          <h4 style="margin:
-                                              0;
-                                              text-align:
-                                              right;
-                                              font-size:
-                                              12px;
-                                              font-weight:
-                                              400; margin-bottom:
-                                              5px;margin-right:10px ;">
-                                              Paid Amount <span
-                                                  style="">
-                                                  <input
-                                                      type="text"
-                                                      value="${saleData.paid_amount}"
-                                                      style="max-width:
-                                                      80px;"></span></h4>
-                                      </div>`;
+                          </div>
+                          <div
+                            class="table-footer-area"
+                style="display: table; width: 100%; table-layout: fixed; margin-top: 14px; page-break-inside: avoid;">
+                <div style="display: table-cell; width: 74%; vertical-align: top; padding-right: 16px;">
+                  <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed;">
+                    <tr>
+                      <td style="width: 18%; font-size: 12px; font-weight: 400; padding: 3px 8px 3px 0; white-space: nowrap;">Due Date :</td>
+                      <td style="width: 32%; padding: 3px 12px 3px 0;"><input type="text" value="${saleData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; padding: 2px 4px;"></td>
+                      <td style="width: 22%; font-size: 12px; font-weight: 400; padding: 3px 8px 3px 0; white-space: nowrap;">Settlement Date :</td>
+                      <td style="width: 28%; padding: 3px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; padding: 2px 4px;"></td>
+                    </tr>
+                  </table>
+                            </div>
+                <div style="display: table-cell; width: 26%; vertical-align: top;">
+                  <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
+  html += amtRow("Paid Amount", saleData.paid_amount);
   if (saleData.return_amount) {
-    html += `<div>
-                                          <h4 style="margin:
-                                              0;
-                                              text-align:
-                                              right;
-                                              font-size:
-                                              12px;
-                                              font-weight:
-                                              400; margin-bottom:
-                                              5px;margin-right:10px ;">
-                                              Return Amount <span
-                                                  style="">
-                                                  <input
-                                                      type="text"
-                                                      value="${
-                                                        saleData.return_amount
-                                                          ? saleData.return_amount
-                                                          : "0.00"
-                                                      }"
-                                                      style="max-width:
-                                                      80px;"></span></h4>
-                                      </div>`;
+    html += amtRow("Return Amount", saleData.return_amount ? saleData.return_amount : "0.00");
   }
-
-  html += `<div>
-                                          <h4 style="margin:
-                                              0;
-                                              text-align:
-                                              right;
-                                              font-size:
-                                              12px;
-                                              font-weight:
-                                              400; margin-bottom:
-                                              5px;margin-right:10px ;">
-                                              Rest Due Amt <span
-                                                  style="">
-                                                  <input
-                                                      type="text"
-                                                      value="${saleData.due_amount_display}"
-                                                      style="max-width:
-                                                      80px;"></span></h4>
-                                      </div>
-                                  </div>
-                                </div>
-                              </div>
+  html += amtRow("Rest Due Amt", saleData.due_amount_display);
+  html += `</table>
+                            </div>
                           </div>
                           ${footerhtml}
                         </td>
@@ -8140,7 +7810,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
         formatResponse(
           {
             file_name: saleData.invoice_number + "_info.pdf",
-            url: getFileAbsulatePathPDF(file_path),
+            url: `${getFileAbsulatePathPDF(file_path)}?v=${Date.now()}`,
             html,
             sale,
             saleData,
@@ -8373,6 +8043,9 @@ exports.downloadInvoiceItemList = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -8406,21 +8079,17 @@ exports.downloadInvoiceItemList = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti
-                                                  Patna</span></h3>
+                                                  font-weight: 600;">Prakriti Head Office</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${saleData.sale_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - G100
-                                              RBI CPC Colony Kankarbagh Patna
-                                              Bihar 800 020</h3>
+                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.com, +91 98744
-                                              45878
+                                              support@Prakriti.one, +91 9117799755
                                           </h3>
                                       </div>
                                   </div>
@@ -9189,6 +8858,9 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -9222,21 +8894,17 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti
-                                                  Patna</span></h3>
+                                                  font-weight: 600;">Prakriti Head Office</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${saleData.sale_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - G100
-                                              RBI CPC Colony Kankarbagh Patna
-                                              Bihar 800 020</h3>
+                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.com, +91 98744
-                                              45878
+                                              support@Prakriti.one, +91 9117799755
                                           </h3>
                                       </div>
                                   </div>
@@ -10184,6 +9852,9 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
