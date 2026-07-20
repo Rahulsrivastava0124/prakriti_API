@@ -180,13 +180,19 @@ exports.index = async (req, res) => {
     delete conditions.user_id;
   }
 
-  compactLog("this the sales data in the sales controller111 =====", conditions);
+  compactLog(
+    "this the sales data in the sales controller111 =====",
+    conditions,
+  );
   conditions = {
     ...conditions,
     ...getDateFromToWhere(date_from, date_to, "invoice_date"),
   };
 
-  compactLog("this the sales data in the sales controller222 =====", conditions);
+  compactLog(
+    "this the sales data in the sales controller222 =====",
+    conditions,
+  );
 
   const paginatorOptions = getPaginationOptions(page, limit);
 
@@ -208,7 +214,10 @@ exports.index = async (req, res) => {
     distinct: true,
   })
     .then(async (data) => {
-      compactLog("this the transfer 0 data in the sales controller =====", data.count);
+      compactLog(
+        "this the transfer 0 data in the sales controller =====",
+        data.count,
+      );
 
       let result = {
         items: await SaleListCollection(data.rows, userID),
@@ -436,7 +445,10 @@ exports.txnLedger = async (req, res) => {
         }
         if (tx.txn_type == "" && tx.is_approved != 2) {
           runningBalance += tx.txn_amount;
-        } else if (tx.type.toLowerCase() == "payment" && tx.txn_type == "credit") {
+        } else if (
+          tx.type.toLowerCase() == "payment" &&
+          tx.txn_type == "credit"
+        ) {
           runningBalance -= tx.pay_amount;
         } else if (
           tx.txn_type == "credit" &&
@@ -644,7 +656,10 @@ exports.downloadTxnLedger = async (req, res) => {
       );
     }
 
-    compactLog("tableData length:", Array.isArray(tableData) ? tableData.length : typeof tableData);
+    compactLog(
+      "tableData length:",
+      Array.isArray(tableData) ? tableData.length : typeof tableData,
+    );
 
     let temp_invoice_no = "";
     let temp_invoice_index = -1;
@@ -692,7 +707,10 @@ exports.downloadTxnLedger = async (req, res) => {
         }
         if (tx.txn_type == "" && tx.is_approved != 2) {
           runningBalance += tx.txn_amount;
-        } else if (tx.type.toLowerCase() == "payment" && tx.txn_type == "credit") {
+        } else if (
+          tx.type.toLowerCase() == "payment" &&
+          tx.txn_type == "credit"
+        ) {
           runningBalance -= tx.pay_amount;
         } else if (
           tx.txn_type == "credit" &&
@@ -717,7 +735,10 @@ exports.downloadTxnLedger = async (req, res) => {
       })
       .reverse();
 
-    compactLog("passbook length:", Array.isArray(passbook) ? passbook.length : typeof passbook);
+    compactLog(
+      "passbook length:",
+      Array.isArray(passbook) ? passbook.length : typeof passbook,
+    );
 
     /* let result = {
       items: passbook,
@@ -1282,7 +1303,10 @@ exports.downloadTxnLedger = async (req, res) => {
  */
 exports.store = async (req, res) => {
   let data = req.body;
-  compactLog("sale store payload:", data && typeof data === 'object' ? Object.keys(data).length : typeof data);
+  compactLog(
+    "sale store payload:",
+    data && typeof data === "object" ? Object.keys(data).length : typeof data,
+  );
   let reportCharge = await ReportChargeModel.findAll({
     order: [["amount", "ASC"]],
     where: {},
@@ -1424,7 +1448,12 @@ exports.store = async (req, res) => {
       status: status,
       image: image,
     };
-    compactLog("sale create:", saleObj && typeof saleObj === 'object' ? Object.keys(saleObj).length : typeof saleObj);
+    compactLog(
+      "sale create:",
+      saleObj && typeof saleObj === "object"
+        ? Object.keys(saleObj).length
+        : typeof saleObj,
+    );
     let sale = await SaleModel.create(saleObj);
 
     let purchase = null;
@@ -1460,7 +1489,12 @@ exports.store = async (req, res) => {
         is_approval: data.on_approval,
         image: image,
       };
-      compactLog("purchase create:", purchaseObj && typeof purchaseObj === 'object' ? Object.keys(purchaseObj).length : typeof purchaseObj);
+      compactLog(
+        "purchase create:",
+        purchaseObj && typeof purchaseObj === "object"
+          ? Object.keys(purchaseObj).length
+          : typeof purchaseObj,
+      );
       purchase = await PurchaseModel.create(purchaseObj);
     }
     //}
@@ -1502,7 +1536,12 @@ exports.store = async (req, res) => {
           ? thisItem.order_product_id
           : null,
       };
-      compactLog("sale product create:", thisObj && typeof thisObj === 'object' ? Object.keys(thisObj).length : typeof thisObj);
+      compactLog(
+        "sale product create:",
+        thisObj && typeof thisObj === "object"
+          ? Object.keys(thisObj).length
+          : typeof thisObj,
+      );
       let saleProduct = await SaleProductModel.create(thisObj);
       let product = await ProductModel.findByPk(thisItem.product_id);
 
@@ -1570,21 +1609,29 @@ exports.store = async (req, res) => {
           total: priceFormat(thisItem.total),
           total_discount: priceFormat(thisItem.total_discount),
         };
-        compactLog("purchase product create:", thisObj2 && typeof thisObj2 === 'object' ? Object.keys(thisObj2).length : typeof thisObj2);
+        compactLog(
+          "purchase product create:",
+          thisObj2 && typeof thisObj2 === "object"
+            ? Object.keys(thisObj2).length
+            : typeof thisObj2,
+        );
         purchaseProduct = await PurchaseProductModel.create(thisObj2);
         req_data_for_purchase.products[i].id = purchaseProduct.id;
       }
       //}
       compactLog("remove stock id:", thisItem && thisItem.stock_id);
-      compactLog("thisItem.certificate_no:", thisItem && thisItem.certificate_no);
-      compactLog("has certificate_no:", !!(!isEmpty(thisItem.certificate_no)));
+      compactLog(
+        "thisItem.certificate_no:",
+        thisItem && thisItem.certificate_no,
+      );
+      compactLog("has certificate_no:", !!!isEmpty(thisItem.certificate_no));
       //remove stock
       if (
         isEmpty(sale_product_id) &&
         product.type != "material" &&
         !isEmpty(thisItem.certificate_no)
       ) {
-                compactLog("removed!");
+        compactLog("removed!");
         await StockModel.destroy({ where: { id: thisItem.stock_id } });
       }
 
@@ -7498,7 +7545,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
       saleData.products.forEach((p) => {
         const key = p.sub_category_hsn || "";
         if (!makingChargeMap[key]) makingChargeMap[key] = 0;
-        makingChargeMap[key] += (parseFloat(p.making_charge) || 0) - (parseFloat(p.making_charge_discount_amount) || 0);
+        makingChargeMap[key] +=
+          (parseFloat(p.making_charge) || 0) -
+          (parseFloat(p.making_charge_discount_amount) || 0);
       });
     }
 
@@ -7535,7 +7584,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
     /* Sum making_charge after discount from products */
     if (saleData.products) {
       saleData.products.forEach((product) => {
-        totalMakingCharge += (parseFloat(product.making_charge) || 0) - (parseFloat(product.making_charge_discount_amount) || 0);
+        totalMakingCharge +=
+          (parseFloat(product.making_charge) || 0) -
+          (parseFloat(product.making_charge_discount_amount) || 0);
       });
     }
 
@@ -7562,18 +7613,29 @@ exports.downloadInvoiceInfo = async (req, res) => {
       item.material.forEach((mat) => {
         const key = mat.name;
         if (!materialTotals[key]) {
-          materialTotals[key] = { weight: 0, unit: mat.unit, rate: parseFloat(mat.rate) || 0, amount: 0, isGold: key.toLowerCase().includes("gold") };
+          materialTotals[key] = {
+            weight: 0,
+            unit: mat.unit,
+            rate: parseFloat(mat.rate) || 0,
+            amount: 0,
+            isGold: key.toLowerCase().includes("gold"),
+          };
         }
         materialTotals[key].weight += parseFloat(mat.weight) || 0;
-        materialTotals[key].amount += (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0);
+        materialTotals[key].amount +=
+          (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0);
       });
 
       let materialNames = item.material.map((itm) => itm.name).join("<br/>");
-      let materialWts = item.material.map((itm) => itm.weight.toFixed(3)).join("<br/>");
+      let materialWts = item.material
+        .map((itm) => itm.weight.toFixed(3))
+        .join("<br/>");
       let materialUnits = item.material.map((itm) => itm.unit).join("<br/>");
-      let materialRates = item.material.map((itm) => itm.rate.toFixed(2)).join("<br/>");
+      let materialRates = item.material
+        .map((itm) => itm.rate.toFixed(2))
+        .join("<br/>");
       let bgTrColor = i % 2 == 0 ? "#f5f5f5" : "#ffffff";
-      let slNo = (i + 1) <= 9 ? "0" + (i + 1) : (i + 1);
+      let slNo = i + 1 <= 9 ? "0" + (i + 1) : i + 1;
       let makingCharge = makingChargeMap[item.hsn] || 0;
 
       html += `<tr style="background-color: ${bgTrColor}; border-bottom: 1px solid #e0e0e0;">
@@ -7675,9 +7737,14 @@ exports.downloadInvoiceInfo = async (req, res) => {
     /* Discount */
     let reportAmt = totalReportCharge;
     let reportTax = taxOnReportCharge;
-    let totalBeforeDiscount = totalTaxableAmt + reportAmt + totalTax + reportTax;
-    let totalPayableVal = parseFloat(String(saleData.bill_amount || "").replace(/[^0-9.-]+/g, "")) || 0;
-    let discountAmt = Math.round((totalBeforeDiscount - totalPayableVal) * 100) / 100;
+    let totalBeforeDiscount =
+      totalTaxableAmt + reportAmt + totalTax + reportTax;
+    let totalPayableVal =
+      parseFloat(
+        String(saleData.bill_amount || "").replace(/[^0-9.-]+/g, ""),
+      ) || 0;
+    let discountAmt =
+      Math.round((totalBeforeDiscount - totalPayableVal) * 100) / 100;
     if (discountAmt > 0) {
       html += `<tr style="border: none;">
                   <td colspan="9" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Discount</td>
@@ -7773,7 +7840,10 @@ exports.downloadInvoiceInfo = async (req, res) => {
                   <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
   html += amtRow("Paid Amount", saleData.paid_amount);
   if (saleData.return_amount) {
-    html += amtRow("Return Amount", saleData.return_amount ? saleData.return_amount : "0.00");
+    html += amtRow(
+      "Return Amount",
+      saleData.return_amount ? saleData.return_amount : "0.00",
+    );
   }
   html += amtRow("Rest Due Amt", saleData.due_amount_display);
   html += `</table>
