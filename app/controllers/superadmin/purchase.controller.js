@@ -739,7 +739,7 @@ exports.downloadTxnLedger = async (req, res) => {
     const logo = bitmap.toString("base64");
 
     let footerhtml = `
-                <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; position: absolute; bottom: 0px; background-color: #f9f9f9;">
+                <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; background-color: #f9f9f9;">
                     <hr/>
                     <table cellpadding="0" cellspacing="1" width="1000px" style="margin:auto;" >
                         <tbody>
@@ -908,6 +908,9 @@ exports.downloadTxnLedger = async (req, res) => {
             html {
               -webkit-print-color-adjust: exact;
             }
+            tbody tr { page-break-inside: avoid; }
+            thead { display: table-header-group; }
+            .table-footer-area { page-break-inside: avoid; }
             </style>
         </head>
         <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -943,21 +946,17 @@ exports.downloadTxnLedger = async (req, res) => {
                                             left;">
                                             <h3 style="margin: 0;">
                                                 <span style="font-size: 16px;
-                                                    font-weight: 600;">Prakriti
-                                                    Patna</span></h3>
+                                                    font-weight: 600;">Prakriti Head Office</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 14px;">GST No -
-                                                <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                                <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 12px;">User Id - <span>${user.name}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
-                                                font-size: 12px;">Address - G100
-                                                RBI CPC Colony Kankarbagh Patna
-                                                Bihar 800 020</h3>
+                                                font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                             <h3 style="font-weight: 600; font-size:
                                                 12px; margin: 0;">
-                                                support@Prakriti.com, +91 98744
-                                                45878
+                                                support@Prakriti.one, +91 9117799755
                                             </h3>
                                         </div>
                                     </div>
@@ -4415,7 +4414,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
 
   let footerhtml = `
           
-              <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; position: absolute; bottom: 0px; background-color: #f9f9f9;">
+              <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; background-color: #f9f9f9;">
                   <hr/>
                   <table cellpadding="0" cellspacing="1" width="1000px" style="margin:auto;" >
                       <tbody>
@@ -4599,6 +4598,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -4634,21 +4636,17 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti
-                                                  Patna</span></h3>
+                                                  font-weight: 600;">Prakriti Head Office</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${purchaseData.purchase_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - G100
-                                              RBI CPC Colony Kankarbagh Patna
-                                              Bihar 800 020</h3>
+                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.com, +91 98744
-                                              45878
+                                              support@Prakriti.one, +91 9117799755
                                           </h3>
                                       </div>
                                   </div>
@@ -5379,28 +5377,14 @@ exports.downloadInvoiceInfo = async (req, res) => {
   }
   html += `
                                           <div class="table-footer-area" style="display: table; width:
-                                            100%; position:absolute ; bottom: 390px">
+                                            100%; margin-top: 10px">
                                             <hr/>
                                           </div>
                                           <div
 
                                               class="table-footer-area"
                                               style="display: table; width:
-                                              100%; position:absolute ;bottom:${
-                                                payments.length == 0
-                                                  ? 240
-                                                  : payments.length == 1
-                                                    ? 200
-                                                    : payments.length == 2
-                                                      ? 200
-                                                      : payments.length == 3
-                                                        ? 200
-                                                        : payments.length == 4
-                                                          ? 200
-                                                          : payments.length == 5
-                                                            ? 200
-                                                            : 200
-                                              }px">
+                                              100%; margin-top: 10px">
                                               <div style="display:
                                                   table-cell; width:
                                                   74%">
@@ -5409,26 +5393,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                       justify-content: flex-end;
                                                       gap: 10px;
                                                       width: 80%;
-                                                      position:absolute; 
-                                                      bottom:${
-                                                        payments.length == 0
-                                                          ? 100
-                                                          : payments.length == 1
-                                                            ? 130
-                                                            : payments.length ==
-                                                                2
-                                                              ? 120
-                                                              : payments.length ==
-                                                                  3
-                                                                ? 110
-                                                                : payments.length ==
-                                                                    4
-                                                                  ? 95
-                                                                  : payments.length ==
-                                                                      5
-                                                                    ? 80
-                                                                    : 180
-                                                      }px;
+                                                      
                                                   ">
                                                       <!--<div>
                                                           <h4 style="margin:
@@ -5672,10 +5637,11 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                   </div>
                                               
                                           </div>
+                                          </div>
                                           <div
                                               class="table-footer-area"
                                               style="display: table; width:
-                                              100%; position:absolute; bottom:-75px; left: -5px;">
+                                              100%; margin-top: 10px;">
                                               <div style="display:
                                                   table-cell; width:
                                                   74%">
@@ -5770,7 +5736,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                     </div>
                                                   </div>
                                               </div>
-                                          </div>
                                          <!-- <table cellspacing="0" cellpadding="0"
                                               border="0"
                                               align="center" width="100%"
@@ -5808,6 +5773,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -6358,6 +6326,9 @@ exports.downloadInvoiceItemList = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -6391,21 +6362,17 @@ exports.downloadInvoiceItemList = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti
-                                                  Patna</span></h3>
+                                                  font-weight: 600;">Prakriti Head Office</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${purchaseData.purchase_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - G100
-                                              RBI CPC Colony Kankarbagh Patna
-                                              Bihar 800 020</h3>
+                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.com, +91 98744
-                                              45878
+                                              support@Prakriti.one, +91 9117799755
                                           </h3>
                                       </div>
                                   </div>
@@ -7232,6 +7199,9 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -7265,21 +7235,17 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti
-                                                  Patna</span></h3>
+                                                  font-weight: 600;">Prakriti Head Office</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">10CIUPK2654L1ZY</span></h3>
+                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${purchaseData.purchase_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - G100
-                                              RBI CPC Colony Kankarbagh Patna
-                                              Bihar 800 020</h3>
+                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.com, +91 98744
-                                              45878
+                                              support@Prakriti.one, +91 9117799755
                                           </h3>
                                       </div>
                                   </div>
@@ -8242,6 +8208,9 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           html {
             -webkit-print-color-adjust: exact;
           }
+          tbody tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          .table-footer-area { page-break-inside: avoid; }
           </style>
       </head>
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:

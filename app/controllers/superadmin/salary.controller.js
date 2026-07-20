@@ -1032,7 +1032,7 @@ exports.download = async (req, res) => {
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 16px;"> <span
                                                     style="font-weight: 600;">GST IN
-                                                    10CIUPK2654L1ZY </span> Contact
+                                                    19ABAFR4515L1ZZ </span> Contact
                                                 9038377730</h3>
                                         </div>
                                         <div style="width: 35%; display: table-cell;

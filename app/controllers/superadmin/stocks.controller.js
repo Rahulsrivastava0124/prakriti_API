@@ -260,11 +260,11 @@ exports.currentStockReportPdf = async (req, res) => {
     // Fetch logged-in user details
     const user = await UserModel.findByPk(req.userId);
     const userName = user ? user.name : "User";
-    const userCompany = user ? user.company_name : "Prakriti Patna";
+    const userCompany = user ? user.company_name : "Prakriti Head Office";
     const userAddress = user ? (user.address || "Patna, Bihar") : "Patna, Bihar";
     const userCity = user ? (user.city || "Patna") : "Patna";
     const userPincode = user ? (user.pincode || "800020") : "800020";
-    const userGst = user ? (user.gst || "10CIUPK2654L1ZY") : "10CIUPK2654L1ZY";
+    const userGst = user ? (user.gst || "19ABAFR4515L1ZZ") : "19ABAFR4515L1ZZ";
     const userMobile = user ? (user.mobile || "N/A") : "N/A";
 
     // Build HTML using purchase invoice design for consistent printable layout
@@ -297,7 +297,7 @@ exports.currentStockReportPdf = async (req, res) => {
                     <h3 style="margin: 0; font-weight: 400; font-size: 12px;">User Id - <span>${userName}</span></h3>
                     <h3 style="margin: 0; font-weight: 400; font-size: 12px;">Address - ${userAddress}</h3>
                     <h3 style="font-weight: 600; font-size: 12px; margin: 0;">
-                        support@Prakriti.com, +91 98744 45878
+                        support@Prakriti.one, +91 9117799755
                     </h3>
                 </div>
             </div>
@@ -345,7 +345,7 @@ exports.currentStockReportPdf = async (req, res) => {
 
     // Footer HTML matching purchase invoice format with terms and conditions
     let footerhtml = `
-        <div class="invoice" style="width: 1000px; padding: 15px; margin: 0px; position: absolute; bottom: 0px; background-color: #f9f9f9;">
+        <div class="invoice" style="width: 1000px; padding: 15px; margin: 0px; background-color: #f9f9f9;">
             <hr/>
             <table cellpadding="0" cellspacing="1" width="1000px" style="margin: auto;">
                 <tbody>
@@ -360,7 +360,7 @@ exports.currentStockReportPdf = async (req, res) => {
                                             <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">Report generated on ${new Date().toLocaleString()}</li>
                                             <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">Prakriti Inventory Management System</li>
                                             <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">All disputes are subject to Patna Jurisdiction only</li>
-                                            <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">For inquiries, contact: support@Prakriti.com</li>
+                                            <li style="margin: 0; text-align: left; font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 35px;">For inquiries, contact: support@Prakriti.one</li>
                                         </ul>
                                     </div>
                                     <div style="display: table-cell; width: 35%;">
@@ -387,7 +387,7 @@ exports.currentStockReportPdf = async (req, res) => {
             <meta http-equiv="X-UA-Compatible" content="IE=edge">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Current Stock Report</title>
-            <style>html{-webkit-print-color-adjust:exact;} body{box-sizing:border-box;padding:0;margin:0;font-family:'Poppins',sans-serif;} .invoice{max-width:1000px;margin:auto;padding:15px;background-color:#f9f9f9;} table{width:100%;border-collapse:collapse;} th,td{font-size:11px} thead th{background:#1E2757;color:#fff;padding:6px}</style>
+            <style>html{-webkit-print-color-adjust:exact;} body{box-sizing:border-box;padding:0;margin:0;font-family:'Poppins',sans-serif;} .invoice{max-width:1000px;margin:auto;padding:15px;background-color:#f9f9f9;} table{width:100%;border-collapse:collapse;} th,td{font-size:11px} thead th{background:#1E2757;color:#fff;padding:6px} tbody tr{page-break-inside:avoid;} thead{display:table-header-group;} .table-footer-area{page-break-inside:avoid;}</style>
         </head>
         <body>
             <div class="invoice">
@@ -641,6 +641,7 @@ exports.index = async (req, res) => {
       total_avl_stock,
       by_specific,
       manager,
+      total_weight,
     } = req.query;
     type = type === undefined ? "product" : type;
     let userID = !user_id
@@ -904,6 +905,11 @@ exports.index = async (req, res) => {
 
     if(typeof material_id != "undefined" && material_id != null && material_id != "") {
       conditions.material_id = material_id;
+    }
+
+    /* prefix match so "3.3" finds 3.310, "3.310" finds exactly that weight */
+    if (!isEmpty(total_weight)) {
+      conditions.total_weight = { [Op.like]: `${String(total_weight).trim()}%` };
     }
 
     /*if (!isEmpty(qty)) {
