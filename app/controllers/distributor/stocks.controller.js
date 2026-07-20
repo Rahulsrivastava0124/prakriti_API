@@ -24,18 +24,32 @@ const CertificateModel = db.certificates;
  * @param res
  */
 exports.index = async (req, res) => {
-  let { page, limit, all } = req.query;
+  let { page, limit, all, search, total_weight } = req.query;
   let conditions = {user_id: req.userId};
+  /* prefix match so "3.3" finds 3.310, "3.310" finds exactly that weight */
+  if (!isEmpty(total_weight)) {
+    conditions.total_weight = { [Op.like]: `${String(total_weight).trim()}%` };
+  }
+  if (!isEmpty(search)) {
+    const s = String(search).trim();
+    conditions[Op.or] = [
+      { "$product.name$": { [Op.like]: `%${s}%` } },
+      { "$product.product_code$": { [Op.like]: `%${s}%` } },
+      { certificate_no: s },
+    ];
+  }
   const paginatorOptions = getPaginationOptions(page, limit);
   stocksModel.findAndCountAll({ 
     order:[['id', 'DESC']],
     where: conditions,
+    distinct: true,
     offset: paginatorOptions.offset,
     limit: paginatorOptions.limit,
     include: [
       {
         model: productsModel,
         as: 'product',
+        required: !isEmpty(search),
         include: [
           {
             model: CategoryModel,
