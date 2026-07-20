@@ -2034,12 +2034,12 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                       <th colspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; padding: 5px 3px;">Gross Weight</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 38px; padding: 5px 3px;">Unit</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 50px; padding: 5px 3px;">Rate</th>
-                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 65px; padding: 5px 3px;">Making<br/>(-Dis.)</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 600; border: 1px solid #ffffff; width: 65px; padding: 5px 3px;"><b>Making<br/>Charge</b></th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Tax<br/>%</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 75px; padding: 5px 3px;">Amount (₹)</th>
                                   </tr>
                                   <tr style="background-color: #1E2757;">
-                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Per Pc</th>
+                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Net Weight</th>
                                       <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 60px; padding: 5px 3px;">Total (GM)</th>
                                   </tr>
                               </thead>
@@ -2198,29 +2198,13 @@ exports.downloadInvoiceInfo = async (req, res) => {
 
     if (saleData.report_qty > 0) {
       html += `<tr style="border: none;">
-                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges :</td>
+                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges (18%) :</td>
                   <td colspan="7" style="font-size: 12px; color: #555; padding: 2px 4px; border: none;">${saleData.report_qty} Pics x ${saleData.report_charge.toFixed(2)} =</td>
                   <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">${totalReportCharge.toFixed(2)}</td>
               </tr>`;
     }
 
-    /* Discount */
-    let reportAmt = totalReportCharge;
-    let reportTax = taxOnReportCharge;
-    let totalBeforeDiscount =
-      totalTaxableAmt + reportAmt + totalTax + reportTax;
-    let totalPayableVal =
-      parseFloat(
-        String(saleData.bill_amount || "").replace(/[^0-9.-]+/g, ""),
-      ) || 0;
-    let discountAmt =
-      Math.round((totalBeforeDiscount - totalPayableVal) * 100) / 100;
-    if (discountAmt > 0) {
-      html += `<tr style="border: none;">
-                  <td colspan="9" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Discount</td>
-                  <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">- ${discountAmt.toFixed(2)}</td>
-              </tr>`;
-    }
+    /* Discount - Removed */
 
     if (metalExists) {
       metalHtml = `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse;">`;
