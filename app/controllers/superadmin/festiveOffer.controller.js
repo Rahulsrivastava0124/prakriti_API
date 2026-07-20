@@ -87,7 +87,9 @@ exports.store = async (req, res) => {
   const postData = {
     category_id: data.category_id,
     sub_category_id: data.sub_category_id || null,
-    products: data.products.join(","),
+    products: (Array.isArray(data.products) ? data.products : [])
+      .filter((p) => p !== "" && p !== null && p !== undefined)
+      .join(","),
     title: data.title,
     description: data.description,
     discount: data.discount,
@@ -172,7 +174,9 @@ exports.update = async (req, res) => {
   const postData = {
     category_id: data.category_id,
     sub_category_id: data.sub_category_id || null,
-    products: data.products.join(","),
+    products: (Array.isArray(data.products) ? data.products : [])
+      .filter((p) => p !== "" && p !== null && p !== undefined)
+      .join(","),
     title: data.title,
     description: data.description,
     discount: data.discount,
