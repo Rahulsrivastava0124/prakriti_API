@@ -2807,7 +2807,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += `</table>
                             </div>
                           </div>
-                          ${footerhtml}
+                          ${saleData.notes ? footerhtml : ""}
                         </td>
                     </tr>
                 </tbody>
