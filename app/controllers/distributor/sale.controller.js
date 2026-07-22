@@ -1343,8 +1343,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   const logo = bitmap.toString("base64");
 
   let footerhtml = `
-              <div class="invoice" style="width: 100%; margin: 0; padding: 15px; background-color: #f9f9f9; page-break-inside: avoid;">
-                  <hr/>
+              <div class="invoice" style="width: 100%; margin: 0; padding: 15px; background-color: #f9f9f9; page-break-inside: avoid; border-top: 2px solid #000;">
                   <table cellpadding="0" cellspacing="1"  style="margin:auto; width:100%" >
                       <tbody>
                           <tr>
@@ -2360,8 +2359,7 @@ exports.downloadInvoiceItems = async (req, res) => {
   const logo = bitmap.toString("base64");
 
   let footerhtml = `
-              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9;">
-                  <hr/>
+              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9; border-top: 2px solid #000; padding-top: 6px;">
                   <table cellpadding="0" cellspacing="1"  style="margin:auto; width:100%" >
                       <tbody>
                           <tr>

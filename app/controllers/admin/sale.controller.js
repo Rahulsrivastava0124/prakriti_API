@@ -1665,8 +1665,7 @@ exports.downloadInvoice = async (req, res) => {
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
           'Poppins', sans-serif;"><div class="invoice" style="max-width: 1000px;  padding:
               5px;
-              background-color: #f9f9f9;">
-              <hr/>
+              background-color: #f9f9f9; border-top: 2px solid #000;">
               <table cellpadding="0" cellspacing="1" width="600px">
                   <tbody>
                       <tr>
@@ -1929,8 +1928,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   const logo = bitmap.toString("base64");
 
   let footerhtml = `
-              <div class="invoice" style="width: 100%; margin: 0; padding: 15px; background-color: #f9f9f9; page-break-inside: avoid;">
-                  <hr/>
+              <div class="invoice" style="width: 100%; margin: 0; padding: 15px; background-color: #f9f9f9; page-break-inside: avoid; border-top: 2px solid #000;">
                   <table cellpadding="0" cellspacing="1"  style="margin:auto; width:100%" >
                       <tbody>
                           <tr>
@@ -2946,8 +2944,7 @@ exports.downloadInvoiceItems = async (req, res) => {
   const logo = bitmap.toString("base64");
 
   let footerhtml = `
-              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9;">
-                  <hr/>
+              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9; border-top: 2px solid #000; padding-top: 6px;">
                   <table cellpadding="0" cellspacing="1"  style="margin:auto; width:100%" >
                       <tbody>
                           <tr>
@@ -3949,8 +3946,7 @@ exports.downloadInvoiceItems = async (req, res) => {
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
           'Poppins', sans-serif;"><div class="invoice" style="max-width: 800px; margin:auto; padding:
               5px;
-              background-color: #f9f9f9;">
-              <hr/>
+              background-color: #f9f9f9; border-top: 2px solid #000;">
               <table cellpadding="0" cellspacing="1" width="550px" style="margin:auto;" >
                   <tbody>
                       <tr>
