@@ -2792,6 +2792,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                       <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">All disputes are subject to Patna Juridiction only</li>
                       <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">Charges may be appling cancel of order product making only</li>
                     </ul>
+                    ${saleData.notes && saleData.notes.trim() ? `<div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #ccc;"><span style="font-size: 11px; font-weight: 600;">Notes: </span><span style="font-size: 11px; font-weight: 400;">${saleData.notes}</span></div>` : ""}
                   </div>
                             </div>
                 <div style="display: table-cell; width: 26%; vertical-align: top;">
@@ -2807,7 +2808,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += `</table>
                             </div>
                           </div>
-                          ${saleData.notes ? footerhtml : ""}
                         </td>
                     </tr>
                 </tbody>
