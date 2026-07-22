@@ -5445,22 +5445,6 @@ exports.downloadInvoice = async (req, res) => {
                                                 </div>
 
                                             </div> -->
-                                            <div style="margin-top:5px">
-                                                <p style="font-size:
-                                                    8px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Company Name - ${saleData.user_details.company_name}</p>
-                                                <p style="font-size:
-                                                    8px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    ${saleData.user_details.company_name},<br/>
-                                                      Ac. No - ${saleData.user_details.bank_account_no}</p>
-                                                <p style="font-size:
-                                                    8px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    IFSC Code -
-                                                    ${saleData.user_details.bank_ifsc}</p>
-                                            </div>
                                         </div>
                                     </div>
                                 </table></td>
@@ -7023,21 +7007,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                     </div>
                                                 </div> -->
                                             </div> 
-                                            <div style="margin-top:5px">
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Company Name - ${saleData.user_details.company_name}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                      Ac. No - ${saleData.user_details.bank_account_no}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    IFSC Code -
-                                                    ${saleData.user_details.bank_ifsc}</p>
-                                            </div>
                                         </div>
                                     </div>
                                 </table>
@@ -7569,7 +7538,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 75px; padding: 5px 3px;">Amount (₹)</th>
                                   </tr>
                                   <tr style="background-color: #1E2757;">
-                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Net Weight</th>
+                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">N. Wt.</th>
                                       <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 60px; padding: 5px 3px;">Total (GM)</th>
                                   </tr>
                               </thead>
@@ -7687,8 +7656,8 @@ exports.downloadInvoiceInfo = async (req, res) => {
     /* Making Charge */
     if (totalMakingCharge > 0) {
       html += `<tr>
-                  <td colspan="8" style="font-size: 12px; color: #555; padding: 4px;">Making Charge</td>
-                  <td colspan="2" style="font-size: 12px; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${totalMakingCharge.toFixed(2)}</td>
+                  <td colspan="8" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px;">Making Charge</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${totalMakingCharge.toFixed(2)}</td>
                   <td colspan="2"></td>
               </tr>`;
     }
@@ -7728,9 +7697,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
 
     if (saleData.report_qty > 0) {
       html += `<tr style="border: none;">
-                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges (18%) :</td>
-                  <td colspan="7" style="font-size: 12px; color: #555; padding: 2px 4px; border: none;">${saleData.report_qty} Pics x ${saleData.report_charge.toFixed(2)} =</td>
-                  <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">${totalReportCharge.toFixed(2)}</td>
+                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges (18%)</td>
+                  <td colspan="6" style="font-size: 12px; color: #555; padding: 2px 4px; border: none;">${saleData.report_qty} Pics x ${saleData.report_charge.toFixed(2)} =</td>
+                  <td colspan="4" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">${totalReportCharge.toFixed(2)}</td>
               </tr>`;
     }
 
@@ -7819,6 +7788,18 @@ exports.downloadInvoiceInfo = async (req, res) => {
                       <td style="width: 28%; padding: 3px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; padding: 2px 4px;"></td>
                     </tr>
                   </table>
+                  <div style="margin-top: 8px;">
+                    <h5 style="margin: 0px 0 2px 0; font-size: 11px; font-weight: 600; text-transform: uppercase;">NOTE</h5>
+                    <ul style="margin: 0; padding: 0; list-style: none;">
+                      <span style="font-size: 11px; font-weight: 400;">* Goods once sold will be taken back with condition</span>
+                      <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">Returning minimum product value of Rs 5000/- above</li>
+                      <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">Returning product taken back Less than 20-30% of my billing amount</li>
+                      <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">If any Damage charge as per making cost only</li>
+                      <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">No Charges taken on Sale product returning within 7 days from bill date</li>
+                      <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">All disputes are subject to Patna Juridiction only</li>
+                      <li style="font-size: 11px; font-weight: 400; list-style-type: disc; margin-left: 20px;">Charges may be appling cancel of order product making only</li>
+                    </ul>
+                  </div>
                             </div>
                 <div style="display: table-cell; width: 26%; vertical-align: top;">
                   <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
@@ -7978,103 +7959,13 @@ exports.downloadInvoiceItemList = async (req, res) => {
                                         100%; font-size: 11px;">
                                         <div style="display: table-cell;
                                             width: 65%;">
-                                            <h5 style="margin: 0px;
-                                                font-size: 11px;
-                                                font-weight:
-                                                600; text-transform:
-                                                uppercase;">NOTE</h5>
                                             <ul style="margin: 0;
                                                 padding: 0px;
                                                 list-style: none;">
-                                                <span style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400; ">*
-                                                    Goods once sold will
-                                                    be taken back with
-                                                    condition</span>
-
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    minimum product
-                                                    value of Rs 5000/-
-                                                    above</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    product taken back
-                                                    Less than 20-30% of
-                                                    my billing amount</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">If any Damage
-                                                    charge as per making
-                                                    cost only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">No Charges
-                                                    taken on Sale
-                                                    product returning
-                                                    within 7 days from
-                                                    bill date</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">All disputes
-                                                    are subject to Patna
-                                                    Juridiction only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Charges may
-                                                    be appling cancel of
-                                                    order product making
-                                                    only</li>
-
                                             </ul>
                                         </div>
-                                        <div style="display: table-cell;
-                                            width: 35%;">
-                                            
-                                            <div style="margin-top:5px">
-                                                <p style="
-                                                  font-size: 11px; 
-                                                  margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Company Name - ${saleData.user_details.company_name}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                      Ac. No - ${saleData.user_details.bank_account_no}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    IFSC Code -
-                                                    ${saleData.user_details.bank_ifsc}</p>
-                                            </div>
+                                        <div style="display: table-cell; width: 35%; vertical-align: top;">
+                                            ${saleData.notes ? `<div style="display: flex; flex-direction: column; margin-top: 4px;"><span style="font-size: 11px; font-weight: 600;">Notes:</span><span style="font-size: 11px; font-weight: 400;">${saleData.notes}</span></div>` : ""}
                                         </div>
                                     </div>
                                 </table></td>
@@ -8730,85 +8621,8 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                     align="center" width="90%">
                                     <div style="display: table; width:
                                         100%; font-size: 11px;">
-                                        <div style="display: table-cell;
-                                            width: 65%;">
-                                            <h5 style="margin: 0px;
-                                                font-size: 11px;
-                                                font-weight:
-                                                600; text-transform:
-                                                uppercase;">NOTE</h5>
-                                            <ul style="margin: 0;
-                                                padding: 0px;
-                                                list-style: none;">
-                                                <span style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400; ">*
-                                                    Goods once sold will
-                                                    be taken back with
-                                                    condition</span>
-
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    minimum product
-                                                    value of Rs 5000/-
-                                                    above</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    product taken back
-                                                    Less than 20-30% of
-                                                    my billing amount</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">If any Damage
-                                                    charge as per making
-                                                    cost only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">No Charges
-                                                    taken on Sale
-                                                    product returning
-                                                    within 7 days from
-                                                    bill date</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">All disputes
-                                                    are subject to Patna
-                                                    Juridiction only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Charges may
-                                                    be appling cancel of
-                                                    order product making
-                                                    only</li>
-
-                                            </ul>
+                                        <div style="display: table-cell; width: 65%; vertical-align: top;">
+                                            ${saleData.notes ? `<div style="display: flex; flex-direction: column; margin-top: 4px;"><span style="font-size: 11px; font-weight: 600;">Notes:</span><span style="font-size: 11px; font-weight: 400;">${saleData.notes}</span></div>` : ""}
                                         </div>
                                         <div style="display: table-cell;
                                             width: 35%;">
@@ -8864,22 +8678,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                                 </div>
 
                                             </div> 
-                                            <div style="margin-top:5px">
-                                                <p style="
-                                                  font-size: 11px; 
-                                                  margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Company Name - ${saleData.user_details.company_name}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                      Ac. No - ${saleData.user_details.bank_account_no}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    IFSC Code -
-                                                    ${saleData.user_details.bank_ifsc}</p>
-                                            </div>
+                                            ${saleData.notes ? `<div style="display: flex; flex-direction: column; margin-top: 8px;"><span style="font-size: 11px; font-weight: 600;">Notes:</span><span style="font-size: 11px; font-weight: 400;">${saleData.notes}</span></div>` : ""}
                                         </div>
                                     </div>
                                 </table></td>
