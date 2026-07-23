@@ -2167,6 +2167,18 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                   </tr>
                                 </table>
                                 ${saleData.notes && saleData.notes.trim() ? `<div style="font-size: 11px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${saleData.notes}</span></div>` : ""}
+                                <div style="border-top: 2px solid #90caf9; margin-top: 6px; padding-top: 6px;">
+                                  <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</h5>
+                                  <ul style="margin: 4px 0 0 0; padding: 0 0 0 18px; list-style: disc; font-size: 11px; font-weight: 400; color: #000;">
+                                    <li style="margin: 1px 0;">Goods once sold will be taken back with condition</li>
+                                    <li style="margin: 1px 0;">Returning minimum product value of Rs 5000/- above</li>
+                                    <li style="margin: 1px 0;">Returning product taken back Less than 20-30% of my billing amount</li>
+                                    <li style="margin: 1px 0;">If any Damage charge as per making cost only</li>
+                                    <li style="margin: 1px 0;">No Charges taken on Sale product returning within 7 days from bill date</li>
+                                    <li style="margin: 1px 0;">All disputes are subject to Patna Jurisdiction only</li>
+                                    <li style="margin: 1px 0;">Charges may be appling cancel of order product making only</li>
+                                  </ul>
+                                </div>
                             </div>
                 <div style="display: table-cell; width: 32%; vertical-align: top;">
                   <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
@@ -2198,18 +2210,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += amtRow("Rest Due Amt", saleData.due_amount_display);
   html += `</table>
                             </div>
-                          </div>
-                          <div style="border-top: 2px solid #90caf9; margin-top: 6px; padding-top: 6px;">
-                            <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</h5>
-                            <ul style="margin: 4px 0 0 0; padding: 0 0 0 18px; list-style: disc; font-size: 11px; font-weight: 400; color: #000;">
-                              <li style="margin: 1px 0;">Goods once sold will be taken back with condition</li>
-                              <li style="margin: 1px 0;">Returning minimum product value of Rs 5000/- above</li>
-                              <li style="margin: 1px 0;">Returning product taken back Less than 20-30% of my billing amount</li>
-                              <li style="margin: 1px 0;">If any Damage charge as per making cost only</li>
-                              <li style="margin: 1px 0;">No Charges taken on Sale product returning within 7 days from bill date</li>
-                              <li style="margin: 1px 0;">All disputes are subject to Patna Jurisdiction only</li>
-                              <li style="margin: 1px 0;">Charges may be appling cancel of order product making only</li>
-                            </ul>
                           </div>
                         </td>
                     </tr>
