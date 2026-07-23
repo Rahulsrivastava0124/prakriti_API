@@ -6787,14 +6787,10 @@ exports.downloadInvoiceInfo = async (req, res) => {
               <link rel="preconnect" href="https://fonts.googleapis.com" />
               <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin  />
               <style>
-              html, body { height: 100%; }
               html { -webkit-print-color-adjust: exact; }
               tbody tr { page-break-inside: avoid; }
               thead { display: table-header-group; }
               .table-footer-area { page-break-inside: avoid; }
-              .invoice { min-height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; }
-              .invoice > .invoice-body { flex: 1 0 auto; }
-              .invoice > .invoice-note { flex-shrink: 0; margin-top: auto; }
               </style>
           </head>
           <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -6802,7 +6798,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
               <div class="invoice" style="max-width: 1000px; margin: auto; padding:
                   15px;
                   background-color: #f9f9f9;">
-                  <div class="invoice-body">
                   <table cellpadding="0" cellspacing="0" width="100%">
                     <tbody>
                         <tr>
@@ -7555,23 +7550,22 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += `</table>
                             </div>
                           </div>
+                          <div style="border-top: 2px solid #90caf9; margin-top: 6px; padding-top: 6px;">
+                            <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</h5>
+                            <ul style="margin: 4px 0 0 0; padding: 0 0 0 18px; list-style: disc; font-size: 11px; font-weight: 400; color: #000;">
+                              <li style="margin: 1px 0;">Goods once sold will be taken back with condition</li>
+                              <li style="margin: 1px 0;">Returning minimum product value of Rs 5000/- above</li>
+                              <li style="margin: 1px 0;">Returning product taken back Less than 20-30% of my billing amount</li>
+                              <li style="margin: 1px 0;">If any Damage charge as per making cost only</li>
+                              <li style="margin: 1px 0;">No Charges taken on Sale product returning within 7 days from bill date</li>
+                              <li style="margin: 1px 0;">All disputes are subject to Patna Jurisdiction only</li>
+                              <li style="margin: 1px 0;">Charges may be appling cancel of order product making only</li>
+                            </ul>
+                          </div>
                         </td>
                     </tr>
                 </tbody>
               </table>
-              </div>
-              <div class="invoice-note" style="border-top: 2px solid #90caf9; padding: 6px 20px 8px 20px;">
-                <div style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</div>
-                <div style="margin-top: 4px; font-size: 11px; font-weight: 400; color: #000; display: flex; flex-wrap: wrap;">
-                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Goods once sold will be taken back with condition</div>
-                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Returning minimum product value of Rs 5000/- above</div>
-                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Returning product taken back Less than 20-30% of my billing amount</div>
-                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>If any Damage charge as per making cost only</div>
-                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>No Charges taken on Sale product returning within 7 days from bill date</div>
-                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>All disputes are subject to Patna Jurisdiction only</div>
-                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Charges may be appling cancel of order product making only</div>
-                </div>
-              </div>
           </div>
       </body>
   </html>
