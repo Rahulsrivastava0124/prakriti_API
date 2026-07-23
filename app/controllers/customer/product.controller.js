@@ -71,6 +71,23 @@ exports.index = async (req, res) => {
     conditions.id = {[Op.in]: ids};
   }
 
+  // Festive offer: `offer` is a comma-separated list of the specific product
+  // ids selected for the offer (banner link is `/products?offer=<ids>`). The
+  // stored value can have empty elements (e.g. a leading comma), so skip blanks
+  // and only filter to the selected products.
+  if(!isEmpty(offer)){
+    try {
+      let ids = String(offer)
+        .split(",")
+        .map((v) => v.trim())
+        .filter((v) => v !== "");
+      if(ids.length){
+        conditions.id = {[Op.in]: ids};
+      }
+    } catch (error) {
+    }
+  }
+
   const paginatorOptions = (page && limit) ? getPaginationOptions(page, limit) : {};
   let subQueryData = !isEmpty(search) ? {subQuery: false} : {};
   ProductModel.findAndCountAll({ 
