@@ -2201,18 +2201,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += `</table>
                             </div>
                           </div>
-                          <div style="border-top: 2px solid #90caf9; margin-top: 6px; padding-top: 6px; page-break-inside: avoid;">
-                            <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</h5>
-                            <div style="display: flex; flex-wrap: wrap; margin-top: 4px; font-size: 11px; font-weight: 400; color: #000;">
-                              <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Goods once sold will be taken back with condition</div>
-                              <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Returning minimum product value of Rs 5000/- above</div>
-                              <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Returning product taken back Less than 20-30% of my billing amount</div>
-                              <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>If any Damage charge as per making cost only</div>
-                              <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>No Charges taken on Sale product returning within 7 days from bill date</div>
-                              <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>All disputes are subject to Patna Jurisdiction only</div>
-                              <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Charges may be appling cancel of order product making only</div>
-                            </div>
-                          </div>
                         </td>
                     </tr>
                 </tbody>
@@ -2222,9 +2210,29 @@ exports.downloadInvoiceInfo = async (req, res) => {
   </html>
   `;
 
+  const noteFooterHtml = `
+    <div style="width: 100%; box-sizing: border-box; padding: 4px 20px 6px 20px; font-family: Arial, sans-serif; border-top: 2px solid #90caf9;">
+      <div style="margin: 0; font-size: 10px; font-weight: 700; color: #1E2746;">NOTE</div>
+      <div style="margin-top: 2px; font-size: 9px; font-weight: 400; color: #000; display: flex; flex-wrap: wrap;">
+        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Goods once sold will be taken back with condition</div>
+        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Returning minimum product value of Rs 5000/- above</div>
+        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Returning product taken back Less than 20-30% of my billing amount</div>
+        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>If any Damage charge as per making cost only</div>
+        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>No Charges taken on Sale product returning within 7 days from bill date</div>
+        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>All disputes are subject to Patna Jurisdiction only</div>
+        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Charges may be appling cancel of order product making only</div>
+      </div>
+    </div>`;
+
   try {
     let file_path = "public/invoices/" + saleData.invoice_number + "_info.pdf";
-    const options = { format: "A4" };
+    const options = {
+      format: "A4",
+      displayHeaderFooter: true,
+      headerTemplate: "<div></div>",
+      footerTemplate: noteFooterHtml,
+      margin: { top: "10px", bottom: "110px", left: "0px", right: "0px" },
+    };
 
     (async () => {
       const file = { content: html };
