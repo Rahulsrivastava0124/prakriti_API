@@ -2015,12 +2015,14 @@ exports.downloadInvoiceInfo = async (req, res) => {
               <link rel="preconnect" href="https://fonts.googleapis.com" />
               <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin  />
               <style>
-              html {
-                -webkit-print-color-adjust: exact;
-              }
+              html, body { height: 100%; }
+              html { -webkit-print-color-adjust: exact; }
               tbody tr { page-break-inside: avoid; }
               thead { display: table-header-group; }
               .table-footer-area { page-break-inside: avoid; }
+              .invoice { min-height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; }
+              .invoice > .invoice-body { flex: 1 0 auto; }
+              .invoice > .invoice-note { flex-shrink: 0; margin-top: auto; }
               </style>
           </head>
           <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
@@ -2028,6 +2030,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
               <div class="invoice" style="max-width: 1000px; margin: auto; padding:
                   15px;
                   background-color: #f9f9f9;">
+                  <div class="invoice-body">
                   <table cellpadding="0" cellspacing="0" width="100%">
                     <tbody>
                         <tr>
@@ -2790,34 +2793,27 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     </tr>
                 </tbody>
               </table>
+              </div>
+              <div class="invoice-note" style="border-top: 2px solid #90caf9; padding: 6px 20px 8px 20px;">
+                <div style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</div>
+                <div style="margin-top: 4px; font-size: 11px; font-weight: 400; color: #000; display: flex; flex-wrap: wrap;">
+                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Goods once sold will be taken back with condition</div>
+                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Returning minimum product value of Rs 5000/- above</div>
+                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Returning product taken back Less than 20-30% of my billing amount</div>
+                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>If any Damage charge as per making cost only</div>
+                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>No Charges taken on Sale product returning within 7 days from bill date</div>
+                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>All disputes are subject to Patna Jurisdiction only</div>
+                  <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Charges may be appling cancel of order product making only</div>
+                </div>
+              </div>
           </div>
       </body>
   </html>
   `;
 
-  const noteFooterHtml = `
-    <div style="width: 100%; box-sizing: border-box; padding: 4px 20px 6px 20px; font-family: Arial, sans-serif; border-top: 2px solid #90caf9;">
-      <div style="margin: 0; font-size: 10px; font-weight: 700; color: #1E2746;">NOTE</div>
-      <div style="margin-top: 2px; font-size: 9px; font-weight: 400; color: #000; display: flex; flex-wrap: wrap;">
-        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Goods once sold will be taken back with condition</div>
-        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Returning minimum product value of Rs 5000/- above</div>
-        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Returning product taken back Less than 20-30% of my billing amount</div>
-        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>If any Damage charge as per making cost only</div>
-        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>No Charges taken on Sale product returning within 7 days from bill date</div>
-        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>All disputes are subject to Patna Jurisdiction only</div>
-        <div style="width: 50%; padding: 1px 8px 1px 14px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 4px;">•</span>Charges may be appling cancel of order product making only</div>
-      </div>
-    </div>`;
-
   try {
     let file_path = "public/invoices/" + saleData.invoice_number + "_info.pdf";
-    const options = {
-      format: "A4",
-      displayHeaderFooter: true,
-      headerTemplate: "<div></div>",
-      footerTemplate: noteFooterHtml,
-      margin: { top: "10px", bottom: "110px", left: "0px", right: "0px" },
-    };
+    const options = { format: "A4" };
 
     (async () => {
       const file = { content: html };
