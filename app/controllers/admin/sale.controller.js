@@ -2766,22 +2766,28 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += amtRow("Sub Total", saleData.total_amount);
   html += amtRow("Cash Dist", saleData.discount);
   html += amtRow("Total Payable", saleData.bill_amount, true);
+  html += amtRow("Paid Amount", saleData.paid_amount);
+  if (saleData.return_amount) {
+    html += amtRow(
+      "Return Amount",
+      saleData.return_amount ? saleData.return_amount : "0.00",
+    );
+  }
+  html += amtRow("Rest Due Amt", saleData.due_amount_display);
   html += `</table>
-                            </div>
-                          </div>
-                          <div
-                            class="table-footer-area"
-                style="display: table; width: 100%; table-layout: fixed; margin-top: 8px;">
-                <div style="display: table-cell; width: 74%; vertical-align: top; padding-right: 16px;">
-                  <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed;">
+                  <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed; margin-top: 6px;">
                     <tr>
-                        <td style="width: 18%; font-size: 11px; font-weight: 400; padding: 2px 8px 2px 0; white-space: nowrap;">Due Date :</td>
-                        <td style="width: 32%; padding: 2px 12px 2px 0;"><input type="text" value="${saleData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
-                        <td style="width: 22%; font-size: 11px; font-weight: 400; padding: 2px 8px 2px 0; white-space: nowrap;">Settlement Date :</td>
-                        <td style="width: 28%; padding: 2px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
+                      <td style="width: 42%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Due Date :</td>
+                      <td style="width: 58%; padding: 2px 0;"><input type="text" value="${saleData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
+                    </tr>
+                    <tr>
+                      <td style="width: 42%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Settlement Date :</td>
+                      <td style="width: 58%; padding: 2px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
                     </tr>
                   </table>
-                  <div style="margin-top: 4px;">
+                            </div>
+                          </div>
+                          <div style="margin-top: 6px;">
                     <h5 style="margin: 0px 0 1px 0; font-size: 10px; font-weight: 600; text-transform: uppercase;">NOTE</h5>
                     <div style="display: flex; flex-wrap: wrap; font-size: 10px; font-weight: 400;">
                       <div style="width: 100%;">* Goods once sold will be taken back with condition</div>
@@ -2793,20 +2799,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                       <div style="width: 50%;">• Charges may be appling cancel of order product making only</div>
                     </div>
                     ${saleData.notes && saleData.notes.trim() ? `<div style="margin-top: 3px; padding-top: 3px; border-top: 1px solid #ccc; font-size: 10px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${saleData.notes}</span></div>` : ""}
-                  </div>
-                            </div>
-                <div style="display: table-cell; width: 26%; vertical-align: top;">
-                  <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
-  html += amtRow("Paid Amount", saleData.paid_amount);
-  if (saleData.return_amount) {
-    html += amtRow(
-      "Return Amount",
-      saleData.return_amount ? saleData.return_amount : "0.00",
-    );
-  }
-  html += amtRow("Rest Due Amt", saleData.due_amount_display);
-  html += `</table>
-                            </div>
                           </div>
                         </td>
                     </tr>
