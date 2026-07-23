@@ -7519,6 +7519,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                     <td style="width: 28%; padding: 3px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; padding: 2px 4px;"></td>
                                   </tr>
                                 </table>
+                                ${saleData.notes && saleData.notes.trim() ? `<div style="font-size: 11px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${saleData.notes}</span></div>` : ""}
                             </div>
                 <div style="display: table-cell; width: 32%; vertical-align: top;">
                   <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
@@ -7551,7 +7552,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += `</table>
                             </div>
                           </div>
-                          <div style="border-top: 2px solid #90caf9; margin-top: 6px; padding-top: 6px; page-break-inside: avoid;">
+                          <div style="border-top: 2px solid #90caf9; margin-top: 0px; padding-top: 0px; page-break-inside: avoid;">
                             <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</h5>
                             <div style="display: flex; flex-wrap: wrap; margin-top: 4px; font-size: 11px; font-weight: 400; color: #000;">
                               <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Goods once sold will be taken back with condition</div>
@@ -7562,7 +7563,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                               <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>All disputes are subject to Patna Jurisdiction only</div>
                               <div style="width: 50%; padding: 1px 8px 1px 18px; box-sizing: border-box; position: relative;"><span style="position: absolute; left: 6px;">•</span>Charges may be appling cancel of order product making only</div>
                             </div>
-                            ${saleData.notes && saleData.notes.trim() ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #ccc; font-size: 11px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${saleData.notes}</span></div>` : ""}
                           </div>
                         </td>
                     </tr>
