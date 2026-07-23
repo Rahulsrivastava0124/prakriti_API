@@ -2745,6 +2745,14 @@ exports.downloadInvoiceInfo = async (req, res) => {
     html += `</table>`;
   }
   html += `</div>
+                                <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed; margin-top: 8px;">
+                                  <tr>
+                                    <td style="width: 22%; font-size: 12px; font-weight: 400; padding: 3px 6px 3px 0; white-space: nowrap;">Due Date :</td>
+                                    <td style="width: 28%; padding: 3px 20px 3px 0;"><input type="text" value="${saleData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; padding: 2px 4px;"></td>
+                                    <td style="width: 22%; font-size: 12px; font-weight: 400; padding: 3px 6px 3px 0; white-space: nowrap;">Settlement Date :</td>
+                                    <td style="width: 28%; padding: 3px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; padding: 2px 4px;"></td>
+                                  </tr>
+                                </table>
                             </div>
                 <div style="display: table-cell; width: 32%; vertical-align: top;">
                   <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
@@ -2777,27 +2785,18 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += `</table>
                             </div>
                           </div>
-                          <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed; margin-top: 6px;">
-                            <tr>
-                              <td style="width: 12%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Due Date :</td>
-                              <td style="width: 22%; padding: 2px 12px 2px 0;"><input type="text" value="${saleData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
-                              <td style="width: 15%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Settlement Date :</td>
-                              <td style="width: 22%; padding: 2px 12px 2px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
-                              <td style="width: 29%;"></td>
-                            </tr>
-                          </table>
-                          <div style="margin-top: 6px;">
-                    <h5 style="margin: 0px 0 1px 0; font-size: 10px; font-weight: 600; text-transform: uppercase;">NOTE</h5>
-                    <div style="display: flex; flex-wrap: wrap; font-size: 10px; font-weight: 400;">
-                      <div style="width: 100%;">* Goods once sold will be taken back with condition</div>
-                      <div style="width: 50%; padding-right: 4px;">• Returning minimum product value of Rs 5000/- above</div>
-                      <div style="width: 50%;">• Returning product taken back Less than 20-30% of my billing amount</div>
-                      <div style="width: 50%; padding-right: 4px;">• If any Damage charge as per making cost only</div>
-                      <div style="width: 50%;">• No Charges taken on Sale product returning within 7 days from bill date</div>
-                      <div style="width: 50%; padding-right: 4px;">• All disputes are subject to Patna Juridiction only</div>
-                      <div style="width: 50%;">• Charges may be appling cancel of order product making only</div>
-                    </div>
-                    ${saleData.notes && saleData.notes.trim() ? `<div style="margin-top: 3px; padding-top: 3px; border-top: 1px solid #ccc; font-size: 10px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${saleData.notes}</span></div>` : ""}
+                          <div style="border-top: 2px solid #90caf9; margin-top: 6px; padding-top: 6px;">
+                            <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</h5>
+                            <ul style="margin: 4px 0 0 0; padding: 0 0 0 18px; list-style: disc; font-size: 11px; font-weight: 400; color: #000;">
+                              <li style="margin: 1px 0;">Goods once sold will be taken back with condition</li>
+                              <li style="margin: 1px 0;">Returning minimum product value of Rs 5000/- above</li>
+                              <li style="margin: 1px 0;">Returning product taken back Less than 20-30% of my billing amount</li>
+                              <li style="margin: 1px 0;">If any Damage charge as per making cost only</li>
+                              <li style="margin: 1px 0;">No Charges taken on Sale product returning within 7 days from bill date</li>
+                              <li style="margin: 1px 0;">All disputes are subject to Patna Jurisdiction only</li>
+                              <li style="margin: 1px 0;">Charges may be appling cancel of order product making only</li>
+                            </ul>
+                            ${saleData.notes && saleData.notes.trim() ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #ccc; font-size: 11px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${saleData.notes}</span></div>` : ""}
                           </div>
                         </td>
                     </tr>
