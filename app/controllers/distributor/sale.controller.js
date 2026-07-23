@@ -1430,12 +1430,10 @@ exports.downloadInvoiceInfo = async (req, res) => {
               <link rel="preconnect" href="https://fonts.googleapis.com" />
               <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin  />
               <style>
-              html, body { height: 100%; }
               html { -webkit-print-color-adjust: exact; }
               tbody tr { page-break-inside: avoid; }
               thead { display: table-header-group; }
-              .invoice { position: relative; min-height: 100vh; box-sizing: border-box; padding-bottom: 340px !important; }
-              .table-footer-area { position: absolute; left: 15px; right: 15px; bottom: 15px; page-break-inside: avoid; }
+              .table-footer-area { page-break-inside: avoid; }
               </style>
           </head>
           <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
