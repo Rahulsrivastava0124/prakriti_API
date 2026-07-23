@@ -2133,18 +2133,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
   }
 
   html += `
-                          <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed; margin-top: 8px;">
-                            <tr>
-                              <td style="width: 12%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Due Date :</td>
-                              <td style="width: 22%; padding: 2px 12px 2px 0;"><input type="text" value="${saleData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
-                              <td style="width: 15%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Settlement Date :</td>
-                              <td style="width: 22%; padding: 2px 12px 2px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
-                              <td style="width: 29%;"></td>
-                            </tr>
-                          </table>
                           <div
                             class="table-footer-area"
-                            style="display: table; width: 100%; table-layout: fixed; margin-top: 4px; page-break-inside: avoid;">
+                            style="display: table; width: 100%; table-layout: fixed; margin-top: 8px; page-break-inside: avoid;">
                             <div style="display: table-cell; width: 68%; vertical-align: top; padding-right: 12px;">
                                 ${metalHtml}
                                 <div style="display: block; width: 100%; margin-top: 8px;">`;
@@ -2201,6 +2192,15 @@ exports.downloadInvoiceInfo = async (req, res) => {
   html += `</table>
                             </div>
                           </div>
+                          <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed; margin-top: 6px;">
+                            <tr>
+                              <td style="width: 12%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Due Date :</td>
+                              <td style="width: 22%; padding: 2px 12px 2px 0;"><input type="text" value="${saleData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
+                              <td style="width: 15%; font-size: 11px; font-weight: 400; padding: 2px 6px 2px 0; white-space: nowrap;">Settlement Date :</td>
+                              <td style="width: 22%; padding: 2px 12px 2px 0;"><input type="text" value="${saleData.settlement_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 11px; padding: 1px 4px;"></td>
+                              <td style="width: 29%;"></td>
+                            </tr>
+                          </table>
                           <div style="margin-top: 6px;">
                     <h5 style="margin: 0px 0 1px 0; font-size: 10px; font-weight: 600; text-transform: uppercase;">NOTE</h5>
                     <div style="display: flex; flex-wrap: wrap; font-size: 10px; font-weight: 400;">
