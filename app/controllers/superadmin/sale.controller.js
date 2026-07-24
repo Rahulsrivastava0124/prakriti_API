@@ -5315,7 +5315,7 @@ exports.downloadInvoice = async (req, res) => {
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
           'Poppins', sans-serif;">
           <div class="invoice" style="max-width: 1000px; margin: auto; padding:
-              15px;
+              15px 15px 240px 15px;
               background-color: #f9f9f9;">
               <table cellpadding="0" cellspacing="0" width="100%">
                   <tbody>
@@ -7482,12 +7482,16 @@ exports.downloadInvoiceInfo = async (req, res) => {
   }
 
   html += `
-                          <div
-                            class="table-footer-area"
-                            style="display: table; width: 100%; table-layout: fixed; margin-top: 8px; page-break-inside: avoid;">
-                            <div style="display: table-cell; width: 68%; vertical-align: top; padding-right: 12px;">
-                                ${metalHtml}
-                                <div style="display: block; width: 100%; margin-top: 8px;">`;
+                        </td>
+                    </tr>
+                </tbody>
+              </table>
+          </div>
+          <div style="position: fixed; bottom: 0; left: 0; right: 0; background-color: #f9f9f9; padding: 6px 15px 4px 15px; border-top: 2px solid #1E2746;">
+            <div style="display: flex; width: 100%; gap: 0;">
+              <div style="flex: 0 0 68%; width: 68%; padding-right: 12px; box-sizing: border-box;">
+                ${metalHtml}
+                <div style="display: block; width: 100%; margin-top: 6px;">`;
   if (payments.length) {
     html += `<table cellspacing="0" cellpadding="3" rules="rows" align="left" width="100%">
                 <tr style="background-color: #1E2757; color: #fff;">
@@ -7518,21 +7522,21 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                   </tr>
                                 </table>
                                 ${saleData.notes && saleData.notes.trim() ? `<div style="font-size: 11px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${saleData.notes}</span></div>` : ""}
-                                <div style="border-top: 2px solid #90caf9; margin-top: 6px; padding-top: 6px;">
-                                  <h5 style="margin: 0; font-size: 12px; font-weight: 700; color: #1E2746;">NOTE</h5>
-                                  <ul style="margin: 4px 0 0 0; padding: 0 0 0 18px; list-style: disc; font-size: 11px; font-weight: 400; color: #000;">
-                                    <li style="margin: 1px 0;">Goods once sold will be taken back with condition</li>
-                                    <li style="margin: 1px 0;">Returning minimum product value of Rs 5000/- above</li>
-                                    <li style="margin: 1px 0;">Returning product taken back Less than 20-30% of my billing amount</li>
-                                    <li style="margin: 1px 0;">If any Damage charge as per making cost only</li>
-                                    <li style="margin: 1px 0;">No Charges taken on Sale product returning within 7 days from bill date</li>
-                                    <li style="margin: 1px 0;">All disputes are subject to Patna Jurisdiction only</li>
-                                    <li style="margin: 1px 0;">Charges may be appling cancel of order product making only</li>
+                                <div style="border-top: 1px solid #90caf9; margin-top: 4px; padding-top: 3px;">
+                                  <h5 style="margin: 0; font-size: 10px; font-weight: 700; color: #1E2746;">NOTE</h5>
+                                  <ul style="margin: 1px 0 0 0; padding: 0 0 0 14px; list-style: disc; font-size: 9px; font-weight: 400; color: #000;">
+                                    <li style="margin: 0;">Goods once sold will be taken back with condition</li>
+                                    <li style="margin: 0;">Returning minimum product value of Rs 5000/- above</li>
+                                    <li style="margin: 0;">Returning product taken back Less than 20-30% of my billing amount</li>
+                                    <li style="margin: 0;">If any Damage charge as per making cost only</li>
+                                    <li style="margin: 0;">No Charges taken on Sale product returning within 7 days from bill date</li>
+                                    <li style="margin: 0;">All disputes are subject to Patna Jurisdiction only</li>
+                                    <li style="margin: 0;">Charges may be appling cancel of order product making only</li>
                                   </ul>
                                 </div>
-                            </div>
-                <div style="display: table-cell; width: 32%; vertical-align: top;">
-                  <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
+              </div>
+              <div style="flex: 0 0 32%; width: 32%; vertical-align: top;">
+                <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
   const amtRow = (label, value, bold = false) =>
     `<tr>
       <td style="width: 54%; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 3px 6px 3px 0; white-space: nowrap;">${label}</td>
@@ -7560,12 +7564,8 @@ exports.downloadInvoiceInfo = async (req, res) => {
   }
   html += amtRow("Rest Due Amt", saleData.due_amount_display);
   html += `</table>
-                            </div>
-                          </div>
-                        </td>
-                    </tr>
-                </tbody>
-              </table>
+              </div>
+            </div>
           </div>
       </body>
   </html>
