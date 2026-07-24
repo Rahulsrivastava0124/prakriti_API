@@ -104,6 +104,7 @@ const stockMaterialHistoryController = require("@controllers/superadmin/stockMat
 const salaryController = require("@controllers/superadmin/salary.controller");
 const subscriberController = require("@controllers/superadmin/subscriber.controller");
 const homepageSettingController = require("@controllers/superadmin/homepage-setting.controller");
+const companyDetailsController = require("@controllers/superadmin/company-details.controller");
 const productStockController = require("@controllers/superadmin/stockProduct.controller");
 
 module.exports = (app, express, io) => {
@@ -1549,6 +1550,18 @@ module.exports = (app, express, io) => {
     "/homepagesettings/update",
     [authJwt.verifyToken, authJwt.isSuperAdmin],
     homepageSettingController.update,
+  );
+
+  // company details
+  router.get(
+    "/company-details",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    companyDetailsController.index,
+  );
+  router.post(
+    "/company-details/update",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    companyDetailsController.update,
   );
 
   //my performance

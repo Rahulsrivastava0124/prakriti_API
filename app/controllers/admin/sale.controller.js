@@ -676,6 +676,7 @@ exports.delete = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoice = async (req, res) => {
+  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
   let sale = await SaleModel.findOne({
     where: { id: req.params.id, sale_by: req.userId },
     include: [
@@ -730,8 +731,17 @@ exports.downloadInvoice = async (req, res) => {
   }
   let saleData = SaleCollection(sale);
 
-  const logoUrl = process.env.BASE_URL + "public/images/logo.png";
-  // const logoUrl = "file://var/www/html/Prakriti/api.prakriti.one/public/images/logo.png";
+  const logoUrl = company.logo
+    ? `${process.env.BASE_URL}${company.logo}`
+    : `${process.env.BASE_URL}public/images/logo.png`;
+
+  let logo;
+  if (company.logo) {
+    const _logoRes = await require("axios").get(logoUrl, { responseType: "arraybuffer" });
+    logo = Buffer.from(_logoRes.data).toString("base64");
+  } else {
+    logo = fs.readFileSync(`public/images/logo.png`).toString("base64");
+  }
 
   let html = `<!DOCTYPE html>
   <html lang="en">
@@ -775,8 +785,7 @@ exports.downloadInvoice = async (req, res) => {
                                               220px; margin-left: 10px;">
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">Corporate Office -
-                                              P210 Strand Bank Road Brabzar
-                                              Kolkata 700 011</h3>
+                                              ${company.corporate_office_address || ''}</h3>
   
                                       </div>
                                       <div style="width: 35%; display: table-cell;
@@ -784,17 +793,17 @@ exports.downloadInvoice = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti Head Office</span></h3>
+                                                  font-weight: 600;">${company.head_office_name || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
+                                              <span style="font-weight: 600;">${company.gst_no || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${saleData.sale_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
+                                              font-size: 12px;">Address - ${company.address || ''}</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.one, +91 9117799755
+                                              ${company.email || ''}, ${company.phone || ''}
                                           </h3>
                                       </div>
                                   </div>
@@ -1805,6 +1814,7 @@ exports.downloadInvoice = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoiceInfo = async (req, res) => {
+  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     //as: "sales",
@@ -1919,13 +1929,13 @@ exports.downloadInvoiceInfo = async (req, res) => {
   purity18K = await PurityCollection(purity18K);
 
   //compactLog("payments : ",payments);
-  const cwd = process.cwd();
-  // const logoUrl = `file://${cwd}/public/images/logo.png`;
-  const logoUrl = `public/images/logo.png`;
-  // const logoUrl = process.env.BASE_URL + "public/images/logo.png";
-
-  const bitmap = fs.readFileSync(logoUrl);
-  const logo = bitmap.toString("base64");
+  let logo;
+  if (company.logo) {
+    const _logoRes = await require("axios").get(`${process.env.BASE_URL}${company.logo}`, { responseType: "arraybuffer" });
+    logo = Buffer.from(_logoRes.data).toString("base64");
+  } else {
+    logo = fs.readFileSync(`public/images/logo.png`).toString("base64");
+  }
 
   let footerhtml = `
               <div class="invoice" style="width: 100%; margin: 0; padding: 15px; background-color: #f9f9f9; page-break-inside: avoid; border-top: 2px solid #000;">
@@ -2045,8 +2055,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                               220px; margin-left: 10px;" />
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">Corporate Office -
-                                              P210 Strand Bank Road Brabzar
-                                              Kolkata 700 011</h3>
+                                              ${company.corporate_office_address || ''}</h3>
 
                                       </div>
                                       <div style="width: 35%; display: table-cell;
@@ -2054,17 +2063,17 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti Head Office</span></h3>
+                                                  font-weight: 600;">${company.head_office_name || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
+                                              <span style="font-weight: 600;">${company.gst_no || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${saleData.sale_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
+                                              font-size: 12px;">Address - ${company.address || ''}</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.one, +91 9117799755
+                                              ${company.email || ''}, ${company.phone || ''}
                                           </h3>
                                       </div>
                                   </div>
@@ -2841,6 +2850,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
 };
 
 exports.downloadInvoiceItems = async (req, res) => {
+  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     where: { id: req.params.id, sale_by: userID },
@@ -2923,13 +2933,13 @@ exports.downloadInvoiceItems = async (req, res) => {
     ],
   });
   payments = await PaymentCollection(payments);
-  const cwd = process.cwd();
-  // const logoUrl = `file://${cwd}/public/images/logo.png`;
-  const logoUrl = `public/images/logo.png`;
-  // const logoUrl = process.env.BASE_URL + "public/images/logo.png";
-
-  const bitmap = fs.readFileSync(logoUrl);
-  const logo = bitmap.toString("base64");
+  let logo;
+  if (company.logo) {
+    const _logoRes = await require("axios").get(`${process.env.BASE_URL}${company.logo}`, { responseType: "arraybuffer" });
+    logo = Buffer.from(_logoRes.data).toString("base64");
+  } else {
+    logo = fs.readFileSync(`public/images/logo.png`).toString("base64");
+  }
 
   let footerhtml = `
               <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9; border-top: 2px solid #000; padding-top: 6px;">
@@ -3062,8 +3072,7 @@ exports.downloadInvoiceItems = async (req, res) => {
                                                 220px; margin-left: 10px;">
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 12px;">Corporate Office -
-                                                P210 Strand Bank Road Brabzar
-                                                Kolkata 700 011</h3>
+                                                ${company.corporate_office_address || ''}</h3>
     
                                         </div>
                                         <div style="width: 35%; display: table-cell;
@@ -3071,17 +3080,17 @@ exports.downloadInvoiceItems = async (req, res) => {
                                             left;">
                                             <h3 style="margin: 0;">
                                                 <span style="font-size: 16px;
-                                                    font-weight: 600;">Prakriti Head Office</span></h3>
+                                                    font-weight: 600;">${company.head_office_name || ''}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 14px;">GST No -
-                                                <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
+                                                <span style="font-weight: 600;">${company.gst_no || ''}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 12px;">User Id - <span>${saleData.sale_by_name}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
-                                                font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
+                                                font-size: 12px;">Address - ${company.address || ''}</h3>
                                             <h3 style="font-weight: 600; font-size:
                                                 12px; margin: 0;">
-                                                support@Prakriti.one, +91 9117799755
+                                                ${company.email || ''}, ${company.phone || ''}
                                             </h3>
                                         </div>
                                     </div>
