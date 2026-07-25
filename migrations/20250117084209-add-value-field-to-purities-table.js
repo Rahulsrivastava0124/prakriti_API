@@ -10,11 +10,15 @@ module.exports = {
      * await queryInterface.createTable('users', { id: Sequelize.INTEGER });
      */
 
-    await queryInterface.addColumn('purities', 'value', {
-      type: Sequelize.STRING,
-      allowNull: true,
-      after: "name"
-    });
+    try {
+      await queryInterface.addColumn('purities', 'value', {
+        type: Sequelize.STRING,
+        allowNull: true,
+        after: "name"
+      });
+    } catch (e) {
+      // column already exists, skip
+    }
   },
 
   async down (queryInterface, Sequelize) {
