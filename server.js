@@ -12,7 +12,7 @@ const swaggerUi = require("swagger-ui-express");
 const fs = require('fs');
 const Pusher = require("pusher");
 require('module-alias/register');
-require('dotenv').config();
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 // Keep original console.log reference available to compactLog
 const _origLog = console.log.bind(console);
