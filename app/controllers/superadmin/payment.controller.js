@@ -867,6 +867,29 @@ exports.store = async (req, res) => {
                 );
               }
 
+              // Supplier is itself a wallet-holding admin and this purchase is
+              // linked to that admin's sale (B2B). Keep their sale ledger in
+              // sync so the payment reflects on both sides.
+              const isAdminSupplier =
+                !isPaymentToSuperAdmin &&
+                user &&
+                isAdmin(user.role_id) &&
+                item.sale_id;
+
+              if (isAdminSupplier && data.payment_mode != "cheque") {
+                await SaleModel.update(
+                  {
+                    due_amount: due_amount,
+                    paid_amount: paid_amount,
+                    status: status,
+                    due_date: data.due_date
+                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      : null,
+                  },
+                  { where: { id: item.sale_id }, transaction: t },
+                );
+              }
+
               let paymentStatus =
                 isPaymentToSuperAdmin || data.payment_mode == "cheque"
                   ? "pending"
@@ -930,6 +953,44 @@ exports.store = async (req, res) => {
               });
 
               await updateWalletRemainingBalance(currentUserID, payment2.id);
+
+              // Mirror the payment as a credit into the admin-supplier's wallet
+              // so it appears in their wallet history (previously this credit
+              // row was only created for superadmin suppliers).
+              if (isAdminSupplier) {
+                let supplierPayment = await PaymentModel.create({
+                  parent_id: payment2.id,
+                  user_id: currentUserID,
+                  payment_by: req.userId,
+                  amount: payment_amount,
+                  payment_mode: data.payment_mode,
+                  payment_type:
+                    data.payment_mode == "metal" ? "gold" : "wallet",
+                  remaining_balance: 0,
+                  notes: data.notes || null,
+                  cheque_no: data.cheque_no || null,
+                  txn_id: data.txn_id || null,
+                  weight: data.effective_weight || null,
+                  status: paymentStatus,
+                  payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
+                    "YYYY-MM-DD",
+                  ),
+                  table_type: "sale",
+                  table_id: item.sale_id,
+                  payment_belongs: data.user_id,
+                  due_date: data.due_date
+                    ? moment(data.due_date).format("YYYY-MM-DD")
+                    : null,
+                  type: "credit",
+                  purpose: "sale",
+                  can_accept: false,
+                });
+
+                await updateWalletRemainingBalance(
+                  data.user_id,
+                  supplierPayment.id,
+                );
+              }
 
               if (amount == 0) {
                 break;
