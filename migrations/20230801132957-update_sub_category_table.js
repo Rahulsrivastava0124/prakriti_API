@@ -8,10 +8,14 @@ module.exports = {
      * Example:
      * await queryInterface.createTable('users', { id: Sequelize.INTEGER });
      */
-    await queryInterface.addColumn('sub_categories', 'hsn_code', {
-      type: Sequelize.STRING,
-      after: "slug"
-    });
+    try {
+      await queryInterface.addColumn('sub_categories', 'hsn_code', {
+        type: Sequelize.STRING,
+        after: "slug"
+      });
+    } catch (e) {
+      // column already exists, skip
+    }
   },
 
   async down (queryInterface, Sequelize) {

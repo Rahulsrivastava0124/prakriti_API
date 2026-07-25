@@ -9,6 +9,13 @@ const base64FileUpload = async (file, filepath) => {
       console.error("Error in base64FileUpload: file is undefined or null");
       return false;
     }
+
+    const uploadBaseUrl = process.env.UPLOAD_BASE_URL || process.env.BASE_URL;
+    if (!uploadBaseUrl) {
+      console.error("Error in base64FileUpload: UPLOAD_BASE_URL is not defined in environment");
+      return false;
+    }
+
     const file_path = "public/uploads/" + filepath;
     let extension = file.split(";")[0].split("/")[1];
     const file_name = uuidv4() + "." + extension;
@@ -20,12 +27,10 @@ const base64FileUpload = async (file, filepath) => {
       fileName: file_name,
     });
 
-    // console.log(process.env.UPLOAD_BASE_URL + "public");
-
     let config = {
       method: "post",
       maxBodyLength: Infinity,
-      url: process.env.UPLOAD_BASE_URL + "public",
+      url: uploadBaseUrl + "public",
       headers: {
         "Content-Type": "application/json",
       },
@@ -73,7 +78,7 @@ const base64VideoFileUpload = async (file, filepath) => {
     let config = {
       method: "post",
       maxBodyLength: Infinity,
-      url: process.env.UPLOAD_BASE_URL + "public",
+      url: (process.env.UPLOAD_BASE_URL || process.env.BASE_URL) + "public",
       headers: {
         "Content-Type": "application/json",
       },
@@ -111,7 +116,7 @@ const removeFile = (filepath) => {
     let config = {
       method: "post",
       maxBodyLength: Infinity,
-      url: process.env.UPLOAD_BASE_URL + "remove-file",
+      url: (process.env.UPLOAD_BASE_URL || process.env.BASE_URL) + "remove-file",
       headers: {},
       data: data,
     };
@@ -174,7 +179,7 @@ const uploadPDF = async (
     const config = {
       method: "post",
       maxBodyLength: Infinity,
-      url: process.env.UPLOAD_BASE_URL + "upload-pdf",
+      url: (process.env.UPLOAD_BASE_URL || process.env.BASE_URL) + "upload-pdf",
       headers: {
         "Content-Type": "application/json",
       },

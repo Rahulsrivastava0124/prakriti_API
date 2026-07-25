@@ -642,6 +642,7 @@ exports.index = async (req, res) => {
       by_specific,
       manager,
       total_weight,
+      certificate_no,
     } = req.query;
     type = type === undefined ? "product" : type;
     let userID = !user_id
@@ -911,6 +912,10 @@ exports.index = async (req, res) => {
     /* prefix match so "3.3" finds 3.310, "3.310" finds exactly that weight */
     if (!isEmpty(total_weight)) {
       conditions.total_weight = { [Op.like]: `${String(total_weight).trim()}%` };
+    }
+
+    if (!isEmpty(certificate_no)) {
+      conditions.certificate_no = String(certificate_no).trim();
     }
 
     /*if (!isEmpty(qty)) {
