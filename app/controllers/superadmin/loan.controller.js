@@ -4,7 +4,7 @@ const db = require("@models");
 const moment = require('moment');
 const { base64FileUpload, base64VideoFileUpload, removeFile, filterFilesFromRemove } = require('@helpers/upload');
 const { isEmpty, isArray, priceFormat, getLoanEMI } = require("@helpers/helper");
-const { updateOrCreate, insertLoanEMI, getWorkingUserID, updateWalletRemainingBalance, getWalletBalance } = require("@library/common");
+const { updateOrCreate, insertLoanEMI, getWorkingUserID, updateWalletRemainingBalance, getWalletBalance, getRoleId } = require("@library/common");
 const { getPaginationOptions } = require('@helpers/paginator')
 const { LoanCollection } = require("@resources/superadmin/LoanCollection");
 const { LoanListCollection } = require("@resources/superadmin/LoanListCollection");
@@ -22,6 +22,10 @@ const UserModel = db.users;
  */
 exports.index = async (req, res) => {
   let { page, limit, investor_id } = req.query;
+  // Scope loans to the owner: a loan is only visible to the user who owns the
+  // linked investor (investor.parent_id). Loans have no owner column of their
+  // own, so we filter through the investor association.
+  let currentUserId = await getWorkingUserID(req);
   let conditions = {};
   if (!isEmpty(investor_id)) {
     conditions.user_id = investor_id;
@@ -38,7 +42,9 @@ exports.index = async (req, res) => {
     include: [
       {
         model: UserModel,
-        as: 'investor'
+        as: 'investor',
+        required: true,
+        where: { parent_id: currentUserId }
       }
     ],
     distinct: true
@@ -64,6 +70,17 @@ exports.store = async (req, res) => {
   let data = req.body;
 
   let userID = await getWorkingUserID(req);
+
+  // Ensure the loan is created only against an investor owned by this user.
+  let investor = await UserModel.findOne({
+    where: { id: data.user_id, role_id: getRoleId("investor"), parent_id: userID }
+  });
+  if (!investor) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("Investor not found"));
+  }
+
   try {
     //const trans = await sequelize.transaction(async (t) => {
 
@@ -141,6 +158,7 @@ exports.store = async (req, res) => {
  * @param {*} res 
  */
 exports.view = async (req, res) => {
+  let currentUserId = await getWorkingUserID(req);
   let loan = await LoanModel.findOne({
     where: { id: req.params.id },
     include: [
@@ -151,7 +169,9 @@ exports.view = async (req, res) => {
       },
       {
         model: UserModel,
-        as: 'investor'
+        as: 'investor',
+        required: true,
+        where: { parent_id: currentUserId }
       }
     ]
   });
@@ -168,7 +188,11 @@ exports.view = async (req, res) => {
  * @param {*} res 
  */
 exports.payment = async (req, res) => {
-  let loan = await LoanModel.findOne({ where: { id: req.params.id } });
+  let currentUserId = await getWorkingUserID(req);
+  let loan = await LoanModel.findOne({
+    where: { id: req.params.id },
+    include: [{ model: UserModel, as: 'investor', required: true, where: { parent_id: currentUserId } }]
+  });
   if (!loan) {
     return res.status(errorCodes.default).send(formatErrorResponse('Loan not found'));
   }
@@ -370,7 +394,11 @@ exports.payment = async (req, res) => {
  * @param {*} res 
  */
 exports.delete = async (req, res) => {
-  let loan = await LoanModel.findOne({ where: { id: req.params.id } });
+  let currentUserId = await getWorkingUserID(req);
+  let loan = await LoanModel.findOne({
+    where: { id: req.params.id },
+    include: [{ model: UserModel, as: 'investor', required: true, where: { parent_id: currentUserId } }]
+  });
   if (!loan) {
     return res.status(errorCodes.default).send(formatErrorResponse('Loan not found.'));
   }
