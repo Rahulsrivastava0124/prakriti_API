@@ -853,21 +853,22 @@ exports.index = async (req, res) => {
       for (let i = 0; i < sArr.length; i++) {
         let s = sArr[i].trim();
         if (s === "") continue;
-        // numeric price search
-        if (!isNaN(s)) {
-          const num = parseFloat(s);
-          sCond.push({ mrp: { [Op.lte]: num } });
+        // Text search across name / certificate_no / product code.
+        // NOTE: certificate numbers can be fully numeric (e.g. "042200272409"),
+        // so we must NOT treat a numeric token as an `mrp` filter here. There is
+        // no `mrp` column on the stocks table, so the old numeric branch threw
+        // "Unknown column 'mrp'" and made every all-numeric certificate
+        // un-searchable (the query errored and the UI showed "No data found").
+        // Price narrowing, when applicable, still happens in post-processing
+        // below using the computed item.mrp.
+        const sl = s.toLowerCase();
+        if (type == "product" || type == "return") {
+          sCond.push({ "$product.name$": { [Op.like]: `%${sl}%` } });
+          sCond.push({ certificate_no: sl });
+          sCond.push({ "$product.product_code$": { [Op.like]: `%${sl}%` } });
         } else {
-          // text search
-          const sl = s.toLowerCase();
-          if (type == "product" || type == "return") {
-            sCond.push({ "$product.name$": { [Op.like]: `%${sl}%` } });
-            sCond.push({ certificate_no: sl });
-            sCond.push({ "$product.product_code$": { [Op.like]: `%${sl}%` } });
-          } else {
-            sCond.push({ "$material.name$": { [Op.like]: `%${sl}%` } });
-            sCond.push({ "$purity.name$": { [Op.like]: `%${sl}%` } });
-          }
+          sCond.push({ "$material.name$": { [Op.like]: `%${sl}%` } });
+          sCond.push({ "$purity.name$": { [Op.like]: `%${sl}%` } });
         }
       }
       if (sCond.length) {
