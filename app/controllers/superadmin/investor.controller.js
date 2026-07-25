@@ -12,7 +12,7 @@ const {
 const { isEmpty, isArray } = require("@helpers/helper");
 const db = require("@models");
 const { Op } = require("sequelize");
-const { getRoleId, getNextUserName } = require("@library/common");
+const { getRoleId, getNextUserName, getWorkingUserID } = require("@library/common");
 const {
   InvestorCollection,
 } = require("@resources/superadmin/InvestorCollection");
@@ -31,11 +31,14 @@ var bcrypt = require("bcryptjs");
 exports.index = async (req, res) => {
   let { page, limit, all } = req.query;
   let roleId = getRoleId("investor");
+  // Scope investors to the owner (creator). An investor is only visible to the
+  // user who created it (parent_id), matching the supplier module convention.
+  let currentUserId = await getWorkingUserID(req);
 
   if (all == 1) {
     userModel
       .findAll({
-        where: { role_id: roleId },
+        where: { role_id: roleId, parent_id: currentUserId },
         order: [["name", "ASC"]],
       })
       .then(async (data) => {
@@ -54,7 +57,7 @@ exports.index = async (req, res) => {
     const paginatorOptions = getPaginationOptions(page, limit);
     userModel
       .findAndCountAll({
-        where: { role_id: roleId },
+        where: { role_id: roleId, parent_id: currentUserId },
         order: [["id", "DESC"]],
         offset: paginatorOptions.offset,
         limit: paginatorOptions.limit,
@@ -192,8 +195,9 @@ exports.store = async (req, res) => {
 exports.update = async (req, res) => {
   let data = req.body;
   let roleId = getRoleId("investor");
+  let currentUserId = await getWorkingUserID(req);
   let admin = await userModel.findOne({
-    where: { id: req.params.id, role_id: roleId },
+    where: { id: req.params.id, role_id: roleId, parent_id: currentUserId },
   });
   if (!admin) {
     return res
@@ -362,8 +366,9 @@ exports.update = async (req, res) => {
  */
 exports.fetch = async (req, res) => {
   let roleId = getRoleId("investor");
+  let currentUserId = await getWorkingUserID(req);
   let admin = await userModel.findOne({
-    where: { id: req.params.id, role_id: roleId },
+    where: { id: req.params.id, role_id: roleId, parent_id: currentUserId },
     include: [
       {
         model: districtModel,
@@ -400,9 +405,16 @@ exports.fetch = async (req, res) => {
  */
 exports.delete = async (req, res) => {
   let roleId = getRoleId("investor");
+  let currentUserId = await getWorkingUserID(req);
   let admin = await userModel.findOne({
-    where: { id: req.params.id, role_id: roleId },
+    where: { id: req.params.id, role_id: roleId, parent_id: currentUserId },
   });
+
+  if (!admin) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("Investor not found"));
+  }
 
   if (!isEmpty(admin.profile_image)) {
     removeFile(admin.profile_image);
