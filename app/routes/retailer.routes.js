@@ -18,6 +18,8 @@ module.exports = (app, express, io) => {
     //auth
     router.post("/auth/signin", signIn, authController.signin);
     router.post("/logout", [authJwt.verifyToken, authJwt.isRetailer], authController.logout);
+    router.post("/auth/forgot-password-send-link", [], authController.forgotPasswordSendLink);
+    router.post("/auth/reset-password", [], authController.resetPassword);
 
     //dashboard
     router.get("/dashboard", [], dashboardController.index);
