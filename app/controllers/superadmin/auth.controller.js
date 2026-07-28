@@ -210,7 +210,7 @@ exports.forgotPasswordSendLink = async(req, res) => {
         { where: { id: user.id } }
       );
 
-      let resetUrl = buildResetUrl('/super-admin', rawToken, user.email);
+      let resetUrl = buildResetUrl('superadmin', rawToken, user.email);
 
       try {
         await sendPasswordResetEmail({

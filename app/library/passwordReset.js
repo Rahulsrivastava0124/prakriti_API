@@ -12,14 +12,35 @@ const { sendEmail } = require("@library/common");
 const RESET_TOKEN_EXPIRES_MINUTES =
   Number(process.env.RESET_TOKEN_EXPIRES_MINUTES) || 60;
 
-const getAdminUrl = () =>
-  (process.env.ADMIN_URL || "http://localhost:8888").replace(/\/$/, "");
+/**
+ * Each admin portal is served on its own domain in the deployed environments
+ * (e.g. dev.super / dev.admin / dev.team .prakriti.one) but from a SINGLE
+ * bundle behind one nginx, so the React route prefix still applies on every
+ * domain — hence base URL *and* path prefix per portal.
+ *
+ * Locally all three live on one host (localhost:8888), so the per-portal vars
+ * can be left unset and everything falls back to ADMIN_URL.
+ */
+const PORTALS = {
+  superadmin: { env: "SUPERADMIN_URL", path: "/super-admin" },
+  admin: { env: "ADMIN_URL", path: "/admin" },
+  team: { env: "TEAM_URL", path: "" },
+};
+
+const stripTrailingSlash = (url) => url.replace(/\/$/, "");
+
+const getPortalUrl = (role) =>
+  stripTrailingSlash(
+    (PORTALS[role] && process.env[PORTALS[role].env]) ||
+      process.env.ADMIN_URL ||
+      "http://localhost:8888",
+  );
 
 // Storefront (prakriti_Frontend) — retailer + customer reset pages live here,
 // NOT on the admin panel. Note this is deliberately not the `BASE_URL` env var,
 // which points at the R2 asset CDN.
 const getStorefrontUrl = () =>
-  (process.env.STOREFRONT_URL || "http://localhost:8080").replace(/\/$/, "");
+  stripTrailingSlash(process.env.STOREFRONT_URL || "http://localhost:8080");
 
 const generateRawToken = () => crypto.randomBytes(32).toString("hex");
 
@@ -30,13 +51,22 @@ const withResetQuery = (base, rawToken, email) =>
   `${base}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
 
 /**
- * Build a reset link for an admin-panel role.
- * @param {string} rolePrefix - "/super-admin", "/admin", or "" (team = root)
+ * Build a reset link for an admin-panel portal.
+ * @param {string} role - "superadmin" | "admin" | "team"
  * @param {string} rawToken
  * @param {string} email
  */
-const buildResetUrl = (rolePrefix, rawToken, email) =>
-  withResetQuery(`${getAdminUrl()}${rolePrefix}`, rawToken, email);
+const buildResetUrl = (role, rawToken, email) => {
+  const portal = PORTALS[role];
+  if (!portal) {
+    throw new Error(`buildResetUrl: unknown portal role "${role}"`);
+  }
+  return withResetQuery(
+    `${getPortalUrl(role)}${portal.path}`,
+    rawToken,
+    email,
+  );
+};
 
 /**
  * Build a reset link for a storefront role.
