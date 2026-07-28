@@ -1102,6 +1102,11 @@ module.exports = (app, express, io) => {
     [authJwt.verifyToken, authJwt.isSuperAdmin],
     saleController.statuschange,
   );
+  router.get(
+    "/sales-on-approve/transfer-items/:id",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    saleController.transferItems,
+  );
   router.post(
     "/sales/return-stock-transfer",
     [authJwt.verifyToken, authJwt.isSuperAdmin],
