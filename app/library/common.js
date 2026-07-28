@@ -2309,6 +2309,12 @@ const sendEmail = (params) => {
     let transporter = nodemailer.createTransport({
       host: process.env.MAIL_HOST,
       port: process.env.MAIL_PORT,
+      // Port 465 requires implicit TLS. Honour an explicit MAIL_SECURE flag,
+      // otherwise default secure=true for 465 (needed for Gmail SMTP).
+      secure:
+        process.env.MAIL_SECURE != null
+          ? process.env.MAIL_SECURE === "true"
+          : Number(process.env.MAIL_PORT) === 465,
       auth: {
         user: process.env.MAIL_USERNAME,
         pass: process.env.MAIL_PASSWORD,
@@ -2321,6 +2327,17 @@ const sendEmail = (params) => {
       subject: params.subject,
       html: params.message,
     };
+
+    // A plain-text alternative makes the message multipart/alternative instead of
+    // HTML-only, which is one of the cheapest deliverability wins — HTML-only mail
+    // is a well-known spam signal. Callers that don't supply one are unchanged.
+    if (params.text) {
+      mailOptions.text = params.text;
+    }
+    // Give recipients a real address to reply to rather than a no-reply void.
+    if (params.replyTo || process.env.MAIL_REPLY_TO) {
+      mailOptions.replyTo = params.replyTo || process.env.MAIL_REPLY_TO;
+    }
 
     return new Promise(function (resolve, reject) {
       transporter.sendMail(mailOptions, function (error, info) {

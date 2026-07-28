@@ -50,6 +50,12 @@ module.exports = (app, express, io) => {
     authController.forgotPasswordVerifyOtp,
   );
   router.post("/auth/forgot-password", [], authController.forgotPassword);
+  router.post(
+    "/auth/forgot-password-send-link",
+    [],
+    authController.forgotPasswordSendLink,
+  );
+  router.post("/auth/reset-password", [], authController.resetPassword);
 
   //profile
   router.post(

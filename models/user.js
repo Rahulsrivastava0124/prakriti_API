@@ -147,6 +147,8 @@ module.exports = (sequelize, DataTypes) => {
     due_amount: DataTypes.DECIMAL(15, 2),
     avg_rating: DataTypes.DECIMAL(15, 2),
     reset_otp: DataTypes.STRING,
+    reset_token: DataTypes.STRING,
+    reset_token_expiry: DataTypes.DATE,
     dob: DataTypes.DATEONLY,
     marital_status: DataTypes.STRING,
     own: DataTypes.BOOLEAN,
