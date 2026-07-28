@@ -308,7 +308,7 @@ exports.forgotPasswordSendLink = async(req, res) => {
       );
 
       // Team portal is served at the domain root (no role prefix).
-      let resetUrl = buildResetUrl('', rawToken, user.email);
+      let resetUrl = buildResetUrl('team', rawToken, user.email);
 
       try {
         await sendPasswordResetEmail({
