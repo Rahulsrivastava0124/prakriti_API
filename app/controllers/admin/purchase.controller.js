@@ -5,6 +5,7 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
+const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const {
   isEmpty,
@@ -1614,7 +1615,7 @@ exports.returnProducts = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoiceInfo = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
@@ -2901,7 +2902,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
 };
 
 exports.downloadInvoiceItems = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
