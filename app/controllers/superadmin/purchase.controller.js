@@ -5,6 +5,7 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
+const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const {
   isEmpty,
@@ -472,7 +473,7 @@ exports.txnLedger = async (req, res) => {
  * Retrive purchase txn ledger pdf
  */
 exports.downloadTxnLedger = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let {
     page,
     limit,
@@ -4184,7 +4185,7 @@ const formatStockMaterials = (stockMaterials) => {
  * @param {*} res
  */
 exports.downloadInvoiceInfo = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
@@ -5496,7 +5497,7 @@ const removeCurrencyAndDecimalFromPrice = (str) => {
  * @param {*} res
  */
 exports.downloadInvoiceItemList = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
@@ -6166,7 +6167,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoiceItemDetails = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
