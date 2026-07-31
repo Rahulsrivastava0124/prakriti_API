@@ -5,6 +5,7 @@ const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
 const { getRoleId } = require("@library/common");
 const { addActivityLog } = require("@library/activityLog");
+const { validateNewPassword, changePasswordAndNotify } = require("@library/passwordChange");
 const {UserCollection} = require("@resources/superadmin/UserCollection");
 const UserModel = db.users;
 const orderProductModel = db.order_products;
@@ -83,18 +84,21 @@ exports.changePassword = async(req, res) => {
       return res.status(errorCodes.default).send(formatErrorResponse("Current password does not matched."));
     }*/
 
-    if(req.body.password != req.body.confirm_password){
-      res.status(errorCodes.default).send(formatErrorResponse("Password and confirm password doesn't match"));
-      return;
+    let invalid = validateNewPassword(req.body.password, req.body.confirm_password);
+    if (invalid) {
+      return res.status(errorCodes.default).send(formatErrorResponse(invalid));
     }
 
-    let data = {
-      password: bcrypt.hashSync(req.body.password, 8)
-    }
-
-    UserModel.update(data, { where: { id: req.userId } }).then(result => {
-      res.send(formatResponse(null, 'Password changed successfully!'));
-    }).catch(error => {
-      return res.status(errorCodes.default).send(formatErrorResponse('Password does not changed due to some error' ));
+    let result = await changePasswordAndNotify({
+      UserModel: UserModel,
+      user: user,
+      newPassword: req.body.password,
+      accountLabel: "Prakriti admin",
     });
+
+    if (! result.ok) {
+      return res.status(errorCodes.default).send(formatErrorResponse(result.message));
+    }
+
+    return res.send(formatResponse(null, 'Password changed successfully!'));
 };
