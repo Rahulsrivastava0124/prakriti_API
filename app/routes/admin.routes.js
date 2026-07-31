@@ -297,6 +297,16 @@ module.exports = (app, express, io) => {
     [authJwt.verifyToken, authJwt.isAdmin],
     saleCartController.delete,
   );
+  router.post(
+    "/sale-carts/hold",
+    [authJwt.verifyToken, authJwt.isAdmin],
+    saleCartController.hold,
+  );
+  router.post(
+    "/sale-carts/unhold/:id",
+    [authJwt.verifyToken, authJwt.isAdmin],
+    saleCartController.unhold,
+  );
 
   //suppliers
   router.get(

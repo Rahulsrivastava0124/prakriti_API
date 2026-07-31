@@ -1324,6 +1324,16 @@ module.exports = (app, express, io) => {
     [authJwt.verifyToken, authJwt.isSuperAdmin],
     cartController.delete,
   );
+  router.post(
+    "/carts/hold",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    cartController.hold,
+  );
+  router.post(
+    "/carts/unhold/:id",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    cartController.unhold,
+  );
   router.get(
     "/cart/checkdetail",
     [authJwt.verifyToken, authJwt.isSuperAdmin],
