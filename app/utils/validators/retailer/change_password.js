@@ -12,8 +12,8 @@ const { errorCodes, formatValidationResponse } = require("@utils/response.config
 const changePassword = (req, res, next) => {
   const validationRule = {
     "old_password": "required|string|min:4|max:255",
-    "new_password": "required|string|min:4|max:255",
-    "confirm_password": "required|string|min:4|max:255"
+    "new_password": "required|string|min:8|max:255",
+    "confirm_password": "required|string|min:8|max:255"
   }
   validator(req.body, validationRule, {}, (err, status) => {
     if (!status) {
