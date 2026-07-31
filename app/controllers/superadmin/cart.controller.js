@@ -251,6 +251,45 @@ exports.getCartItem = async (req, res) => {
   }
 }
 
+/**
+ * Hold cart items
+ * POST /superadmin/carts/hold
+ * Body: { cart_ids: [1,2,3], message: 'reason' }
+ */
+exports.hold = async (req, res) => {
+  try {
+    const { cart_ids, message } = req.body;
+    if (!cart_ids || !cart_ids.length) {
+      return res.status(errorCodes.default).send(formatErrorResponse('No cart items provided.'));
+    }
+    const userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+    await cartsModel.update(
+      { is_held: true, hold_message: message || '' },
+      { where: { id: { [Op.in]: cart_ids }, user_id: userID, type: 'sale' } }
+    );
+    res.send(formatResponse([], 'Items held successfully.'));
+  } catch (err) {
+    res.status(errorCodes.default).send(formatErrorResponse(err));
+  }
+};
+
+/**
+ * Unhold a cart item
+ * POST /superadmin/carts/unhold/:id
+ */
+exports.unhold = async (req, res) => {
+  try {
+    const userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+    await cartsModel.update(
+      { is_held: false, hold_message: null },
+      { where: { id: req.params.id, user_id: userID, type: 'sale' } }
+    );
+    res.send(formatResponse([], 'Item released from hold.'));
+  } catch (err) {
+    res.status(errorCodes.default).send(formatErrorResponse(err));
+  }
+};
+
 
 
 

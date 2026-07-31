@@ -194,7 +194,44 @@ exports.delete = async (req, res) => {
 
   res.send(formatResponse([], "Product removed from cart successfully."));
 
-}
+};
+
+/**
+ * Hold sale cart items
+ * POST /admin/sale-carts/hold
+ * Body: { cart_ids: [1,2,3], message: 'reason' }
+ */
+exports.hold = async (req, res) => {
+  try {
+    const { cart_ids, message } = req.body;
+    if (!cart_ids || !cart_ids.length) {
+      return res.status(errorCodes.default).send(formatErrorResponse('No cart items provided.'));
+    }
+    await cartsModel.update(
+      { is_held: true, hold_message: message || '' },
+      { where: { id: { [Op.in]: cart_ids }, user_id: req.userId, type: 'sale' } }
+    );
+    res.send(formatResponse([], 'Items held successfully.'));
+  } catch (err) {
+    res.status(errorCodes.default).send(formatErrorResponse(err));
+  }
+};
+
+/**
+ * Unhold a sale cart item
+ * POST /admin/sale-carts/unhold/:id
+ */
+exports.unhold = async (req, res) => {
+  try {
+    await cartsModel.update(
+      { is_held: false, hold_message: null },
+      { where: { id: req.params.id, user_id: req.userId, type: 'sale' } }
+    );
+    res.send(formatResponse([], 'Item released from hold.'));
+  } catch (err) {
+    res.status(errorCodes.default).send(formatErrorResponse(err));
+  }
+};
 
 
 

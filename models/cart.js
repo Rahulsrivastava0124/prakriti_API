@@ -56,6 +56,11 @@ module.exports = (sequelize, DataTypes) => {
     is_manual: DataTypes.BOOLEAN,
     order_id: DataTypes.INTEGER,
     order_product_id: DataTypes.INTEGER,
+    is_held: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    hold_message: DataTypes.STRING(500),
     createdAt: {
       field: 'created_at',
       type: DataTypes.DATE,
