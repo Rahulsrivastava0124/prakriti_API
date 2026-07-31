@@ -7,6 +7,8 @@ module.exports = (sequelize, DataTypes) => {
   }
 
   CompanyDetail.init({
+    // owner of the row — null is the super admin's, used as the fallback
+    user_id: DataTypes.INTEGER,
     logo: DataTypes.TEXT,
     company_name: DataTypes.STRING,
     corporate_office_address: DataTypes.TEXT,

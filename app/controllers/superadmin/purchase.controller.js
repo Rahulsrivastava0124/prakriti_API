@@ -5,6 +5,7 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
+const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const {
   isEmpty,
@@ -472,6 +473,7 @@ exports.txnLedger = async (req, res) => {
  * Retrive purchase txn ledger pdf
  */
 exports.downloadTxnLedger = async (req, res) => {
+  const company = await getCompanyDetails(req.userId);
   let {
     page,
     limit,
@@ -732,15 +734,16 @@ exports.downloadTxnLedger = async (req, res) => {
     }; */
     //res.send(formatResponse(result, "Purchase Ledger List"));
 
-    const logoUrl = `public/images/logo.png`;
-    // const logoUrl = process.env.BASE_URL + "public/images/logo.png";
-
-    const bitmap = fs.readFileSync(logoUrl);
-    const logo = bitmap.toString("base64");
+    let logo;
+    if (company.logo) {
+      const _logoRes = await require("axios").get(`${process.env.BASE_URL}${company.logo}`, { responseType: "arraybuffer" });
+      logo = Buffer.from(_logoRes.data).toString("base64");
+    } else {
+      logo = fs.readFileSync(`public/images/logo.png`).toString("base64");
+    }
 
     let footerhtml = `
-                <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; background-color: #f9f9f9;">
-                    <hr/>
+                <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; background-color: #f9f9f9; border-top: 2px solid #000;">
                     <table cellpadding="0" cellspacing="1" width="1000px" style="margin:auto;" >
                         <tbody>
                             <tr>
@@ -749,86 +752,7 @@ exports.downloadTxnLedger = async (req, res) => {
                                       align="center" width="90%">
                                       <div style="display: table; width:
                                           100%; font-size: 11px;">
-                                          <div style="display: table-cell;
-                                              width: 65%;">
-                                              <h5 style="margin: 0px;
-                                                  font-size: 11px;
-                                                  font-weight:
-                                                  600; text-transform:
-                                                  uppercase;">NOTE</h5>
-                                              <ul style="margin: 0;
-                                                  padding: 0px;
-                                                  list-style: none;">
-                                                  <span style="margin: 0;
-                                                      text-align: left;
-                                                      font-size: 11px;
-                                                      font-weight: 400; ">*
-                                                      Goods once sold will
-                                                      be taken back with
-                                                      condition</span>
-
-                                                  <li style="margin: 0;
-                                                      text-align: left;
-                                                      font-size: 11px;
-                                                      font-weight: 400;
-                                                      list-style-type:
-                                                      disc; margin-left:
-                                                      35px;">Returning
-                                                      minimum product
-                                                      value of Rs 5000/-
-                                                      above</li>
-                                                  <li style="margin: 0;
-                                                      text-align: left;
-                                                      font-size: 11px;
-                                                      font-weight: 400;
-                                                      list-style-type:
-                                                      disc; margin-left:
-                                                      35px;">Returning
-                                                      product taken back
-                                                      Less than 20-30% of
-                                                      my billing amount</li>
-                                                  <li style="margin: 0;
-                                                      text-align: left;
-                                                      font-size: 11px;
-                                                      font-weight: 400;
-                                                      list-style-type:
-                                                      disc; margin-left:
-                                                      35px;">If any Damage
-                                                      charge as per making
-                                                      cost only</li>
-                                                  <li style="margin: 0;
-                                                      text-align: left;
-                                                      font-size: 11px;
-                                                      font-weight: 400;
-                                                      list-style-type:
-                                                      disc; margin-left:
-                                                      35px;">No Charges
-                                                      taken on Sale
-                                                      product returning
-                                                      within 7 days from
-                                                      bill date</li>
-                                                  <li style="margin: 0;
-                                                      text-align: left;
-                                                      font-size: 11px;
-                                                      font-weight: 400;
-                                                      list-style-type:
-                                                      disc; margin-left:
-                                                      35px;">All disputes
-                                                      are subject to Patna
-                                                      Juridiction only</li>
-                                                  <li style="margin: 0;
-                                                      text-align: left;
-                                                      font-size: 11px;
-                                                      font-weight: 400;
-                                                      list-style-type:
-                                                      disc; margin-left:
-                                                      35px;">Charges may
-                                                      be appling cancel of
-                                                      order product making
-                                                      only</li>
-
-                                              </ul>
-                                          </div>
+                                          <div style="display: table-cell; width: 65%; vertical-align: top;"></div>
                                           <div style="display: table-cell;
                                               width: 35%;">
                                               <div style="display: flex;
@@ -937,8 +861,7 @@ exports.downloadTxnLedger = async (req, res) => {
                                                 220px; margin-left: 10px;">
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 12px;">Corporate Office -
-                                                P210 Strand Bank Road Brabzar
-                                                Kolkata 700 011</h3>
+                                                ${company.corporate_office_address || ''}</h3>
     
                                         </div>
                                         <div style="width: 35%; display: table-cell;
@@ -946,17 +869,17 @@ exports.downloadTxnLedger = async (req, res) => {
                                             left;">
                                             <h3 style="margin: 0;">
                                                 <span style="font-size: 16px;
-                                                    font-weight: 600;">Prakriti Head Office</span></h3>
+                                                    font-weight: 600;">${company.head_office_name || ''}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 14px;">GST No -
-                                                <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
+                                                <span style="font-weight: 600;">${company.gst_no || ''}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
                                                 font-size: 12px;">User Id - <span>${user.name}</span></h3>
                                             <h3 style="margin: 0; font-weight: 400;
-                                                font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
+                                                font-size: 12px;">Address - ${company.address || ''}</h3>
                                             <h3 style="font-weight: 600; font-size:
                                                 12px; margin: 0;">
-                                                support@Prakriti.one, +91 9117799755
+                                                ${company.email || ''}, ${company.phone || ''}
                                             </h3>
                                         </div>
                                     </div>
@@ -4262,6 +4185,7 @@ const formatStockMaterials = (stockMaterials) => {
  * @param {*} res
  */
 exports.downloadInvoiceInfo = async (req, res) => {
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
@@ -4404,18 +4328,17 @@ exports.downloadInvoiceInfo = async (req, res) => {
 
   purity18K = await PurityCollection(purity18K);
 
-  const cwd = process.cwd();
-  // const logoUrl = `file://${cwd}/public/images/logo.png`;
-  const logoUrl = `public/images/logo.png`;
-  // const logoUrl = process.env.BASE_URL + "public/images/logo.png";
-
-  const bitmap = fs.readFileSync(logoUrl);
-  const logo = bitmap.toString("base64");
+  let logo;
+  if (company.logo) {
+    const _logoRes = await require("axios").get(`${process.env.BASE_URL}${company.logo}`, { responseType: "arraybuffer" });
+    logo = Buffer.from(_logoRes.data).toString("base64");
+  } else {
+    logo = fs.readFileSync(`public/images/logo.png`).toString("base64");
+  }
 
   let footerhtml = `
           
-              <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; background-color: #f9f9f9;">
-                  <hr/>
+              <div class="invoice" style="width: 1000px; padding:15px; margin: 0px; background-color: #f9f9f9; border-top: 2px solid #000;">
                   <table cellpadding="0" cellspacing="1" width="1000px" style="margin:auto;" >
                       <tbody>
                           <tr>
@@ -4424,86 +4347,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                     align="center" width="90%">
                                     <div style="display: table; width:
                                         100%; font-size: 11px;">
-                                        <div style="display: table-cell;
-                                            width: 65%;">
-                                            <h5 style="margin: 0px;
-                                                font-size: 11px;
-                                                font-weight:
-                                                600; text-transform:
-                                                uppercase;">NOTE</h5>
-                                            <ul style="margin: 0;
-                                                padding: 0px;
-                                                list-style: none;">
-                                                <span style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400; ">*
-                                                    Goods once sold will
-                                                    be taken back with
-                                                    condition</span>
-
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    minimum product
-                                                    value of Rs 5000/-
-                                                    above</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    product taken back
-                                                    Less than 20-30% of
-                                                    my billing amount</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">If any Damage
-                                                    charge as per making
-                                                    cost only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">No Charges
-                                                    taken on Sale
-                                                    product returning
-                                                    within 7 days from
-                                                    bill date</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">All disputes
-                                                    are subject to Patna
-                                                    Juridiction only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Charges may
-                                                    be appling cancel of
-                                                    order product making
-                                                    only</li>
-
-                                            </ul>
-                                        </div>
+                                        <div style="display: table-cell; width: 65%; vertical-align: top;"></div>
                                         <div style="display: table-cell;
                                             width: 35%;">
                                             <div style="display: flex;
@@ -4560,22 +4404,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                 </div> -->
 
                                             </div>
-                                            <div style="margin-top:5px">
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Company Name - ${purchaseData.supplier_details.company_name}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    ${purchaseData.supplier_details.company_name},<br/>
-                                                      Ac. No - ${purchaseData.supplier_details.bank_account_no}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    IFSC Code -
-                                                    ${purchaseData.supplier_details.bank_ifsc}</p>
-                                            </div>
                                         </div>
                                     </div>
                                 </table></td>
@@ -4627,8 +4455,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                               220px; margin-left: 10px;">
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">Corporate Office -
-                                              P210 Strand Bank Road Brabzar
-                                              Kolkata 700 011</h3>
+                                              ${company.corporate_office_address || ''}</h3>
   
                                       </div>
                                       <div style="width: 35%; display: table-cell;
@@ -4636,17 +4463,17 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti Head Office</span></h3>
+                                                  font-weight: 600;">${company.head_office_name || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
+                                              <span style="font-weight: 600;">${company.gst_no || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${purchaseData.purchase_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
+                                              font-size: 12px;">Address - ${company.address || ''}</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.one, +91 9117799755
+                                              ${company.email || ''}, ${company.phone || ''}
                                           </h3>
                                       </div>
                                   </div>
@@ -4805,6 +4632,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                           </tr>
                                       </tbody>
                                   </table>`;
+  let metalHtml = "";
   if (purchaseData.subCatItems.length == 0) {
     html += `<table cellspacing="0" cellpadding="5"  style="margin-top:10px"
                             border="0"
@@ -5135,138 +4963,161 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                     </tbody>
                                 </table>`;
   } else {
-    html += `<table cellspacing="0" cellpadding="5"  style="margin-top:10px"
+    /* Making charge lookup per sub-category HSN, from the purchase products */
+    let makingChargeMap = {};
+    if (purchaseData.products) {
+      purchaseData.products.forEach((p) => {
+        const key = p.sub_category_hsn || "";
+        if (!makingChargeMap[key]) makingChargeMap[key] = 0;
+        makingChargeMap[key] += parseFloat(p.making_charge) || 0;
+      });
+    }
+
+    html += `<table cellspacing="0" cellpadding="5" style="margin-top:10px; border-collapse: collapse;"
                                       border="0"
                                       align="center" width="100%">
-                                      <thead style="background-color: #1E2757;">
-                                          <tr style="background-color: #1E2757;">
-                                              <th style="text-align: left; color:
-                                                  #fff; border: 1px solid #1E2757;
-                                                  font-size: 12px; font-weight:
-                                                  400;background-color: #1E2757; width:50px;">SL</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width:150px;">Product Name</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width: 50px;">QTY</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width: 50px;">HSN</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width:150px;">Material</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width: 50px">WT</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width:50px;">Unit</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width:50px;">Rate</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width:50px;">Tax@</th>
-                                              <th style="text-align: left; color:
-                                                  #fff; font-size: 12px;
-                                                  font-weight: 400; width:50px;">Taxable Amt.</th>
-                                          </tr>
-                                      </thead>
-                                      <tbody>`;
+                              <thead style="background-color: #1E2757;">
+                                  <tr style="background-color: #1E2757;">
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 32px; padding: 5px 3px;">S.No.</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 110px; padding: 5px 3px;">Product Name</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 40px; padding: 5px 3px;">Qty<br/>(Pcs)</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Code</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 95px; padding: 5px 3px;">Metals</th>
+                                      <th colspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; padding: 5px 3px;">Gross Weight</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 38px; padding: 5px 3px;">Unit</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 50px; padding: 5px 3px;">Rate</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 600; border: 1px solid #ffffff; width: 65px; padding: 5px 3px;"><b>Making<br/>Charge</b></th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Tax<br/>%</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 75px; padding: 5px 3px;">Amount (₹)</th>
+                                  </tr>
+                                  <tr style="background-color: #1E2757;">
+                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">N. Wt.</th>
+                                      <th style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 60px; padding: 5px 3px;">Total (GM)</th>
+                                  </tr>
+                              </thead>
+                              <tbody>`;
     let fine_metals = 0;
+    let totalGrossWeight = 0;
+    let materialTotals = {};
+    let totalTaxableAmt = 0;
+    let totalMakingCharge = 0;
+    let totalTax = 0;
+
+    if (purchaseData.products) {
+      purchaseData.products.forEach((product) => {
+        totalMakingCharge += parseFloat(product.making_charge) || 0;
+      });
+    }
+
     for (let i = 0; i < purchaseData.subCatItems.length; i++) {
-      purchaseData.subCatItems[i].material.map((itm) => {
+      let item = purchaseData.subCatItems[i];
+      item.material.map((itm) => {
         if (itm.id == 1) {
           fine_metals += parseFloat(itm.weight);
         }
       });
 
-      let materialNames = purchaseData.subCatItems[i].material
-        .map((itm) => itm.name)
-        .join("<br/ >");
-      let materialWts = purchaseData.subCatItems[i].material
-        .map((itm) => itm.weight.toFixed(2))
-        .join("<br/ >");
-      let materialUnits = purchaseData.subCatItems[i].material
-        .map((itm) => itm.unit)
-        .join("<br/ >");
-      let materialRates = purchaseData.subCatItems[i].material
-        .map((itm) => itm.rate.toFixed(2))
-        .join("<br/ >");
-      let bgTrColor = i % 2 == 0 ? "#C1BDBD" : "#C4BEED";
+      /* Calculate GW for this row */
+      let rowGrossWeight = 0;
+      item.material.forEach((mat) => {
+        rowGrossWeight += convertUnitToGram(mat.unit, mat.weight);
+        totalGrossWeight += convertUnitToGram(mat.unit, mat.weight);
+      });
 
-      html += `<tr style="background-color: ${bgTrColor}">
-                                              <td style="text-align: left;
-                                                  font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${i + 1}
-                                              </td>
-                                              <td style="text-align: left;
-                                                  font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${
-                                                    purchaseData.subCatItems[i]
-                                                      .name
-                                                  }
-                                              </td>
-                                              <td style="text-align: left;
-                                                  font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${
-                                                    purchaseData.subCatItems[i]
-                                                      .qty
-                                                  }
-                                              </td>
-                                              <td style="text-align:
-                                                  left; font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${
-                                                    purchaseData.subCatItems[i]
-                                                      .hsn
-                                                      ? purchaseData
-                                                          .subCatItems[i].hsn
-                                                      : ""
-                                                  }
-                                              </td>
-                                              <td style="text-align:
-                                                  left; font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${materialNames}
-                                              </td>
-                                              <td style="text-align:
-                                                  left; font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${materialWts}
-                                              </td>
-                                              <td style="text-align:
-                                                  left; font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${materialUnits}
-                                              </td>
-                                              <td style="text-align:
-                                                  left; font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${materialRates}
-                                              </td>
-                                              <td style="text-align:
-                                                  left; font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${
-                                                    purchaseData.subCatItems[i]
-                                                      .tax
-                                                  }
-                                              </td>
-                                              <td style="text-align:
-                                                  left; font-size: 14px;
-                                                  font-weight: 400;">
-                                                  ${purchaseData.subCatItems[
-                                                    i
-                                                  ].taxableAmount.toFixed(2)}
-                                              </td>
-  
-                                          </tr>`;
+      /* Accumulate material totals */
+      let taxableAmt = parseFloat(item.taxableAmount) || 0;
+      let taxPercent = parseFloat(item.tax) || 0;
+      totalTaxableAmt += taxableAmt;
+      totalTax += (taxableAmt * taxPercent) / 100;
+      item.material.forEach((mat) => {
+        const key = mat.name;
+        if (!materialTotals[key]) {
+          materialTotals[key] = {
+            weight: 0,
+            unit: mat.unit,
+            rate: parseFloat(mat.rate) || 0,
+            amount: 0,
+            isGold: key.toLowerCase().includes("gold"),
+          };
+        }
+        materialTotals[key].weight += parseFloat(mat.weight) || 0;
+        materialTotals[key].amount +=
+          (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0);
+      });
+
+      let materialNames = item.material.map((itm) => itm.name).join("<br/>");
+      let materialWts = item.material
+        .map((itm) => parseFloat(itm.weight).toFixed(3))
+        .join("<br/>");
+      let materialUnits = item.material.map((itm) => itm.unit).join("<br/>");
+      let materialRates = item.material
+        .map((itm) => parseFloat(itm.rate).toFixed(2))
+        .join("<br/>");
+      let bgTrColor = i % 2 == 0 ? "#f5f5f5" : "#ffffff";
+      let slNo = i + 1 <= 9 ? "0" + (i + 1) : i + 1;
+      let makingCharge = makingChargeMap[item.hsn] || 0;
+
+      html += `<tr style="background-color: ${bgTrColor}; border-bottom: 1px solid #e0e0e0;">
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${slNo}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.name}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.qty}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.hsn ? item.hsn : ""}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialNames}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialWts}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 600; padding: 6px 4px; border: 1px solid #e0e0e0;">${rowGrossWeight.toFixed(3)}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialUnits}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialRates}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${makingCharge > 0 ? makingCharge.toFixed(2) : "-"}</td>
+                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.tax}%</td>
+                  <td style="text-align: right; font-size: 11px; font-weight: 600; padding: 6px 4px; border: 1px solid #e0e0e0; color: #1E2746;">${item.taxableAmount.toFixed(2)}</td>
+              </tr>`;
     }
+
+    /* Summary rows below the table */
+    html += `<tr><td colspan="12" style="border-bottom: none; padding: 4px;"></td></tr>`;
+
+    /* Total Gross Weight */
+    html += `<tr>
+                <td colspan="5" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; border-bottom: 1px solid #e0e0e0;">Total Gross Weight (GW)</td>
+                <td colspan="2" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #e0e0e0;">${totalGrossWeight.toFixed(3)} gm</td>
+                <td colspan="5" style="border-bottom: 1px solid #e0e0e0;"></td>
+            </tr>`;
+
+    /* Material-wise totals (gold first) */
+    let matEntries = Object.entries(materialTotals).sort((a, b) => {
+      const aIsGold = a[0].toLowerCase().includes("gold") ? 1 : 0;
+      const bIsGold = b[0].toLowerCase().includes("gold") ? 1 : 0;
+      return aIsGold - bIsGold;
+    });
+    for (let idx = 0; idx < matEntries.length; idx++) {
+      let [name, data] = matEntries[idx];
+      let isGold = name.toLowerCase().includes("gold");
+      let fontWeight = isGold ? "600" : "400";
+      let fontColor = isGold ? "#1E2746" : "#555";
+      html += `<tr>
+                  <td colspan="4" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; border-bottom: 1px solid #eeeeee;">${name}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.weight.toFixed(3)} ${data.unit}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">x ${data.rate.toFixed(2)}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.amount.toFixed(2)}</td>
+                  <td colspan="2" style="border-bottom: 1px solid #eeeeee;"></td>
+              </tr>`;
+    }
+
+    /* Making Charge */
+    if (totalMakingCharge > 0) {
+      html += `<tr>
+                  <td colspan="8" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px;">Making Charge</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${totalMakingCharge.toFixed(2)}</td>
+                  <td colspan="2"></td>
+              </tr>`;
+    }
+
+    /* Taxable Amount total */
+    html += `<tr style="border: none;">
+                <td colspan="9" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">Taxable Amt.</td>
+                <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">${totalTaxableAmt.toFixed(2)}</td>
+            </tr>`;
+
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
@@ -5276,20 +5127,16 @@ exports.downloadInvoiceInfo = async (req, res) => {
       }
     });
     compactLog("fine_metals before : ", fine_metals);
-    compactLog(
-      "fine_metals 24k value : ",
-      (parseFloat(fine_metals) * parseFloat(purity18K.value)) / 100,
-    );
     /* convert gold to 24k from 18k */
     if (purity18K && purity18K.value != null) {
       fine_metals =
         (parseFloat(fine_metals) * parseFloat(purity18K.value)) / 100;
     }
+
     let rest_metal = fine_metals - receive_metal;
 
     let totalReportCharge = 0;
     let taxOnReportCharge = 0;
-    let afterTaxTotalReportCharge = 0;
     if (purchaseData.sale) {
       totalReportCharge =
         parseInt(purchaseData.sale.report_qty) *
@@ -5298,467 +5145,110 @@ exports.downloadInvoiceInfo = async (req, res) => {
         (totalReportCharge *
           parseFloat(purchaseData.sale.report_tax_percentage)) /
         100;
-      afterTaxTotalReportCharge = totalReportCharge + taxOnReportCharge;
     }
 
-    html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="6"
-                                          style="
-                                          border:none;">
-
-                                      </td>
-                                  </tr>`;
     if (purchaseData.sale && purchaseData.sale.report_qty > 0) {
-      html += `<tr style="
-                                        vertical-align: top;
-                                        background-color: #0A8AB8;
-                                        font-size: 12px; 
-                                        font-weight:400;
-                                        color:#ffffff;
-                                        ">
-                                        <td colspan="2"></td>
-                                        <td colspan="3">Rate</td>
-                                        <td colspan="2">Total</td>
-                                        <td colspan="1">Tax(%)</td>
-                                        <td colspan="1">Tax</td>
-                                        <td colspan="2">Total</td>
-                                        
-                                    </tr>`;
-      html += `<tr style="
-                                        vertical-align: top;
-                                        font-size: 14px; 
-                                        font-weight:400;
-                                        ">
-                                        <td colspan="2" style="background-color: #C1BDBD;">Report Charges : </td>
-                                        <td colspan="3" style="background-color: #C1BDBD;">${purchaseData.sale.report_qty} Pics x ${parseFloat(purchaseData.sale.report_charge).toFixed(2)} = </td>
-                                        <td colspan="2" style="background-color: #C1BDBD;">${totalReportCharge.toFixed(2)}</td>
-                                        <td colspan="1" style="background-color: #C1BDBD;">${parseFloat(purchaseData.sale.report_tax_percentage).toFixed(2)}</td>
-                                        <td colspan="1" style="background-color: #C1BDBD;">${taxOnReportCharge.toFixed(2)}</td>
-                                        <td colspan="2" style="background-color: #C1BDBD;">${afterTaxTotalReportCharge.toFixed(2)}</td>
-                                        
-                                    </tr>`;
-    }
-    html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="6"
-                                          style="
-                                          border:none;">
-
-                                      </td>
-                                  </tr>`;
-    if (metalExists) {
-      html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="2" style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 12px; font-weight:400; color:#ffffff;">Fine Metals : </td>
-                                      <td colspan="2" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;">${fine_metals.toFixed(2)} GM</td>
-                                      <td colspan="8" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;"></td>
-                                  </tr>`;
-    }
-    if (metalExists) {
-      html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="2" style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 12px; font-weight:400; color:#ffffff;">Receive Fine Metal : </td>
-                                      <td colspan="2" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;">${receive_metal.toFixed(2)} GM</td>
-                                      <td colspan="8" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;"></td>
-                                  </tr>`;
-    }
-    if (metalExists) {
-      html += `<tr style="
-                                      vertical-align: top;">
-                                      <td colspan="2" style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 12px; font-weight:400; color:#ffffff;">Rest : </td>
-                                      <td colspan="2" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;">${rest_metal.toFixed(2)} GM</td>
-                                      <td colspan="8" style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 14px; font-weight:400;"></td>
-                                  </tr>`;
+      html += `<tr style="border: none;">
+                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges (${parseFloat(purchaseData.sale.report_tax_percentage).toFixed(0)}%)</td>
+                  <td colspan="6" style="font-size: 12px; color: #555; padding: 2px 4px; border: none;">${purchaseData.sale.report_qty} Pics x ${parseFloat(purchaseData.sale.report_charge).toFixed(2)} =</td>
+                  <td colspan="4" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">${totalReportCharge.toFixed(2)}</td>
+              </tr>`;
     }
 
-    html += `   </tbody>
-                                          </table>`;
+    if (metalExists) {
+      metalHtml = `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse;">`;
+      [
+        ["Fine Metals :", fine_metals],
+        ["Receive Fine Metal :", receive_metal],
+        ["Rest :", rest_metal],
+      ].forEach(([label, val]) => {
+        metalHtml += `<tr>
+                  <td style="background-color: #0A8AB8; border-bottom: 1px solid #fff; font-size: 11px; font-weight: 400; color: #ffffff; padding: 5px 8px; width: 30%;">${label}</td>
+                  <td style="background-color: #C1BDBD; border-bottom: 1px solid #fff; font-size: 12px; font-weight: 400; padding: 5px 8px;">${val.toFixed(2)} GM</td>
+              </tr>`;
+      });
+      metalHtml += `</table>`;
+    }
+
+    html += ` </tbody>
+                          </table>`;
   }
   html += `
-                                          <div class="table-footer-area" style="display: table; width:
-                                            100%; margin-top: 10px">
-                                            <hr/>
-                                          </div>
-                                          <div
-
-                                              class="table-footer-area"
-                                              style="display: table; width:
-                                              100%; margin-top: 10px">
-                                              <div style="display:
-                                                  table-cell; width:
-                                                  74%">
-                                                  <div style="
-                                                      display: block;
-                                                      justify-content: flex-end;
-                                                      gap: 10px;
-                                                      width: 80%;
-                                                      
-                                                  ">
-                                                      <!--<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              left; font-size:
-                                                              14px;
-                                                              font-weight:
-                                                              600; display: flex; gap: 40px; justify-content: end;">
-                                                              <div>${
-                                                                purchaseData.total_tag_price
-                                                              }</div>
-                                                              <div>${
-                                                                purchaseData.product_discount
-                                                              }</div>
-                                                          </h4>
-                                                      </div>-->`;
-
+                        </td>
+                    </tr>
+                </tbody>
+              </table>
+          </div>
+          <div style="position: fixed; bottom: 0; left: 0; right: 0; background-color: #f9f9f9; padding: 6px 15px 4px 15px; border-top: 2px solid #1E2746;">
+            <div style="display: flex; width: 100%; gap: 0;">
+              <div style="flex: 0 0 68%; width: 68%; padding-right: 12px; box-sizing: border-box;">
+                ${metalHtml}
+                <div style="display: block; width: 100%; margin-top: 6px;">`;
   if (payments.length) {
-    html += `<table cellspacing="0"
-                                                          cellpadding="3"
-                                                         rules="rows"
-                                                          align="left"
-                                                          width="80%"
-                                                          style=" margin-top: 10px;margin-right:40px;">
-                                                          <tr
-                                                              style="background-color:
-                                                              #1E2757;
-                                                              color: #fff;">
-                                                              <th
-                                                                  style="font-weight:
-                                                                  400; font-size: 12px; text-align: left;">SL</th>
-                                                              <th
-                                                                  style="font-weight:
-                                                                  400; font-size: 12px; text-align: left;">PayDate</th>
-                                                              <th
-                                                                  style="font-weight:
-                                                                  400; font-size: 12px; text-align: left;"> Mode</th>
-                                                              <th
-                                                                  style="font-weight:
-                                                                  400; font-size: 12px; text-align: left;"> Note</th>
-                                                              <th
-                                                                  style="font-weight:
-                                                                  400; font-size: 12px; text-align: left;">Amount</th>
-                                                              `;
+    html += `<table cellspacing="0" cellpadding="3" rules="rows" align="left" width="100%">
+                <tr style="background-color: #1E2757; color: #fff;">
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">SL</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">PayDate</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">Mode</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">Note</th>
+                    <th style="font-weight: 400; font-size: 12px; text-align: left;">Amount</th>
+                </tr>`;
     for (let i = 0; i < payments.length; i++) {
-      html += `<tr
-                                                              style=" ">
-                                                              <td
-                                                                  style="border-right:
-                                                                  none; font-size: 12px;">${
-                                                                    i + 1
-                                                                  }</td>
-                                                              <td
-                                                                  style="border-right:
-                                                                  none; font-size: 12px;">${
-                                                                    payments[i]
-                                                                      .payment_date
-                                                                  }</td>
-                                                             
-                                                              <td
-                                                                  style="border-right:
-                                                                  none; font-size: 12px;">${
-                                                                    payments[i]
-                                                                      .payment_mode
-                                                                  }</td>
-                                                              <td
-                                                                  style="border-right:
-                                                                  none; font-size: 12px;">${
-                                                                    payments[i]
-                                                                      .notes
-                                                                  }</td>
-                                                              <td
-                                                                  style="border-right:
-                                                                  none; font-size: 12px;">${
-                                                                    payments[
-                                                                      i
-                                                                    ].payment_mode.toLowerCase() ==
-                                                                      "metal" &&
-                                                                    payments[i]
-                                                                      .weight !=
-                                                                      null
-                                                                      ? payments[
-                                                                          i
-                                                                        ].weight
-                                                                      : payments[
-                                                                          i
-                                                                        ].amount
-                                                                  }</td>
-                                                             
-                                                          </tr>`;
+      html += `<tr>
+                    <td style="font-size: 12px;">${i + 1}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_date}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_mode}</td>
+                    <td style="font-size: 12px;">${payments[i].notes}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
+                </tr>`;
     }
     html += `</table>`;
   }
   html += `</div>
-                                              </div>
-                                              
-                                              <div style="display:
-                                                  table-cell;
-                                                 
-                                                  width:
-                                                  26%">
-                                                  <div style="display: inline-table;
-                                                      justify-content: flex-end;
-                                                      ">
-                                                      <div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              Total <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.taxable_amount}"
-                                                                      style="max-width:
-                                                                      80px;font-Weight:600"></span></h4>
-                                                      </div>`;
-  if (purchaseData.is_same_state_trnx) {
-    html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              CGST Amt <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.cgst_tax}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
-    html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              SGST Amt <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.sgst_tax}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
-  } else {
-    html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              IGST Amt <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.igst_tax}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
-  }
-
-  html += `<div>
-                                                          
-                                                      </div>
-                                                      <div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              Sub Total <span
-                                                                  style=""
-                                                                  
-                                                                  >
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.total_amount}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>
-                                                      <div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              Cash Dist <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.discount}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>
-                                                      <div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              600; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              Total Payable <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.bill_amount}"
-                                                                      style="max-width:
-                                                                      80px;font-Weight:600"></span></h4>
-                                                      </div>
-                                                  </div>
-                                              
-                                          </div>
-                                          </div>
-                                          <div
-                                              class="table-footer-area"
-                                              style="display: table; width:
-                                              100%; margin-top: 10px;">
-                                              <div style="display:
-                                                  table-cell; width:
-                                                  74%">
-                                                  <div style="display: inline-flex;
-                                                      justify-content: flex-end;
-                                                      gap: 10px;">
-                                                      <div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              left;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;">
-                                                              <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.due_date}"
-                                                                      style="max-width:
-                                                                      80px;"></span>
-                                                              Due Date</h4>
-                                                      </div>
-                                                      
-                                                  </div>
-                                              </div>
-                                              <div style="display:
-                                                  table-cell; width:
-                                                  26%">
-                                                  <div style="display: inline-table;
-                                                      justify-content: flex-end;
-                                                      ">
-                                                      <div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              Paid Amount <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.paid_amount_display}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
-  if (purchaseData.return_amount) {
-    html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              Return Amount <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.return_amount}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>`;
-  }
-
-  html += `<div>
-                                                          <h4 style="margin:
-                                                              0;
-                                                              text-align:
-                                                              right;
-                                                              font-size:
-                                                              12px;
-                                                              font-weight:
-                                                              400; margin-bottom:
-                                                              5px;margin-right:10px ;">
-                                                              Rest Due Amt <span
-                                                                  style="">
-                                                                  <input
-                                                                      type="text"
-                                                                      value="${purchaseData.due_amount_display}"
-                                                                      style="max-width:
-                                                                      80px;"></span></h4>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                              </div>
-                                         <!-- <table cellspacing="0" cellpadding="0"
-                                              border="0"
-                                              align="center" width="100%"
-                                              style="position:absolute;bottom:30px;"
-                                              >
-                                              <tbody>
-                                                  <tr>
-                                                      <hr style="border: 0.5px
-                                                          solid #1E2757">
-                                                  </tr>
-                                              </tbody>
-                                          </table>-->
-                                          <!-- Footer -->
-                                          
-                                          ${footerhtml}
-                                      </td>
+                                <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed; margin-top: 8px;">
+                                  <tr>
+                                    <td style="width: 22%; font-size: 12px; font-weight: 400; padding: 3px 6px 3px 0; white-space: nowrap;">Due Date :</td>
+                                    <td style="width: 28%; padding: 3px 20px 3px 0;"><input type="text" value="${purchaseData.due_date}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; padding: 2px 4px;"></td>
+                                    <td style="width: 50%;"></td>
                                   </tr>
-  
-                              </tbody>
-                          </table>
-                      </div>
-                  </body>
-              </html>`;
+                                </table>
+                                ${purchaseData.notes && purchaseData.notes.trim() ? `<div style="font-size: 11px;"><span style="font-weight: 600;">Notes: </span><span style="font-weight: 400;">${purchaseData.notes}</span></div>` : ""}
+              </div>
+              <div style="flex: 0 0 32%; width: 32%; vertical-align: top;">
+                <table cellspacing="0" cellpadding="0" align="right" width="100%" style="border-collapse: collapse; table-layout: fixed;">`;
+  const amtRow = (label, value, bold = false) =>
+    `<tr>
+      <td style="width: 54%; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 3px 6px 3px 0; white-space: nowrap;">${label}</td>
+      <td style="width: 46%; padding: 3px 0;"><input type="text" value="${value}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 2px 4px;"></td>
+    </tr>`;
+  html += amtRow("Total", purchaseData.taxable_amount, true);
+  if (purchaseData.is_same_state_trnx && purchaseData.cgst_tax) {
+    html += amtRow("CGST Amt", purchaseData.cgst_tax);
+  }
+  if (purchaseData.is_same_state_trnx && purchaseData.sgst_tax) {
+    html += amtRow("SGST Amt", purchaseData.sgst_tax);
+  }
+  if (!purchaseData.is_same_state_trnx && purchaseData.igst_tax) {
+    html += amtRow("IGST Amt", purchaseData.igst_tax);
+  }
+  html += amtRow("Sub Total", purchaseData.total_amount);
+  html += amtRow("Cash Dist", purchaseData.discount);
+  html += amtRow("Total Payable", purchaseData.bill_amount, true);
+  html += amtRow("Paid Amount", purchaseData.paid_amount_display);
+  if (purchaseData.return_amount) {
+    html += amtRow(
+      "Return Amount",
+      purchaseData.return_amount ? purchaseData.return_amount : "0.00",
+    );
+  }
+  html += amtRow("Rest Due Amt", purchaseData.due_amount_display);
+  html += `</table>
+              </div>
+            </div>
+          </div>
+      </body>
+  </html>
+  `;
   /*let footerhtml_old = `<!DOCTYPE html>
   <html lang="en">
       <head>
@@ -5781,8 +5271,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
           'Poppins', sans-serif;"><div class="invoice" style="max-width: 800px; margin:auto; padding:
               5px;
-              background-color: #f9f9f9;">
-              <hr/>
+              background-color: #f9f9f9; border-top: 2px solid #000;">
               <table cellpadding="0" cellspacing="1" width="550px" style="margin:auto;" >
                   <tbody>
                       <tr>
@@ -5791,86 +5280,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                               align="center" width="90%">
                                               <div style="display: table; width:
                                                   100%; font-size: 8px;">
-                                                  <div style="display: table-cell;
-                                                      width: 65%;">
-                                                      <h5 style="margin: 0px;
-                                                          font-size: 8px;
-                                                          font-weight:
-                                                          600; text-transform:
-                                                          uppercase;">NOTE</h5>
-                                                      <ul style="margin: 0;
-                                                          padding: 0px;
-                                                          list-style: none;">
-                                                          <span style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400; ">*
-                                                              Goods once sold will
-                                                              be taken back with
-                                                              condition</span>
-  
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">Returning
-                                                              minimum product
-                                                              value of Rs 5000/-
-                                                              above</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">Returning
-                                                              product taken back
-                                                              Less than 20-30% of
-                                                              my billing amount</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">If any Damage
-                                                              charge as per making
-                                                              cost only</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">No Charges
-                                                              taken on Sale
-                                                              product returning
-                                                              within 7 days from
-                                                              bill date</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">All disputes
-                                                              are subject to Patna
-                                                              Juridiction only</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">Charges may
-                                                              be appling cancel of
-                                                              order product making
-                                                              only</li>
-  
-                                                      </ul>
-                                                  </div>
+                                                  <div style="display: table-cell; width: 65%; vertical-align: top;"></div>
                                                   <div style="display: table-cell;
                                                       width: 35%;">
                                                       <div style="display: flex;
@@ -5927,22 +5337,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                           </div>
   
                                                       </div> -->
-                                                      <div style="margin-top:5px">
-                                                          <p style="font-size:
-                                                              8px; margin: 0;
-                                                              line-height: 1.2; ">
-                                                              Company Name - ${purchaseData.user_details.company_name}</p>
-                                                          <p style="font-size:
-                                                              8px; margin: 0;
-                                                              line-height: 1.2; ">
-                                                              ${purchaseData.user_details.company_name},<br/>
-                                                               Ac. No - ${purchaseData.user_details.bank_account_no}</p>
-                                                          <p style="font-size:
-                                                              8px; margin: 0;
-                                                              line-height: 1.2; ">
-                                                              IFSC Code -
-                                                              ${purchaseData.user_details.bank_ifsc}</p>
-                                                      </div>
                                                   </div>
                                               </div>
                                           </table></td>
@@ -6103,6 +5497,7 @@ const removeCurrencyAndDecimalFromPrice = (str) => {
  * @param {*} res
  */
 exports.downloadInvoiceItemList = async (req, res) => {
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
@@ -6186,17 +5581,16 @@ exports.downloadInvoiceItemList = async (req, res) => {
     ],
   });
   payments = await PaymentCollection(payments); */
-  const cwd = process.cwd();
-  // const logoUrl = `file://${cwd}/public/images/logo.png`;
-  const logoUrl = `public/images/logo.png`;
-  // const logoUrl = process.env.BASE_URL + "public/images/logo.png";
-
-  const bitmap = fs.readFileSync(logoUrl);
-  const logo = bitmap.toString("base64");
+  let logo;
+  if (company.logo) {
+    const _logoRes = await require("axios").get(`${process.env.BASE_URL}${company.logo}`, { responseType: "arraybuffer" });
+    logo = Buffer.from(_logoRes.data).toString("base64");
+  } else {
+    logo = fs.readFileSync(`public/images/logo.png`).toString("base64");
+  }
 
   let footerhtml = `
-              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9;">
-                  <hr/>
+              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9; border-top: 2px solid #000;">
                   <table cellpadding="0" cellspacing="1"  style="margin:auto; width:100%" >
                       <tbody>
                           <tr>
@@ -6205,105 +5599,10 @@ exports.downloadInvoiceItemList = async (req, res) => {
                                     align="center" width="90%">
                                     <div style="display: table; width:
                                         100%; font-size: 11px;">
-                                        <div style="display: table-cell;
-                                            width: 65%;">
-                                            <h5 style="margin: 0px;
-                                                font-size: 11px;
-                                                font-weight:
-                                                600; text-transform:
-                                                uppercase;">NOTE</h5>
-                                            <ul style="margin: 0;
-                                                padding: 0px;
-                                                list-style: none;">
-                                                <span style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400; ">*
-                                                    Goods once sold will
-                                                    be taken back with
-                                                    condition</span>
-
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    minimum product
-                                                    value of Rs 5000/-
-                                                    above</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    product taken back
-                                                    Less than 20-30% of
-                                                    my billing amount</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">If any Damage
-                                                    charge as per making
-                                                    cost only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">No Charges
-                                                    taken on Sale
-                                                    product returning
-                                                    within 7 days from
-                                                    bill date</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">All disputes
-                                                    are subject to Patna
-                                                    Juridiction only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Charges may
-                                                    be appling cancel of
-                                                    order product making
-                                                    only</li>
-
-                                            </ul>
-                                        </div>
+                                        <div style="display: table-cell; width: 65%; vertical-align: top;"></div>
                                         <div style="display: table-cell;
                                             width: 35%;">
                                             
-                                            <div style="margin-top:5px">
-                                                <p style="
-                                                  font-size: 11px; 
-                                                  margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Company Name - ${purchaseData.supplier_details.company_name}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                      Ac. No - ${purchaseData.supplier_details.bank_account_no}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    IFSC Code -
-                                                    ${purchaseData.supplier_details.bank_ifsc}</p>
-                                            </div>
                                         </div>
                                     </div>
                                 </table></td>
@@ -6353,8 +5652,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
                                               220px; margin-left: 10px;">
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">Corporate Office -
-                                              P210 Strand Bank Road Brabzar
-                                              Kolkata 700 011</h3>
+                                              ${company.corporate_office_address || ''}</h3>
   
                                       </div>
                                       <div style="width: 35%; display: table-cell;
@@ -6362,17 +5660,17 @@ exports.downloadInvoiceItemList = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti Head Office</span></h3>
+                                                  font-weight: 600;">${company.head_office_name || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
+                                              <span style="font-weight: 600;">${company.gst_no || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${purchaseData.purchase_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
+                                              font-size: 12px;">Address - ${company.address || ''}</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.one, +91 9117799755
+                                              ${company.email || ''}, ${company.phone || ''}
                                           </h3>
                                       </div>
                                   </div>
@@ -6869,6 +6167,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoiceItemDetails = async (req, res) => {
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
     where: { id: req.params.id /*, user_id: userID*/ },
@@ -6998,18 +6297,17 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
     ],
   });
   payments = await PaymentCollection(payments);
-  const cwd = process.cwd();
-  // const logoUrl = `file://${cwd}/public/images/logo.png`;
-  const logoUrl = `public/images/logo.png`;
-  // const logoUrl = process.env.BASE_URL + "public/images/logo.png";
-
-  const bitmap = fs.readFileSync(logoUrl);
-  const logo = bitmap.toString("base64");
+  let logo;
+  if (company.logo) {
+    const _logoRes = await require("axios").get(`${process.env.BASE_URL}${company.logo}`, { responseType: "arraybuffer" });
+    logo = Buffer.from(_logoRes.data).toString("base64");
+  } else {
+    logo = fs.readFileSync(`public/images/logo.png`).toString("base64");
+  }
 
   let footerhtml = `
           
-              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9;">
-                  <hr/>
+              <div class="invoice" style="width: 96%; margin: 0px; background-color: #f9f9f9; border-top: 2px solid #000;">
                   <table cellpadding="0" cellspacing="1" style="margin:auto;; width:100%" >
                       <tbody>
                           <tr>
@@ -7018,86 +6316,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                     align="center" width="90%">
                                     <div style="display: table; width:
                                         100%; font-size: 11px;">
-                                        <div style="display: table-cell;
-                                            width: 65%;">
-                                            <h5 style="margin: 0px;
-                                                font-size: 11px;
-                                                font-weight:
-                                                600; text-transform:
-                                                uppercase;">NOTE</h5>
-                                            <ul style="margin: 0;
-                                                padding: 0px;
-                                                list-style: none;">
-                                                <span style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400; ">*
-                                                    Goods once sold will
-                                                    be taken back with
-                                                    condition</span>
-
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    minimum product
-                                                    value of Rs 5000/-
-                                                    above</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Returning
-                                                    product taken back
-                                                    Less than 20-30% of
-                                                    my billing amount</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">If any Damage
-                                                    charge as per making
-                                                    cost only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">No Charges
-                                                    taken on Sale
-                                                    product returning
-                                                    within 7 days from
-                                                    bill date</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">All disputes
-                                                    are subject to Patna
-                                                    Juridiction only</li>
-                                                <li style="margin: 0;
-                                                    text-align: left;
-                                                    font-size: 11px;
-                                                    font-weight: 400;
-                                                    list-style-type:
-                                                    disc; margin-left:
-                                                    35px;">Charges may
-                                                    be appling cancel of
-                                                    order product making
-                                                    only</li>
-
-                                            </ul>
-                                        </div>
+                                        <div style="display: table-cell; width: 65%; vertical-align: top;"></div>
                                         <div style="display: table-cell;
                                             width: 35%;">
                                             <div style="display: flex;
@@ -7151,21 +6370,6 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                                     </div>
                                                 </div>
 
-                                            </div>
-                                            <div style="margin-top:5px">
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Company Name - ${purchaseData.supplier_details.company_name}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    Ac. No - ${purchaseData.supplier_details.bank_account_no}</p>
-                                                <p style="font-size:
-                                                    11px; margin: 0;
-                                                    line-height: 1.2; ">
-                                                    IFSC Code -
-                                                    ${purchaseData.supplier_details.bank_ifsc}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -7226,8 +6430,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                               220px; margin-left: 10px;">
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">Corporate Office -
-                                              P210 Strand Bank Road Brabzar
-                                              Kolkata 700 011</h3>
+                                              ${company.corporate_office_address || ''}</h3>
   
                                       </div>
                                       <div style="width: 35%; display: table-cell;
@@ -7235,17 +6438,17 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                           left;">
                                           <h3 style="margin: 0;">
                                               <span style="font-size: 16px;
-                                                  font-weight: 600;">Prakriti Head Office</span></h3>
+                                                  font-weight: 600;">${company.head_office_name || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 14px;">GST No -
-                                              <span style="font-weight: 600;">19ABAFR4515L1ZZ</span></h3>
+                                              <span style="font-weight: 600;">${company.gst_no || ''}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
                                               font-size: 12px;">User Id - <span>${purchaseData.purchase_by_name}</span></h3>
                                           <h3 style="margin: 0; font-weight: 400;
-                                              font-size: 12px;">Address - Belur Kolkatta Patna Bihar 711 202</h3>
+                                              font-size: 12px;">Address - ${company.address || ''}</h3>
                                           <h3 style="font-weight: 600; font-size:
                                               12px; margin: 0;">
-                                              support@Prakriti.one, +91 9117799755
+                                              ${company.email || ''}, ${company.phone || ''}
                                           </h3>
                                       </div>
                                   </div>
@@ -8216,8 +7419,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
       <body style="box-sizing: border-box; padding: 0px; margin: 0px; font-family:
           'Poppins', sans-serif;"><div class="invoice" style="max-width: 800px; margin:auto; padding:
               5px;
-              background-color: #f9f9f9;">
-              <hr/>
+              background-color: #f9f9f9; border-top: 2px solid #000;">
               <table cellpadding="0" cellspacing="1" width="550px" style="margin:auto;" >
                   <tbody>
                       <tr>
@@ -8226,86 +7428,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                               align="center" width="90%">
                                               <div style="display: table; width:
                                                   100%; font-size: 8px;">
-                                                  <div style="display: table-cell;
-                                                      width: 65%;">
-                                                      <h5 style="margin: 0px;
-                                                          font-size: 8px;
-                                                          font-weight:
-                                                          600; text-transform:
-                                                          uppercase;">NOTE</h5>
-                                                      <ul style="margin: 0;
-                                                          padding: 0px;
-                                                          list-style: none;">
-                                                          <span style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400; ">*
-                                                              Goods once sold will
-                                                              be taken back with
-                                                              condition</span>
-  
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">Returning
-                                                              minimum product
-                                                              value of Rs 5000/-
-                                                              above</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">Returning
-                                                              product taken back
-                                                              Less than 20-30% of
-                                                              my billing amount</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">If any Damage
-                                                              charge as per making
-                                                              cost only</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">No Charges
-                                                              taken on Sale
-                                                              product returning
-                                                              within 7 days from
-                                                              bill date</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">All disputes
-                                                              are subject to Patna
-                                                              Juridiction only</li>
-                                                          <li style="margin: 0;
-                                                              text-align: left;
-                                                              font-size: 7px;
-                                                              font-weight: 400;
-                                                              list-style-type:
-                                                              disc; margin-left:
-                                                              35px;">Charges may
-                                                              be appling cancel of
-                                                              order product making
-                                                              only</li>
-  
-                                                      </ul>
-                                                  </div>
+                                                  <div style="display: table-cell; width: 65%; vertical-align: top;"></div>
                                                   <div style="display: table-cell;
                                                       width: 35%;">
                                                       <div style="display: flex;
@@ -8362,22 +7485,6 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                                           </div>
   
                                                       </div> -->
-                                                      <div style="margin-top:5px">
-                                                          <p style="font-size:
-                                                              8px; margin: 0;
-                                                              line-height: 1.2; ">
-                                                              Company Name - ${purchaseData.user_details.company_name}</p>
-                                                          <p style="font-size:
-                                                              8px; margin: 0;
-                                                              line-height: 1.2; ">
-                                                              ${purchaseData.user_details.company_name},<br/>
-                                                               Ac. No - ${purchaseData.user_details.bank_account_no}</p>
-                                                          <p style="font-size:
-                                                              8px; margin: 0;
-                                                              line-height: 1.2; ">
-                                                              IFSC Code -
-                                                              ${purchaseData.user_details.bank_ifsc}</p>
-                                                      </div>
                                                   </div>
                                               </div>
                                           </table></td>

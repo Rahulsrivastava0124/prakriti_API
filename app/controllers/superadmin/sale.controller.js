@@ -5,6 +5,7 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
+const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const { base64FileUpload, removeFile } = require("@helpers/upload");
 const {
@@ -60,6 +61,7 @@ const {
   ReportChargeCollection,
 } = require("@resources/superadmin/ReportChargeCollection");
 const { PurityCollection } = require("@resources/superadmin/PurityCollection");
+const { CartCollection } = require("@resources/superadmin/CartCollection");
 const { Op, json } = require("sequelize");
 const sequelize = db.sequelize;
 const ProductModel = db.products;
@@ -492,7 +494,7 @@ exports.txnLedger = async (req, res) => {
  * Retrive purchase txn ledger pdf
  */
 exports.downloadTxnLedger = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let {
     page,
     limit,
@@ -1897,12 +1899,15 @@ exports.store = async (req, res) => {
       );
     }
 
-    let carts = await cartModel.findAll({ where: { user_id: userID } });
-    let cartIds = arrayColumn(carts, "id");
-    await cartMaterialsModel.destroy({
-      where: { cart_id: { [Op.in]: cartIds } },
-    });
-    await cartModel.destroy({ where: { user_id: userID } });
+    /* a sale transferred from an approval never came from the cart, so leave it alone */
+    if (isEmpty(data.on_approval_id) || parseInt(data.on_approval_id) <= 0) {
+      let carts = await cartModel.findAll({ where: { user_id: userID } });
+      let cartIds = arrayColumn(carts, "id");
+      await cartMaterialsModel.destroy({
+        where: { cart_id: { [Op.in]: cartIds } },
+      });
+      await cartModel.destroy({ where: { user_id: userID } });
+    }
 
     /**
      * Add Retailer relationship with se
@@ -2464,50 +2469,12 @@ exports.statuschange = async (req, res) => {
           }
         }
       }
-    } else if (data.approve_status == 4) {
-      /**
-       * Clear cart data
-       */
-      let carts = await cartModel.findAll({ where: { user_id: userID } });
-      let cartIds = arrayColumn(carts, "id");
-      await cartMaterialsModel.destroy({
-        where: { cart_id: { [Op.in]: cartIds } },
-      });
-      await cartModel.destroy({ where: { user_id: userID } });
-
-      for (let item of sale.saleProducts) {
-        let quantity = 1;
-        let product = await ProductModel.findByPk(item.product_id);
-        if (
-          (product && product.type == "material") ||
-          (product.type != "material" && isEmpty(item.certificate_no))
-        ) {
-          quantity = item.saleMaterials[0].quantity;
-        }
-        let cart = await cartModel.create({
-          user_id: userID,
-          stock_id: null,
-          product_id: item.product_id,
-          size_id: item.size_id || null,
-          quantity: quantity,
-          total_weight: item.total_weight || null,
-          certificate_no: cleanInput(item.certificate_no),
-          sale_product_id: item.id,
-          type: "sale",
-        });
-        for (let x = 0; x < item.saleMaterials.length; x++) {
-          let material = item.saleMaterials[x];
-          await cartMaterialsModel.create({
-            cart_id: cart.id,
-            material_id: material.material_id,
-            purity_id: material.purity_id,
-            weight: material.weight,
-            unit_id: material.unit_id,
-            quantity: material.quantity,
-          });
-        }
-      }
     }
+    /**
+     * approve_status 4 (transfer to sale) does not touch the cart anymore.
+     * The sale create page reads the items from `transfer-items` instead, so
+     * the user's own cart stays untouched.
+     */
 
     res.send(formatResponse([], "Status Changed successfully!"));
   } catch (error) {
@@ -2515,6 +2482,99 @@ exports.statuschange = async (req, res) => {
     return res.status(errorCodes.default).send(formatErrorResponse(error));
   }
 };
+
+/**
+ * Items of a sale on approval, shaped like the cart list, so the sale create
+ * page can transfer them to a sale without putting anything in the cart.
+ *
+ * @param {*} req
+ * @param {*} res
+ */
+exports.transferItems = async (req, res) => {
+  let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+  let sale = await SaleModel.findOne({
+    /* only a sale that is still waiting on approval can be transferred */
+    where: {
+      id: req.params.id,
+      sale_by: userID,
+      is_approval: "1",
+      is_approved: "3",
+    },
+    include: [
+      {
+        model: SaleProductModel,
+        as: "saleProducts",
+        separate: true,
+        include: [
+          {
+            model: ProductModel,
+            as: "product",
+            include: [
+              { model: CategoryModel, as: "category" },
+              { model: SubCategoryModel, as: "sub_category" },
+              { model: taxSlabModel, as: "tax" },
+            ],
+          },
+          { model: SizeModel, as: "size" },
+          {
+            model: SaleProductMaterialModel,
+            as: "saleMaterials",
+            separate: true,
+            include: [
+              { model: MaterialModel, as: "material" },
+              { model: PurityModel, as: "purity" },
+              { model: UnitModel, as: "unit" },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  if (!sale) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("Sale on approval not found"));
+  }
+
+  /* same shape a cart row has, so CartCollection prices them the same way */
+  let items = sale.saleProducts.map((item) => {
+    let isLooseItem =
+      item.product &&
+      (item.product.type == "material" || isEmpty(item.certificate_no));
+    return {
+      id: item.id,
+      product_id: item.product_id,
+      product: item.product,
+      size_id: item.size_id,
+      size: item.size,
+      stock_id: null,
+      stock: null,
+      certificate_no: cleanInput(item.certificate_no),
+      current_image: null,
+      quantity: isLooseItem ? item.saleMaterials[0]?.quantity ?? 1 : 1,
+      total_weight: item.total_weight,
+      sale_product_id: item.id,
+      cartMaterial: item.saleMaterials,
+      order_product_id: 0,
+    };
+  });
+
+  let lastSale = await SaleModel.findOne({
+    attributes: ["id"],
+    order: [["id", "DESC"]],
+  });
+  res.send(
+    formatResponse(
+      {
+        items: await CartCollection(items, req),
+        total: items.length,
+        next_invoice: "RV-S-" + (lastSale ? lastSale.id + 1 : 1),
+      },
+      "sale on approval items",
+    ),
+  );
+};
+
 /**
  * View Sale
  *
@@ -5136,7 +5196,7 @@ exports.saleProducts = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoice = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     where: { id: req.params.id, sale_by: userID },
@@ -6581,7 +6641,7 @@ const removeCurrencyAndDecimalFromPrice = (str) => {
  * @param {*} res
  */
 exports.downloadInvoiceInfo = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     //as: "sales",
@@ -7288,7 +7348,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 110px; padding: 5px 3px;">Product Name</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 40px; padding: 5px 3px;">Qty<br/>(Pcs)</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Code</th>
-                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 95px; padding: 5px 3px;">Description</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 95px; padding: 5px 3px;">Metals</th>
                                       <th colspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; padding: 5px 3px;">Gross Weight</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 38px; padding: 5px 3px;">Unit</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 50px; padding: 5px 3px;">Rate</th>
@@ -7618,7 +7678,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoiceItemList = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     where: { id: req.params.id, sale_by: userID },
@@ -8268,7 +8328,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoiceItemDetails = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     where: { id: req.params.id, sale_by: userID },

@@ -5,6 +5,7 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
+const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const {
   isEmpty,
@@ -676,7 +677,7 @@ exports.delete = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoice = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let sale = await SaleModel.findOne({
     where: { id: req.params.id, sale_by: req.userId },
     include: [
@@ -1814,7 +1815,7 @@ exports.downloadInvoice = async (req, res) => {
  * @param {*} res
  */
 exports.downloadInvoiceInfo = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     //as: "sales",
@@ -2529,7 +2530,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 110px; padding: 5px 3px;">Product Name</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 40px; padding: 5px 3px;">Qty<br/>(Pcs)</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Code</th>
-                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 95px; padding: 5px 3px;">Description</th>
+                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 95px; padding: 5px 3px;">Metals</th>
                                       <th colspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; padding: 5px 3px;">Gross Weight</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 38px; padding: 5px 3px;">Unit</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 50px; padding: 5px 3px;">Rate</th>
@@ -2850,7 +2851,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
 };
 
 exports.downloadInvoiceItems = async (req, res) => {
-  const company = await db.company_details.findOne({ order: [['id', 'ASC']] }) || {};
+  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
     where: { id: req.params.id, sale_by: userID },

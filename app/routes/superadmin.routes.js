@@ -128,6 +128,12 @@ module.exports = (app, express, io) => {
     authController.forgotPasswordVerifyOtp,
   );
   router.post("/auth/forgot-password", [], authController.forgotPassword);
+  router.post(
+    "/auth/forgot-password-send-link",
+    [],
+    authController.forgotPasswordSendLink,
+  );
+  router.post("/auth/reset-password", [], authController.resetPassword);
 
   //profile
   router.get(
@@ -1096,6 +1102,11 @@ module.exports = (app, express, io) => {
     [authJwt.verifyToken, authJwt.isSuperAdmin],
     saleController.statuschange,
   );
+  router.get(
+    "/sales-on-approve/transfer-items/:id",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    saleController.transferItems,
+  );
   router.post(
     "/sales/return-stock-transfer",
     [authJwt.verifyToken, authJwt.isSuperAdmin],
@@ -1318,6 +1329,16 @@ module.exports = (app, express, io) => {
     "/carts/delete/:id",
     [authJwt.verifyToken, authJwt.isSuperAdmin],
     cartController.delete,
+  );
+  router.post(
+    "/carts/hold",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    cartController.hold,
+  );
+  router.post(
+    "/carts/unhold/:id",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    cartController.unhold,
   );
   router.get(
     "/cart/checkdetail",

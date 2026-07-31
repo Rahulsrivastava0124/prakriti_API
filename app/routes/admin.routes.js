@@ -24,6 +24,7 @@ const cartController = require("@controllers/admin/cart.controller");
 const orderController = require("@controllers/admin/order.controller");
 const paymentController = require("@controllers/admin/payment.controller");
 const profileController = require("@controllers/admin/profile.controller");
+const companyDetailsController = require("@controllers/admin/company-details.controller");
 const saleCartController = require("@controllers/admin/saleCart.controller");
 const purchaseController = require("@controllers/admin/purchase.controller");
 const supplierController = require("@controllers/admin/supplier.controller");
@@ -50,6 +51,12 @@ module.exports = (app, express, io) => {
     authController.forgotPasswordVerifyOtp,
   );
   router.post("/auth/forgot-password", [], authController.forgotPassword);
+  router.post(
+    "/auth/forgot-password-send-link",
+    [],
+    authController.forgotPasswordSendLink,
+  );
+  router.post("/auth/reset-password", [], authController.resetPassword);
 
   //profile
   router.post(
@@ -61,6 +68,18 @@ module.exports = (app, express, io) => {
     "/change-password",
     [authJwt.verifyToken, authJwt.isAdmin],
     profileController.changePassword,
+  );
+
+  // company details
+  router.get(
+    "/company-details",
+    [authJwt.verifyToken, authJwt.isAdmin],
+    companyDetailsController.index,
+  );
+  router.post(
+    "/company-details/update",
+    [authJwt.verifyToken, authJwt.isAdmin],
+    companyDetailsController.update,
   );
 
   //dashboard
@@ -283,6 +302,16 @@ module.exports = (app, express, io) => {
     "/sale-carts/delete/:id",
     [authJwt.verifyToken, authJwt.isAdmin],
     saleCartController.delete,
+  );
+  router.post(
+    "/sale-carts/hold",
+    [authJwt.verifyToken, authJwt.isAdmin],
+    saleCartController.hold,
+  );
+  router.post(
+    "/sale-carts/unhold/:id",
+    [authJwt.verifyToken, authJwt.isAdmin],
+    saleCartController.unhold,
   );
 
   //suppliers
