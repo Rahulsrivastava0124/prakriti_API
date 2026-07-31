@@ -256,11 +256,11 @@ exports.bestRetailers = async (req, res) => {
 
 exports.bestRetailerStates = async (req, res) => {
     /* let { state } = req.query; */
-    let query = "SELECT DISTINCT states.id, states.name FROM sales INNER JOIN users ON (users.id = sales.user_id) LEFT JOIN districts ON (districts.id = users.district_id) LEFT JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND sales.is_approved != 2 AND users.deleted_at IS NULL AND sales.deleted_at IS NULL";
+    let query = "SELECT DISTINCT states.id, states.name FROM users INNER JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND users.deleted_at IS NULL";
     /* if(state){
         query += ` AND states.name LIKE '%${state}%'`;
     } */
-    query += " GROUP BY states.id ORDER BY states.name ASC";
+    query += " ORDER BY states.name ASC";
     compactLog("bestRetailer states query ===========:> ", query);
     const users = await dbSequelize.query(query, { type: QueryTypes.SELECT });
     let retailers = [];
@@ -275,11 +275,11 @@ exports.bestRetailerStates = async (req, res) => {
 
 exports.bestRetailerCities = async (req, res) => {
     let { state } = req.query;
-    let query = "SELECT DISTINCT users.city FROM sales INNER JOIN users ON (users.id = sales.user_id) LEFT JOIN districts ON (districts.id = users.district_id) LEFT JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND sales.is_approved != 2 AND users.deleted_at IS NULL AND sales.deleted_at IS NULL";
+    let query = "SELECT DISTINCT users.city FROM users WHERE users.role_id = 5 AND users.partner=1 AND users.deleted_at IS NULL AND users.city IS NOT NULL AND users.city != ''";
     if(state){
         query += ` AND users.state_id='${state}'`;
     }
-    query += " GROUP BY users.city ORDER BY users.city ASC";
+    query += " ORDER BY users.city ASC";
     compactLog("bestRetailer cities query ===========:> ", query);
     const users = await dbSequelize.query(query, { type: QueryTypes.SELECT });
     let retailers = [];

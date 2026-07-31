@@ -81,6 +81,8 @@ const getModelObject = async (data) => {
         materials: cartMaterial,
         sub_cat_making_charge: sub_category ? sub_category.making_charge : 0,
         sub_cat_making_charge_type: sub_category ? sub_category.making_charge_type : '',
+        is_held: data.is_held || false,
+        hold_message: data.hold_message || ''
     }
 }
 
