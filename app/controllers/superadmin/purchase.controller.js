@@ -91,7 +91,7 @@ const cartMaterialsModel = db.cart_materials;
 const _ = require("lodash");
 const { base64FileUpload } = require("../../helpers/upload");
 const fs = require("fs");
-const html_to_pdf = require("html-pdf-node");
+const html_to_pdf = require("@helpers/pdf");
 
 // Note: logging is handled globally in server.js to prevent duplicate wrappers.
 
@@ -464,7 +464,6 @@ exports.txnLedger = async (req, res) => {
     };
     res.send(formatResponse(result, "Purchase Ledger List"));
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -1201,14 +1200,13 @@ exports.downloadTxnLedger = async (req, res) => {
             .status(errorCodes.default)
             .send(formatErrorResponse(error.toString()));
         }
-      })();
+      })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
     } catch (error) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse(error.toString()));
     }
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -5121,7 +5119,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
-      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight != null) {
+      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight) {
         metalExists = true;
         receive_metal += parseFloat(itm.weight);
       }
@@ -5199,7 +5197,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     <td style="font-size: 12px;">${payments[i].payment_date}</td>
                     <td style="font-size: 12px;">${payments[i].payment_mode}</td>
                     <td style="font-size: 12px;">${payments[i].notes}</td>
-                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
+                    <td style="font-size: 12px;">${payments[i].amount}${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight ? " (" + payments[i].weight + (payments[i].metal_rate ? " @ " + payments[i].metal_rate + "/GM" : "") + ")" : ""}</td>
                 </tr>`;
     }
     html += `</table>`;
@@ -5385,7 +5383,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -5475,7 +5472,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
           .status(errorCodes.default)
           .send(formatErrorResponse(error.toString()));
       }
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -6152,7 +6149,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
           .status(errorCodes.default)
           .send(formatErrorResponse(error.toString()));
       }
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -7533,7 +7530,6 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -7622,7 +7618,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           .status(errorCodes.default)
           .send(formatErrorResponse(error.toString()));
       }
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {

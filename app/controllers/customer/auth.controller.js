@@ -270,7 +270,6 @@ exports.sendpassword = async (req, res) => {
             return res.status(errorCodes.default).send(formatErrorResponse(errorCodes.defaultErrorMsg));
         }
     } catch (error) {
-      console.error("email send error:", error && error.message ? error.message : error);
         return res.status(errorCodes.default).send(formatErrorResponse(errorCodes.defaultErrorMsg));
     }
 

@@ -6,13 +6,11 @@ const axios = require("axios");
 const base64FileUpload = async (file, filepath) => {
   try {
     if (!file) {
-      console.error("Error in base64FileUpload: file is undefined or null");
       return false;
     }
 
     const uploadBaseUrl = process.env.UPLOAD_BASE_URL || process.env.BASE_URL;
     if (!uploadBaseUrl) {
-      console.error("Error in base64FileUpload: UPLOAD_BASE_URL is not defined in environment");
       return false;
     }
 
@@ -39,13 +37,11 @@ const base64FileUpload = async (file, filepath) => {
 
     try {
       const response = await axios.request(config);
-      console.log(JSON.stringify(response.data));
       return await {
         file_name: response.data.file_name,
         path: response.data.path,
       };
     } catch (error) {
-      console.error(error);
       return false; // Return false in case of an error
     }
     // return await {
@@ -53,7 +49,6 @@ const base64FileUpload = async (file, filepath) => {
     //   path: response.path,
     // };
   } catch (e) {
-    console.error("Error in base64FileUpload:", e.message);
     return false; // Return false in case of an error
   }
 };
@@ -73,7 +68,6 @@ const base64VideoFileUpload = async (file, filepath) => {
       fileName: file_name,
     });
 
-    // console.log(process.env.BASE_URL + "public");
 
     let config = {
       method: "post",
@@ -87,17 +81,14 @@ const base64VideoFileUpload = async (file, filepath) => {
 
     try {
       const response = await axios.request(config);
-      console.log(JSON.stringify(response.data));
       return {
         file_name: response.data.file_name,
         path: response.data.path,
       };
     } catch (error) {
-      console.error(error);
       return false; // Return false in case of an error
     }
   } catch (e) {
-    console.error("Error in base64VideoFileUpload:", e.message);
     return false;
   }
 };
@@ -124,7 +115,6 @@ const removeFile = (filepath) => {
     axios
       .request(config)
       .then((response) => {
-        console.log(JSON.stringify(response.data));
         return true;
       })
       .catch((error) => {
@@ -136,8 +126,6 @@ const removeFile = (filepath) => {
 };
 
 const filterFilesFromRemove = (files, removeFiles) => {
-  // console.log("filterFilesFromRemove  file ---", files);
-  // console.log("filterFilesFromRemove removeFiles ---", removeFiles);
   if (isArray(files) && isArray(removeFiles)) {
     let newArr = [];
     for (let i = 0; i < files.length; i++) {
@@ -155,7 +143,6 @@ const filterFilesFromRemove = (files, removeFiles) => {
       }
     }
 
-    console.log("newArr", newArr);
 
     return newArr;
   } else {
@@ -174,7 +161,6 @@ const uploadPDF = async (
       pathName,
       fileName,
     };
-    console.log("Uploading PDF with data:", data);
 
     const config = {
       method: "post",
@@ -187,10 +173,8 @@ const uploadPDF = async (
     };
 
     const response = await axios.request(config);
-    console.log("PDF upload response:", response.data);
     return response.data; // Return the server's response
   } catch (error) {
-    console.error("Error uploading PDF:", error.message);
     return { success: false, message: error.message }; // Return error details
   }
 };

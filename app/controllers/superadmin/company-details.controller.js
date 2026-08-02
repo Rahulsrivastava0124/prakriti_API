@@ -54,7 +54,6 @@ exports.update = async (req, res) => {
           logoPath = result.path;
         }
       } catch (uploadErr) {
-        console.error('Logo upload failed:', uploadErr.message);
         // keep existing logoPath — don't block the save
       }
     }
