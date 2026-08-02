@@ -41,7 +41,6 @@ const getModelObject = async(data, loadPayments) => {
     }
     
     let no_of_products = await PurchaseProductModel.count({where: {purchase_id: data.id}});
-    // console.log("--------------PurchasesList",data);
     return {
         id: data.id,
         supplier_name: data.supplier ? data.supplier.name : '',

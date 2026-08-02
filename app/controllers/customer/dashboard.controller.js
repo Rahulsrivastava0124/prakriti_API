@@ -215,7 +215,7 @@ exports.stock_products_slider = async (req, res) => {
  */
 exports.bestRetailers = async (req, res) => {
     let { state, city } = req.query;
-    let query = "SELECT users.id, users.profile_image, users.name, users.company_name, states.name as `state_name`, districts.name as `district_name`, users.city, users.mobile, users.state_id, users.created_at, SUM(sales.bill_amount) AS total_amount FROM sales INNER JOIN users ON (users.id = sales.user_id) LEFT JOIN districts ON (districts.id = users.district_id) LEFT JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND sales.is_approved != 2 AND users.deleted_at IS NULL AND sales.deleted_at IS NULL";
+    let query = "SELECT users.id, users.profile_image, users.name, users.company_name, states.name as `state_name`, districts.name as `district_name`, users.city, users.mobile, users.state_id, users.created_at, SUM(sales.bill_amount) AS total_amount FROM users LEFT JOIN sales ON (sales.user_id = users.id AND sales.is_approved != 2 AND sales.deleted_at IS NULL) LEFT JOIN districts ON (districts.id = users.district_id) LEFT JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND users.deleted_at IS NULL";
     if(state){
         query += ` AND users.state_id='${state}'`;
     }
@@ -244,7 +244,7 @@ exports.bestRetailers = async (req, res) => {
             company_name: item.company_name || '',
             district_name: item.district_name || '',
             city: item.city || '',
-            state_name: state.name || '',
+            state_name: state ? state.name : '',
             mobile: item.mobile || '',
             since: 1990,
             address: address.join(", "),
@@ -256,7 +256,7 @@ exports.bestRetailers = async (req, res) => {
 
 exports.bestRetailerStates = async (req, res) => {
     /* let { state } = req.query; */
-    let query = "SELECT DISTINCT states.id, states.name FROM users INNER JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND users.deleted_at IS NULL";
+    let query = "SELECT DISTINCT states.id, states.name FROM users INNER JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.deleted_at IS NULL";
     /* if(state){
         query += ` AND states.name LIKE '%${state}%'`;
     } */
@@ -275,7 +275,7 @@ exports.bestRetailerStates = async (req, res) => {
 
 exports.bestRetailerCities = async (req, res) => {
     let { state } = req.query;
-    let query = "SELECT DISTINCT users.city FROM users WHERE users.role_id = 5 AND users.partner=1 AND users.deleted_at IS NULL AND users.city IS NOT NULL AND users.city != ''";
+    let query = "SELECT DISTINCT users.city FROM users WHERE users.role_id = 5 AND users.deleted_at IS NULL AND users.city IS NOT NULL AND users.city != ''";
     if(state){
         query += ` AND users.state_id='${state}'`;
     }
@@ -297,11 +297,11 @@ exports.bestRetailerCities = async (req, res) => {
 exports.bestRetailerView = async (req, res) => {
     let { id } = req.query;
 
-    let query = "SELECT users.id, users.profile_image, users.name, users.company_name, states.name as `state_name`, districts.name as `district_name`, users.city, users.landmark, users.mobile, users.email, users.gst, users.state_id, users.created_at, SUM(sales.bill_amount) AS total_amount FROM sales INNER JOIN users ON (users.id = sales.user_id) LEFT JOIN districts ON (districts.id = users.district_id) LEFT JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND sales.is_approved != 2 AND users.deleted_at IS NULL AND sales.deleted_at IS NULL";
+    let query = "SELECT users.id, users.profile_image, users.name, users.company_name, states.name as `state_name`, districts.name as `district_name`, users.city, users.landmark, users.mobile, users.email, users.gst, users.state_id, users.created_at, SUM(sales.bill_amount) AS total_amount FROM users LEFT JOIN sales ON (sales.user_id = users.id AND sales.is_approved != 2 AND sales.deleted_at IS NULL) LEFT JOIN districts ON (districts.id = users.district_id) LEFT JOIN states ON (states.id = users.state_id) WHERE users.role_id = 5 AND users.partner=1 AND users.deleted_at IS NULL";
     if(id){
         query += ` AND users.id = '${id}'`;
     }
-    query += "";
+    query += " GROUP BY users.id";
     compactLog("bestRetailer view query ===========:> ", query);
     const users = await dbSequelize.query(query, { type: QueryTypes.SELECT });
     let retailers = [];

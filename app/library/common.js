@@ -260,7 +260,6 @@ const sendSMS = (mobiles, type, params) => {
       flow_id: flow_id,
       recipients: recipients,
     };
-    //console.log(postData);
     clientServerOptions = {
       uri: "http://api.msg91.com/api/v5/flow/",
       body: JSON.stringify(postData),
@@ -283,8 +282,6 @@ const sendSMS = (mobiles, type, params) => {
   });
 
   /*request(clientServerOptions, function (error, response) {
-        console.log('error', error);
-        console.log('response', response);
         return;
     });*/
 };
@@ -596,7 +593,6 @@ const calculateProductPrice = async (
     total_mrp_price = 0,
     total_sale_price = 0;
 
-  //console.log("materials : ", materials);
 
   for (let i = 0; i < materials.length; i++) {
     /* let materialPriceObj = await MaterialPriceModel.findOne({
@@ -610,7 +606,6 @@ const calculateProductPrice = async (
         },
       ],
     }); */
-    //console.log("materialPriceObj : ", materialPriceObj);
     let price = 0,
       mrp = 0,
       unit_based_mrp = 0,
@@ -621,9 +616,6 @@ const calculateProductPrice = async (
         "unit" in materials[i] && materials[i].unit
           ? materials[i].unit.name
           : "";
-    //console.log("materials[i].material : ", materials[i].material);
-    //console.log("materials[i].material.material_price.materialPricePurities : ", materials[i].material.material_price.materialPricePurities);
-    //console.log(materials[i].material.material_price.materialPricePurities.filter((mpp) => mpp.purity_id == materials[i].purity_id).pop());
     let materialPricePurity =
       materials[i].material &&
       materials[i].material.material_price &&
@@ -633,11 +625,9 @@ const calculateProductPrice = async (
             .filter((mpp) => mpp.purity_id == materials[i].purity_id)
             .pop()
         : null;
-    //console.log("materialPricePurity : ", materialPricePurity);
     //if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
     if (materialPricePurity) {
       //let materialPrice = materialPriceObj.materialPricePurities[0];
-      //console.log("materials[i].material.material_price.materialPricePurities : ", materials[i].material.material_price.materialPricePurities);
       let materialPrice = materialPricePurity;
       //mrp = parseFloat(materialPrice.per_gram_price);
       //mrp = parseFloat(materialPrice[price_type]);
@@ -654,7 +644,6 @@ const calculateProductPrice = async (
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
-          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -755,7 +744,6 @@ const calculateProductPriceCartNew = async (
     : (stockData && Array.isArray(stockData.stockMaterials) ? stockData.stockMaterials : []);
   const stockSize = stockData && stockData.size ? stockData.size : null;
 
-  console.log("role_id : ", role_id);
   let price_type = "",
     discount_type = "",
     making_dis_type = "";
@@ -796,7 +784,6 @@ const calculateProductPriceCartNew = async (
       dis_type = "customer_discount";
       macking_dis_type = "customer_discount";
     }*/
-      //console.log(materials.get({ plain: true}));
 
   /* for all stock metirials */
   for (let i = 0; i < materials.length; i++) {
@@ -851,7 +838,6 @@ const calculateProductPriceCartNew = async (
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
-          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -921,9 +907,7 @@ const calculateProductPriceCartNew = async (
         }
       }*/
     }
-    //console.log("===============================");
     materials[i] = materials[i].get({ plain: true});
-    //console.log(materials); return false;
     materialsNew.push({
       ...materials[i],
       material_name: materials[i].material.name,
@@ -974,7 +958,6 @@ const calculateProductPriceCartNew = async (
   total_sale_price += total_making_charge;
 
   let total_tax = 0;
-  console.log("tax_info : ", tax_info);
   if (tax_info) {
     /* let igst = 0;
     let cgst = !isEmpty(tax_info.cgst)
@@ -1014,7 +997,6 @@ const calculateProductPriceCartNew = async (
       : 0;
     total_mrp_price += igst + cgst_m + sgst_m;
     total_sale_price += igst + cgst + sgst;
-    console.log(`igst + cgst + sgst : ${igst} + ${cgst} + ${sgst}, ${priceFormat(igst + cgst + sgst)}`);
     total_tax = priceFormat(igst + cgst + sgst);
   }
 
@@ -1096,7 +1078,6 @@ const calculateProductPriceCart = async (
     total_material_discount = 0,
     total_mrp_price = 0,
     total_sale_price = 0;
-  console.log("materials : ", materials);
   for (let i = 0; i < materials.length; i++) {
     let materialPriceObj = await MaterialPriceModel.findOne({
       where: { material_id: materials[i].material_id },
@@ -1134,7 +1115,6 @@ const calculateProductPriceCart = async (
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
-          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -1171,7 +1151,6 @@ const calculateProductPriceCart = async (
       total_gram: weightFormat(total_gram),
     });
   }
-  console.log("total_mrp_price : ", total_mrp_price);
   let total_making_charge = 0;
   let making_charge_type = sub_category ? sub_category.making_charge_type : "";
   let making_charge = sub_category ? sub_category.making_charge : 0;
@@ -1188,7 +1167,6 @@ const calculateProductPriceCart = async (
     (total_making_charge * making_charge_discount_percent) / 100
   );
   total_mrp_price += total_making_charge;
-  console.log("total_mrp_price after making charge : ", total_mrp_price);
   total_making_charge = priceFormat(total_making_charge - discount_amount);
   total_discount += discount_amount;
   total_sale_price += total_making_charge;
@@ -1203,7 +1181,6 @@ const calculateProductPriceCart = async (
       ? priceFormat((total_mrp_price * parseFloat(tax_info.sgst)) / 100, true)
       : 0;
     total_mrp_price += igst + cgst + sgst;
-    console.log("total_mrp_price after tax : ", total_mrp_price);
     total_tax = igst + cgst + sgst;
     total_sale_price += priceFormat(igst + cgst + sgst);
   }
@@ -1232,7 +1209,6 @@ const calculateProductPriceReport = async (
   tax_info,
   fromCart
 ) => {
-  console.log("price_by_role : ", price_by_role);
   let price_type = "",
     discount_type = "",
     making_dis_type = "";
@@ -1263,7 +1239,6 @@ const calculateProductPriceReport = async (
     total_material_discount = 0,
     total_mrp_price = 0,
     total_sale_price = 0;
-  console.log("materials : ", materials);
   for (let i = 0; i < materials.length; i++) {
     let materialPriceObj = await MaterialPriceModel.findOne({
       where: { material_id: materials[i].material_id },
@@ -1289,26 +1264,19 @@ const calculateProductPriceReport = async (
     if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
       let materialPrice = materialPriceObj.materialPricePurities[0];
       //mrp = parseFloat(materialPrice.per_gram_price);
-      console.log('price_type:', price_type);
-      console.log('materialPrice : ', JSON.stringify(materialPrice));
       //mrp = parseFloat(materialPrice[price_type]);
       mrp = parseFloat(materialPrice.price);
-      console.log('material mrp : ', mrp);
       unit_based_mrp = convertPerGramPriceToPerUnit(
         mrp,
         unit_name
       );
-      console.log('material unit_based_mrp : ', unit_based_mrp);
       discount_percent = parseFloat(materialPrice[discount_type]);
-      console.log('material : ', JSON.stringify(materials[i]));
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
-      console.log('material total_gram : ', total_gram);
       if (!fromCart) {
         if (isMaterial) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
-          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -1350,7 +1318,6 @@ const calculateProductPriceReport = async (
       total_gram: weightFormat(total_gram),
     });
   }
-  console.log("total_mrp_price : ", total_mrp_price);
   let total_making_charge = 0;
   let making_charge_type = sub_category ? sub_category.making_charge_type : "";
   let making_charge = sub_category ? sub_category.making_charge : 0;
@@ -1367,7 +1334,6 @@ const calculateProductPriceReport = async (
     (total_making_charge * making_charge_discount_percent) / 100
   );
   total_mrp_price += total_making_charge;
-  console.log("total_mrp_price after making charge : ", total_mrp_price);
   total_making_charge = priceFormat(total_making_charge - discount_amount);
   total_discount += discount_amount;
   total_sale_price += total_making_charge;
@@ -1382,7 +1348,6 @@ const calculateProductPriceReport = async (
       ? priceFormat((total_mrp_price * parseFloat(tax_info.sgst)) / 100, true)
       : 0;
     total_mrp_price += igst + cgst + sgst;
-    console.log("total_mrp_price after tax : ", total_mrp_price);
     total_tax = igst + cgst + sgst;
     total_sale_price += priceFormat(igst + cgst + sgst);
   }
@@ -1635,7 +1600,6 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
     include: _include,
   });
 
-  console.log("This is stock value :- " ,stocks.map(s => s.id).join(", "));
 
   let total_price = 0,
     categories = [];
@@ -1678,7 +1642,6 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
       taxInfo,
       true
     );
-    // console.log(priceMaterials)
     let thisPrice = priceMaterials.total_mrp_price - priceMaterials.total_tax; //priceMaterials.total_mrp_price
     //thisPrice = priceMaterials.total_mrp_price;
     total_price += thisPrice;
@@ -1711,8 +1674,6 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
     }
   }
 
-  // console.log(" Total_Prize :- ", + total_price);
-  console.log("By categories ---------------: ", categories);
   return byCategory ? categories : priceFormat(total_price);
 };
 
@@ -1733,7 +1694,6 @@ const getWalletBalance = async (
     if (paymentId) {
       paymentIdQ = " AND id <= " + paymentId;
     }
-    console.log("payment_mode : ", payment_mode);
     if (!payment_mode) {
       let query =
         "SELECT SUM(CASE WHEN (type = 'debit') THEN amount ELSE 0 END) AS total_debit, SUM(CASE WHEN (type = 'credit') THEN amount ELSE 0 END) AS total_credit FROM payments WHERE status = 'success' AND payment_belongs = " +
@@ -1742,7 +1702,6 @@ const getWalletBalance = async (
         payment_type +
         "' AND deleted_at IS NULL" +
         paymentIdQ;
-        console.log(query);
       const paymentObj = await dbSequelize.query(query, {
         type: QueryTypes.SELECT,
       });
@@ -1775,7 +1734,6 @@ const getWalletBalance = async (
           paymentIdQ;
           
       }
-      console.log(query);
       const paymentObj = await dbSequelize.query(query, {
         type: QueryTypes.SELECT,
       });
@@ -1792,7 +1750,6 @@ const getWalletBalance = async (
       }
     } 
   } catch(err){
-    console.log(err);
   }
 };
 
@@ -2342,7 +2299,6 @@ const sendEmail = (params) => {
     return new Promise(function (resolve, reject) {
       transporter.sendMail(mailOptions, function (error, info) {
         if (error) {
-          console.log("mail error: " + error.toString());
           addLog("mail error: " + error.toString());
           reject(false);
         } else {
@@ -2412,7 +2368,6 @@ const getProductSizeMaterials = async (
     purities.sort(function (a, b) {
       return purityIds.indexOf(a.id) - purityIds.indexOf(b.id);
     });
-    //console.log(sizeMatarialsData[i].size.name, sizeMatarialsData[i].purities)
     //purities.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
 
     // for(let p of purityToFirst){
@@ -2453,11 +2408,9 @@ const getProductSizeMaterials = async (
         mgroup,
         (item) => sizeMatarialsData[i].productMaterial && sizeMatarialsData[i].productMaterial.group && item == sizeMatarialsData[i].productMaterial.group
       );
-      //console.log("sizeMatarialsData[i].productMaterial : ", sizeMatarialsData[i].productMaterial);
       if(mgIndex === -1 && sizeMatarialsData[i].productMaterial && sizeMatarialsData[i].productMaterial.group){
         mgroup.push(sizeMatarialsData[i].productMaterial.group);
       }
-      console.log("mgroup : ", mgroup);
       /* group materials */
       //let gmaterials = [];
       /* if(mgroup.length > 0){
@@ -2581,7 +2534,6 @@ const getProductSizeMaterials = async (
           mrp_price = 0,
           discount_percent = 0;
         if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
-          //console.log(purityIds)
           materialPriceObj.materialPricePurities.sort(function (a, b) {
             return (
               purityIds.indexOf(a.purity_id) - purityIds.indexOf(b.purity_id)
@@ -2746,7 +2698,6 @@ const getProductSizeMaterials = async (
 };
 
 const getTotalStockByUser = async (userId, type) => {
-  console.log("userId is the getTotalStockByUser ===", userId);
 
   type = type !== undefined ? type : "product";
   let conditions = { type: type };
@@ -2756,7 +2707,6 @@ const getTotalStockByUser = async (userId, type) => {
     conditions.user_id = userId;
   }
   let qty = 0;
-  // console.log(" stocks common condition is the  upper  === ", conditions);
   let stocks = await StockModel.findAll({ where: conditions });
   for (let i = 0; i < stocks.length; i++) {
     qty += stocks[i].quantity ? parseInt(stocks[i].quantity) : 1;
@@ -2767,16 +2717,13 @@ const getTotalStockByUser = async (userId, type) => {
 
 const getTransferSale = async (userId, type) => {
 
-  console.log("this is the userId ====", userId||"this is not defiend userId");
   
   const getModelObject_data = async (data, userId) => {
-    // console.log(" call in the getModelObject_data");
 
     let no_of_products = await SaleProductModel.count({
       where: { sale_id: data.id },
     });
 
-    // console.log(no_of_products, "no_of_products is the count");
     
 
     return await {
@@ -2807,10 +2754,6 @@ const getTransferSale = async (userId, type) => {
     distinct: true,
   })
     .then(async (data) => {
-      console.log(
-        "this is call the SaleListCollection ========",
-        data.rows.length
-      );
       let arr = [];
       for (let i = 0; i < data.rows.length; i++) {
         arr.push(await getModelObject_data(data.rows[i], userId));
@@ -2819,17 +2762,14 @@ const getTransferSale = async (userId, type) => {
       return arr;
     })
     .catch((err) => {
-      console.log("Error in getTransferSale: ", err);
     });
 
   let totalStock = 0,totalPrice=0
 
   TransferData.map((item) => {
-    console.log("this is the item ========", item);
     totalStock += item.no_of_products;
     totalPrice += item.total_amount;
   });
-  // console.log("this is the total stock ========", totalStock);
   return {totalStock,totalPrice};
 };
 
@@ -3357,7 +3297,6 @@ const canStockAddCart = async (stockId, productType, user_id, certificate_no = n
   //       sale_id: { [Op.in]: saleIds }, 
   //     },
   //   });
-  //   console.log("---------------------->saleProductExists->>>>>>>>>", saleProductExists);
   //   if (!saleProductExists) {
   //     can_add_cart = true;
   //   } else {
@@ -3656,7 +3595,6 @@ const getPurchaseProducts = async (params) => {
   managerIds.push(superadminId);*/
 
   let managerIds = await avlStockUserIdsNew(null, getRoleId("superadmin"));
-  //console.log(managerIds);
 
   let purchases = await PurchaseModel.findAll({
     where: {
@@ -3751,14 +3689,11 @@ const getPurchaseProducts = async (params) => {
       let image = "";
       if (product && isArray(product.images)) {
         for (let img = 0; img < product.images.length; img++) {
-          // console.log(getFileAbsulatePath(product.images[img].path))
-          // console.log(product.images)
           image = getFileAbsulatePath(product.images[img].path);
           break;
         }
       }
 
-      // console.log("---------product data ", product)
 
       let weight_display = [],
         unit_display = [],
@@ -3792,7 +3727,6 @@ const getPurchaseProducts = async (params) => {
         });
         materialString.push(str);
         if (product && product.type == "material") {
-          //console.log(pm.quantity, pm.return_qty, product.name)
           weight_display.push(weightFormat(quantity));
         } else if(product && isEmpty(pp.certificate_no) && product.type != "material"){ 
           weight_display.push(weightFormat(quantity));
@@ -3983,14 +3917,11 @@ const getPurchaseProductsUser = async (req, params) => {
       let image = "";
       if (product && isArray(product.images)) {
         for (let img = 0; img < product.images.length; img++) {
-          // console.log(getFileAbsulatePath(product.images[img].path))
-          // console.log(product.images)
           image = getFileAbsulatePath(product.images[img].path);
           break;
         }
       }
 
-      // console.log("---------product data ", product)
 
       let weight_display = [],
         unit_display = [],
@@ -4024,7 +3955,6 @@ const getPurchaseProductsUser = async (req, params) => {
         });
         materialString.push(str);
         if (product && product.type == "material") {
-          //console.log(pm.quantity, pm.return_qty, product.name)
           weight_display.push(weightFormat(quantity));
         } else if(product && isEmpty(pp.certificate_no) && product.type != "material"){ 
           weight_display.push(weightFormat(quantity));
@@ -4122,7 +4052,6 @@ const getPurchaseProductsUser = async (req, params) => {
 
 const getOwnUserSaleProducts = async (req, params, roleId = null) => {
   let userIds = await avlStockUserIdsNew(req, roleId);
-  console.log("getOwnUserSaleProducts users ===> ", userIds);
   
   //let superadminId = isManager(req) ? req.userId : await getWorkingUserID(req);
   //userIds.push(superadminId);
@@ -4189,7 +4118,6 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
       },
     ],
   });
-  console.log("sales length -----", sales.length);
   let items = [],
     total_amount = 0,
     total_product = 0,
@@ -4339,7 +4267,6 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
       }
     }
   }
-  console.log("items of length is ----------", items.length);
 
   return {
     items: items,

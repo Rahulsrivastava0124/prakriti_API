@@ -24,7 +24,6 @@ const SaleListCollection = async (data, userId) => {
 };
 
 const getModelObject = async (data, userId) => {
-//   console.log(" in the getModelObject data", data);
 
   let approve_status = "Pending";
   if (data.is_approved == 1) {

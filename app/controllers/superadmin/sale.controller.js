@@ -101,7 +101,7 @@ const _ = require("lodash");
 //const puppeteer = require("puppeteer");
 /* -------------- commented by Soumalya Nandy ------------ */
 
-const html_to_pdf = require("html-pdf-node");
+const html_to_pdf = require("@helpers/pdf");
 
 const { updateAdvanceAmount } = require("../../library/common");
 const orderProductModel = db.order_products;
@@ -485,7 +485,6 @@ exports.txnLedger = async (req, res) => {
     };
     res.send(formatResponse(result, "Sale Ledger List"));
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -1207,14 +1206,13 @@ exports.downloadTxnLedger = async (req, res) => {
             "Ledger pdf",
           ),
         );
-      })();
+      })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
     } catch (error) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse(error.toString()));
     }
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -6520,7 +6518,6 @@ exports.downloadInvoice = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -6599,7 +6596,7 @@ exports.downloadInvoice = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {
@@ -7663,7 +7660,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -8313,7 +8310,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -9729,7 +9726,6 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -9810,7 +9806,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {

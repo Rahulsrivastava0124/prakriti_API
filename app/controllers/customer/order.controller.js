@@ -149,7 +149,6 @@ exports.index = async (req, res) => {
 exports.placeOrder = async (req, res) => {
   let data = req.body;
 
-  console.warn("placing order payload keys:", data && typeof data === 'object' ? Object.keys(data).length : typeof data);
 
   const t = await sequelize.transaction();
   try {

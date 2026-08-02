@@ -1,4 +1,5 @@
 const config = require("@config/auth.config");
+const html_to_pdf = require("@helpers/pdf");
 const {
   errorCodes,
   formatErrorResponse,
@@ -2815,7 +2816,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -2893,7 +2893,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -4354,7 +4354,6 @@ exports.downloadInvoiceItems = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -4431,7 +4430,7 @@ exports.downloadInvoiceItems = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {

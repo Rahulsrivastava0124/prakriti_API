@@ -50,7 +50,6 @@ const getModelObject = async(data) => {
             }
         }
     }
-    console.log("data.orderFrom : ", data.orderFrom);
     let customer_name = data.orderFrom ? data.orderFrom.name : '';
     let customer_company_name = data.orderFrom ? data.orderFrom.company_name : '';
 

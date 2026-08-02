@@ -22,7 +22,6 @@ const StocksReportCollection = async (data, user_id, roleName = null) => {
 }
 
 const getModelObject = async (data, user_id, roleName = null) => {
-    //console.log("STOCK COLLECTION-----data get modal object ",JSON.stringify(data));
     let materialItem = [], materialString = [];
     let taxInfo = null;
     if('tax' in data.product && data.product.tax){
@@ -73,7 +72,6 @@ const getModelObject = async (data, user_id, roleName = null) => {
     let weight_display = [], unit_display = [], purity_display = [];
     for(let item of data.stockMaterials){
         //let str = item.material.name + ' <span style="padding-right: 18px; float: right;">' + weightFormat(item.weight) +(item.unit ? (' '+item.unit.name) : '') + '</span>';
-        console.log("item : ", item);
         let str = item.material.name;
         materialItem.push({
             material_id: item.material_id,
@@ -114,7 +112,6 @@ const getModelObject = async (data, user_id, roleName = null) => {
     let can_add_cart = await canStockAddCart(data.id, data.product.type, user_id, data.certificate_no);
     let stock_user_name = data.user ? (data.user.company_name ? data.user.company_name : data.user.name) : '';
     
-    //console.log(productDetails);
 
     return {
         ...productDetails,
