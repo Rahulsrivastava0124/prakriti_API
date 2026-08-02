@@ -101,7 +101,7 @@ const _ = require("lodash");
 //const puppeteer = require("puppeteer");
 /* -------------- commented by Soumalya Nandy ------------ */
 
-const html_to_pdf = require("html-pdf-node");
+const html_to_pdf = require("@helpers/pdf");
 
 const { updateAdvanceAmount } = require("../../library/common");
 const orderProductModel = db.order_products;
@@ -485,7 +485,6 @@ exports.txnLedger = async (req, res) => {
     };
     res.send(formatResponse(result, "Sale Ledger List"));
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -1207,14 +1206,13 @@ exports.downloadTxnLedger = async (req, res) => {
             "Ledger pdf",
           ),
         );
-      })();
+      })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
     } catch (error) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse(error.toString()));
     }
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -1260,7 +1258,7 @@ exports.store = async (req, res) => {
     (isDistributor(req) || isSalesExecutive(req))
   ) {
     let invObj = moment(data.invoice_date, "MM/DD/YYYY");
-    let sttlObj = moment(data.settlement_date);
+    let sttlObj = moment(data.settlement_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]);
     if (sttlObj.diff(invObj, "days") > 30) {
       return res
         .status(errorCodes.default)
@@ -1341,7 +1339,7 @@ exports.store = async (req, res) => {
       order_id: data.order_id || null,
       sale_by: userID,
       invoice_number: invoice_number,
-      invoice_date: moment(data.invoice_date).format("YYYY-MM-DD"), //, "MM/DD/YYYY"
+      invoice_date: moment(data.invoice_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"), //, "MM/DD/YYYY"
       notes: data.notes,
       payment_mode: data.payment_mode,
       transaction_no: data.transaction_no,
@@ -1359,10 +1357,10 @@ exports.store = async (req, res) => {
       total_payable: priceFormat(data.total_payable),
       due_amount: due_amount,
       due_date: data.due_date
-        ? moment(data.due_date).format("YYYY-MM-DD")
+        ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
         : null,
       settlement_date: data.settlement_date
-        ? moment(data.settlement_date).format("YYYY-MM-DD")
+        ? moment(data.settlement_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
         : null,
       product_discount: priceFormat(data.product_discount),
       total_tag_price: priceFormat(data.total_tag_price),
@@ -1406,7 +1404,7 @@ exports.store = async (req, res) => {
         total_payable: priceFormat(data.total_payable),
         due_amount: due_amount,
         due_date: data.due_date
-          ? moment(data.due_date).format("YYYY-MM-DD")
+          ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
           : null,
         status: status,
         is_approved: data.on_approval ? 3 : is_approved,
@@ -6520,7 +6518,6 @@ exports.downloadInvoice = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -6599,7 +6596,7 @@ exports.downloadInvoice = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {
@@ -7490,7 +7487,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
-      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight != null) {
+      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight) {
         metalExists = true;
         receive_metal += parseFloat(itm.weight);
       }
@@ -7569,7 +7566,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     <td style="font-size: 12px;">${payments[i].payment_date}</td>
                     <td style="font-size: 12px;">${payments[i].payment_mode}</td>
                     <td style="font-size: 12px;">${payments[i].notes}</td>
-                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
+                    <td style="font-size: 12px;">${payments[i].amount}${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight ? " (" + payments[i].weight + (payments[i].metal_rate ? " @ " + payments[i].metal_rate + "/GM" : "") + ")" : ""}</td>
                 </tr>`;
     }
     html += `</table>`;
@@ -7663,7 +7660,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -8313,7 +8310,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -9729,7 +9726,6 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -9810,7 +9806,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {

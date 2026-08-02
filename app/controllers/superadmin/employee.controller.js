@@ -588,7 +588,7 @@ exports.salaryCreate = async (req, res) => {
     gross_salary: !isEmpty(data.gross_salary) ? data.gross_salary : null,
     basic_salary: !isEmpty(data.basic_salary) ? data.basic_salary : null,
     eff_date: !isEmpty(data.eff_date)
-      ? moment(data.eff_date).format("YYYY-MM-DD")
+      ? moment(data.eff_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
       : "",
     is_epf: data.is_epf >= 0 ? data.is_epf : null,
     is_medical: data.is_medical >= 0 ? data.is_medical : null,
@@ -706,7 +706,7 @@ exports.updateSalary = async (req, res) => {
     gross_salary: !isEmpty(data.gross_salary) ? data.gross_salary : null,
     basic_salary: !isEmpty(data.basic_salary) ? data.basic_salary : null,
     eff_date: !isEmpty(data.eff_date)
-      ? moment(data.eff_date).format("YYYY-MM-DD")
+      ? moment(data.eff_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
       : "",
     is_epf: data.is_epf >= 0 ? data.is_epf : null,
     is_medical: data.is_medical >= 0 ? data.is_medical : null,

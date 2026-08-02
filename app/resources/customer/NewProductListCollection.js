@@ -55,12 +55,9 @@ const getModelObject = async(data, req) => {
             igst: parseFloat(data.product.tax.igst),
         }
     }
-    //console.log("data.product_id : ", data.product_id);
-    //console.log("data.product.id : ", data.product.id);
     //let size_materials = await getProductSizeMaterials(data.product_id, data.product.type, true, req.role, taxInfo, data.product.sub_category, true);
     //let product_price_info = await calculateProductPriceCart(data.stockMaterials, data.product.sub_category, data.product.type == "material", 'admin', taxInfo);
     let size_materials = await calculateProductPriceCartNew(data, data.product.sub_category, data.product.type == "material", req.role, taxInfo);
-    console.log("size_materials : ", size_materials);
     let total_mrp_price = size_materials.total_mrp_price ? size_materials.total_mrp_price : 0;
     let total_sale_price = size_materials.total_sale_price ? size_materials.total_sale_price : 0;
     let making_charge_dis_percent = size_materials.making_charge_discount_percent ? size_materials.making_charge_discount_percent : 0;

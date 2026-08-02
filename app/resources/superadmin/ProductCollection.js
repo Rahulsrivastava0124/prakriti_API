@@ -48,9 +48,7 @@ const getModelObject = async(data, params) => {
     let smaterials = gmaterials.concat(ngmaterials);
     materials = smaterials */
     if(data.id == '3'){
-        console.log("materials: ",materials);
         for(let i = 0; i < data.materials.length; i++){
-            console.log("product_material: ",data.materials[i].product_materials);
         }
     }
     let certificates = data.certificates ? ProductCertificateCollection(data.certificates) : [];

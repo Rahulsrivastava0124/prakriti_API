@@ -22,7 +22,6 @@ const StocksMaterialReportCollection = async (data, user_id, roleName = null) =>
 }
 
 const getModelObject = async (data, user_id, roleName = null) => {
-    console.log(data)
     let sub_category = null, isMaterial = true;
     let materialItem = [], materialString = [];
     let taxInfo = null, purity_name = '';
