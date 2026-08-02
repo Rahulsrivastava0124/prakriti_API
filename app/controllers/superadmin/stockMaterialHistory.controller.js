@@ -39,10 +39,14 @@ const PurchaseProductMaterialModel = db.purchase_product_materials;
  * @param res
  */
 exports.index = async (req, res) => {
-    let { page, limit, search } = req.query;
+    let { page, limit, search, material_id } = req.query;
     let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
-    //let conditions = { belongs_to: userID };
-    let conditions = { from_user_id: userID };
+    // belongs_to is this user's own ledger row - debit when they sent, credit
+    // when they received. Filtering on from_user_id hid every receipt.
+    let conditions = { belongs_to: userID };
+    if (!isEmpty(material_id)) {
+        conditions.material_id = material_id;
+    }
     if (!isEmpty(search)) {
         conditions = { ...conditions, [Op.or]: [{ '$material.name$': { [Op.like]: `%${search}%` } }, { '$unit.name$': { [Op.like]: `%${search}%` } }, { '$purity.name$': { [Op.like]: `%${search}%` } }, { '$toUser.name$': { [Op.like]: `%${search}%` } }] }
     }
@@ -222,8 +226,8 @@ exports.updateStatus = async (req, res) => {
 
 const UpdateStockMaterial = async (stockH, userID, t) => {
     const stockPurityId = 22;
-    let unit = await UnitModel.findByPk(stockH.unit_id);
-    let weight_in_gram = convertUnitToGram(unit.name, stockH.pakka_weight);
+    let unit = stockH.unit_id ? await UnitModel.findByPk(stockH.unit_id) : null;
+    let weight_in_gram = convertUnitToGram(unit ? unit.name : 'gram', stockH.pakka_weight);
     let result = await updateOrCreate(StockModel, {
         material_id: stockH.material_id,
         purity_id: stockPurityId,
@@ -274,82 +278,31 @@ exports.transferStockMaterial = async (req, res) => {
 
     try {
         let data = req.body;
-        let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
         compactLog("<=================== transferStockMaterial =================>");
-        /* get all materials by from_user_id */
-        let _include = [
-            {
-              model: StockMaterialModel,
-              as: "stockMaterials",
-              required: true,
-              where: {},
-              //separate: true,
-              include: [
-                {
-                  model: MaterialModel,
-                  as: "material",
-                },
-                {
-                  model: UnitModel,
-                  as: "unit",
-                },
-                {
-                  model: PurityModel,
-                  as: "purity",
-                },
-              ],
-            },
-            {
-              model: UserModel,
-              as: "user",
-            },
-        ];
-        _include.push({
-            model: MaterialModel,
-            as: "material",
-            required: true,
-            where: {},
-            include: [
-              {
-                model: CategoryModel,
-                as: "category",
-              },
-            ],
-          });
-          compactLog({ type: 'material', user_id: data.from_user_id, material_id: data.material_id });
-        let stocks = await StockModel
-        .findAll({
-            order: [["id", "DESC"]],
-            where: { type: 'material', user_id: data.from_user_id, material_id: data.material_id },
-            include: _include,
-            distinct: true,
-            //subQuery: isEmpty(search) ? true : false,
-        });
-        
-        stocks = await StocksMaterialCollection(stocks, data.from_user_id);
-        //compactLog("stocks :==> ", stocks); return false;
-        compactLog("stocks len:", Array.isArray(stocks) ? stocks.length : typeof stocks);
-        compactLog("data keys:", data && typeof data === 'object' ? Object.keys(data).length : typeof data);
-        let total_weight = 0;
-        let total_quantity = 0; 
-        stocks.forEach((item) => {
-            total_weight += parseFloat(item.total_weight);
-        });
-        compactLog("transferMaterial ===============:");
-        await transferMaterial(data, stocks[0]);
+        await transferMaterial(req, data);
 
         res.send(formatResponse("", 'Sent Successfully.'));
 
     } catch (error) {
         //await t.rollback();
+        addLog({ transferStockMaterial: error.message, body: req.body });
         res.status(errorCodes.default).send(formatErrorResponse());
     }
 }
 
-const transferMaterial = async (data, stockMaterial) => {
+const transferMaterial = async (req, data) => {
     const t = await sequelize.transaction();
     const stockPurityId = 22;
     try {
+        // unit_id/purity_id are INTEGER columns - "" from the caller is a DB error.
+        // A payer holding no stock of ours can't supply a unit, so fall back to
+        // the material's own unit.
+        data.purity_id = isEmpty(data.purity_id) ? null : parseInt(data.purity_id);
+        if (isEmpty(data.unit_id)) {
+            let material = await MaterialModel.findByPk(data.material_id);
+            data.unit_id = material ? material.unit_id : null;
+        }
+
         let stockH = await stockHistoryModel.create({
             belongs_to: data.from_user_id,
             from_user_id: data.from_user_id,
@@ -360,6 +313,10 @@ const transferMaterial = async (data, stockMaterial) => {
             unit_id: data.unit_id,
             quantity: data.quantity,
             purity_id: data.purity_id,
+            amount: isEmpty(data.amount) ? null : data.amount,
+            metal_rate: isEmpty(data.metal_rate) ? null : data.metal_rate,
+            payment_mode: data.payment_mode || null,
+            ref_no: data.ref_no || null,
             status: "accepted",
             type: "debit",
             can_accept: false
@@ -376,14 +333,18 @@ const transferMaterial = async (data, stockMaterial) => {
             unit_id: data.unit_id,
             quantity: data.quantity,
             purity_id: data.purity_id,
+            amount: isEmpty(data.amount) ? null : data.amount,
+            metal_rate: isEmpty(data.metal_rate) ? null : data.metal_rate,
+            payment_mode: data.payment_mode || null,
+            ref_no: data.ref_no || null,
             status: "accepted",
             type: "credit",
             can_accept: true
         }, { transaction: t });
 
         
-        let unit = await UnitModel.findByPk(data.unit_id);
-        let weight_in_gram = convertUnitToGram(unit.name, data.effective_weight);
+        let unit = data.unit_id ? await UnitModel.findByPk(data.unit_id) : null;
+        let weight_in_gram = convertUnitToGram(unit ? unit.name : 'gram', data.effective_weight);
         compactLog("stockH id:", stockH && stockH.id);
         compactLog({
                 material_id: stockH.material_id,
@@ -419,10 +380,13 @@ const transferMaterial = async (data, stockMaterial) => {
                         total_weight: (parseFloat(stock.total_weight) - weight_in_gram),
                     }, { where: { id: stock.id } });
                 //}
-                compactLog("UpdateStockMaterial ===============: ");
-                await UpdateStockMaterial(stockH, stockH.to_user_id, t);
             }
         }
+
+        // Credit the receiver regardless of whether the sender had a tracked
+        // stock row - e.g. metal paid by a customer who holds no stock with us.
+        compactLog("UpdateStockMaterial ===============: ");
+        await UpdateStockMaterial(stockH, stockH.to_user_id, t);
 
         await t.commit();
 
@@ -431,8 +395,8 @@ const transferMaterial = async (data, stockMaterial) => {
         return true;
     } catch (error) {
         await t.rollback();
-        res.status(errorCodes.default).send(formatErrorResponse());
-    }        
+        throw error;
+    }
 }
 
 /**

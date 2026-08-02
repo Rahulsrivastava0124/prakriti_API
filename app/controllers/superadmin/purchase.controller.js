@@ -5119,7 +5119,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
-      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight != null) {
+      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight) {
         metalExists = true;
         receive_metal += parseFloat(itm.weight);
       }
@@ -5197,7 +5197,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     <td style="font-size: 12px;">${payments[i].payment_date}</td>
                     <td style="font-size: 12px;">${payments[i].payment_mode}</td>
                     <td style="font-size: 12px;">${payments[i].notes}</td>
-                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
+                    <td style="font-size: 12px;">${payments[i].amount}${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight ? " (" + payments[i].weight + (payments[i].metal_rate ? " @ " + payments[i].metal_rate + "/GM" : "") + ")" : ""}</td>
                 </tr>`;
     }
     html += `</table>`;

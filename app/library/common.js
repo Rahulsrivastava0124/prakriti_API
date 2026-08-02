@@ -1502,11 +1502,17 @@ const getAdminDistributorIds = async (id, state_id) => {
   return arrayColumn(ids, "id");
 };
 
+let _superAdminId = null;
 const getSuperAdminId = async () => {
-  let user = await UserModel.findOne({
+  if (_superAdminId) return _superAdminId;
+  const user = await UserModel.findOne({
+    attributes: ["id"],
     where: { role_id: getRoleId("superadmin") },
+    order: [["id", "ASC"]],
   });
-  return user.id;
+  if (!user) throw new Error("No superadmin user found");
+  _superAdminId = user.id;
+  return _superAdminId;
 };
 
 const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admin") => {
@@ -2698,21 +2704,16 @@ const getProductSizeMaterials = async (
 };
 
 const getTotalStockByUser = async (userId, type) => {
-
   type = type !== undefined ? type : "product";
-  let conditions = { type: type };
-  if (isArray(userId)) {
-    conditions.user_id = { [Op.in]: userId };
-  } else {
-    conditions.user_id = userId;
-  }
-  let qty = 0;
-  let stocks = await StockModel.findAll({ where: conditions });
-  for (let i = 0; i < stocks.length; i++) {
-    qty += stocks[i].quantity ? parseInt(stocks[i].quantity) : 1;
-  }
-
-  return qty;
+  const ids = Array.isArray(userId) ? userId : [userId];
+  if (!ids.length) return 0;
+  const [row] = await dbSequelize.query(
+    `SELECT COALESCE(SUM(COALESCE(quantity, 1)), 0) AS qty
+       FROM stocks
+      WHERE type = :type AND user_id IN (:ids)`,
+    { replacements: { type, ids }, type: QueryTypes.SELECT }
+  );
+  return Number((row && row.qty) || 0);
 };
 
 const getTransferSale = async (userId, type) => {

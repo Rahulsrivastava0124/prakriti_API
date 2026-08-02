@@ -1152,6 +1152,13 @@ exports.view = async (req, res) => {
           },
         ],
       },
+      // material stocks have no product - they hang off the material directly
+      {
+        model: materialModel,
+        as: "material",
+        required: false,
+        include: [{ model: PurityModel, as: "purities" }],
+      },
     ],
   });
 
@@ -1160,9 +1167,14 @@ exports.view = async (req, res) => {
       .status(errorCodes.default)
       .send(formatErrorResponse("Stock not found"));
   }
-  res.send(
-    formatResponse(await StocksReportCollection(stock, userID, roleName), "Stock details")
-  );
+
+  // StocksReportCollection dereferences stock.product throughout, which is null
+  // for material stocks. Those use the same collection the material list uses.
+  const details = stock.product
+    ? await StocksReportCollection(stock, userID, roleName)
+    : await StocksMaterialCollection(stock, userID);
+
+  res.send(formatResponse(details, "Stock details"));
 };
 
 /**
