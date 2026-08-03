@@ -27,6 +27,7 @@ const {
   getAdminDistributorIds,
   getTransferSale,
   getSuperAdminId,
+  getLiveGoldRate,
 } = require("@library/common");
 const {
   displayAmount,
@@ -35,6 +36,7 @@ const {
   arrayColumn,
   priceFormat,
   getMonthDateRange,
+  weightFormat,
 } = require("@helpers/helper");
 const moment = require("moment");
 const db = require("@models");
@@ -88,6 +90,8 @@ exports.index = async (req, res) => {
       _avlMemo.set(k, v);
       return v;
     };
+
+    let _liveGoldRate = { rate: 0, display: null };
 
     const [user, userID] = await Promise.all([
       UserModel.findByPk(req.userId),
@@ -148,6 +152,7 @@ exports.index = async (req, res) => {
         _admins, _otheradmins,
         _ownAdmins, _ownDistributors,
         _managerUsers,
+        _liveGoldRate,
       ] = await Promise.all([
         UserModel.count({ where: { role_id: customerRoleId } }),
         getTotalStockByUser(userID),
@@ -168,6 +173,7 @@ exports.index = async (req, res) => {
         UserModel.findAll({ attributes: ["id"], where: { role_id: adminRoleId, own: true, parent_id: superAdminId } }),
         UserModel.findAll({ attributes: ["id"], where: { role_id: distributorRoleId, own: true, parent_id: superAdminId } }),
         UserModel.findAll({ attributes: ["id"], where: { role_id: getRoleId("manager") } }),
+        getLiveGoldRate(),
       ]);
 
       totalCustomer            = _totalCustomer;
@@ -187,7 +193,6 @@ exports.index = async (req, res) => {
       totalReturnProduct       = _purchaseProductsRes.total_return_product;
       totalAvlTransferStock    = superAdminTotalTransferStock      = _transferStockData.totalStock;
       totalAvlTransferStockPrice = superAdminTotalTransferStockPrice = _transferStockData.totalPrice;
-
       const avlUserIds            = _avlUserIds;
       const adminIds              = arrayColumn(_admins,         "id");
       const otheradminIds         = arrayColumn(_otheradmins,    "id");
@@ -654,6 +659,8 @@ exports.index = async (req, res) => {
     // COMMON (non-superadmin roles — superadmin already computed above)
     // ─────────────────────────────────────────────────────────────
     if (!isSuperAdmin(req)) {
+      // Fetch live gold rate for all roles (superadmin already got it in batch 1)
+      _liveGoldRate = await getLiveGoldRate();
       [purchaseDueAmount, walletBalance] = await Promise.all([
         purchaseDueAmount ? Promise.resolve(purchaseDueAmount) : PurchaseModel.sum("due_amount", { where: { user_id: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } }),
         walletBalance     ? Promise.resolve(walletBalance)     : getWalletBalance(userID),
@@ -734,7 +741,8 @@ exports.index = async (req, res) => {
       total_sales_executive: totalsales_executive,
       total_own_sales_executive: total_own_sales_executive,
       total_stock: totalStock,
-      material_total_stock: materialTotalStock,
+      // metal is held by weight, so this is grams - not a piece count
+      material_total_stock: weightFormat(materialTotalStock) + " GM",
       purchase_due_amount: displayAmount(purchaseDueAmount),
       sale_due_amount: displayAmount(saleDueAmount),
       my_retailer_due_amount: displayAmount(myRetailerDueAmunt),
@@ -779,6 +787,9 @@ exports.index = async (req, res) => {
       total_own_sale_products: totalOwnUsersSaleProducts,
       total_return_amount: totalReturn,
       total_return_product: totalReturnProduct,
+      // Live gold rate used for material stock price valuation
+      live_gold_rate: _liveGoldRate && _liveGoldRate.rate > 0 ? _liveGoldRate.rate : null,
+      live_gold_rate_display: _liveGoldRate && _liveGoldRate.display ? _liveGoldRate.display : null,
     };
 
     _dashCache.set(cacheKey, { value: result, at: Date.now() });

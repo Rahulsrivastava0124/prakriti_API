@@ -224,8 +224,29 @@ exports.updateStatus = async (req, res) => {
     }
 }
 
+/**
+ * Purity a material stock row is filed under. Stock is held in pakka (fine)
+ * weight, so it is valued at the material's purest priced grade - 24 Carat for
+ * gold. This used to be a hardcoded 22, which matches no row in `purities`
+ * (ids 1-10), so no material_price_purities row ever matched and every
+ * material stock priced at 0.
+ */
+const getStockPurityId = async (material_id, fallback) => {
+    let rows = await sequelize.query(
+        `SELECT mpp.purity_id
+           FROM material_prices mp
+           JOIN material_price_purities mpp ON mpp.material_price_id = mp.id
+           JOIN purities p ON p.id = mpp.purity_id
+          WHERE mp.material_id = :material_id
+          ORDER BY CAST(NULLIF(p.value, '') AS DECIMAL(10,2)) DESC
+          LIMIT 1`,
+        { replacements: { material_id }, type: QueryTypes.SELECT }
+    );
+    return rows.length ? rows[0].purity_id : (fallback || null);
+}
+
 const UpdateStockMaterial = async (stockH, userID, t) => {
-    const stockPurityId = 22;
+    const stockPurityId = await getStockPurityId(stockH.material_id, stockH.purity_id);
     let unit = stockH.unit_id ? await UnitModel.findByPk(stockH.unit_id) : null;
     let weight_in_gram = convertUnitToGram(unit ? unit.name : 'gram', stockH.pakka_weight);
     let result = await updateOrCreate(StockModel, {
@@ -292,7 +313,7 @@ exports.transferStockMaterial = async (req, res) => {
 
 const transferMaterial = async (req, data) => {
     const t = await sequelize.transaction();
-    const stockPurityId = 22;
+    const stockPurityId = await getStockPurityId(data.material_id, data.purity_id);
     try {
         // unit_id/purity_id are INTEGER columns - "" from the caller is a DB error.
         // A payer holding no stock of ours can't supply a unit, so fall back to
