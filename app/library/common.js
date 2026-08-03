@@ -554,6 +554,80 @@ const getCustomRoleIds = async () => {
   return arrayColumn(roles, "id");
 };
 
+/**
+ * Live 24K spot per gram, from the same feed the sale pay modal quotes.
+ * Cached so a stock listing does not fire one HTTP call per row, and so a
+ * slow or down feed cannot stall a page - callers fall back to the configured
+ * per-gram price when this returns 0.
+ */
+const GOLD_RATE_URL = "https://n8n.prakriti.one/webhook/gold-rate-india";
+const GOLD_RATE_TTL = 10 * 60 * 1000;
+// Cache stores per-karat rates directly from the API.
+let goldRateCache = { rate: 0, rate22: 0, rate18: 0, display: "", at: 0 };
+
+const getLiveGoldRate = async () => {
+  if (goldRateCache.rate && Date.now() - goldRateCache.at < GOLD_RATE_TTL) {
+    return goldRateCache;
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
+    clearTimeout(timer);
+    const body = await res.json();
+    const pg = body && body.per_gram ? body.per_gram : {};
+    const rate = parseFloat(pg["24K"] || 0);
+    if (rate > 0) {
+      goldRateCache = {
+        rate:    rate,
+        rate22:  parseFloat(pg["22K"] || 0),
+        rate18:  parseFloat(pg["18K"] || 0),
+        display: body.display || "",
+        at:      Date.now(),
+      };
+    }
+  } catch (e) {
+    addLog({ getLiveGoldRate: e.message });
+  }
+  return goldRateCache;
+};
+
+const isGoldMaterial = (material) =>
+  !!material && /gold/i.test(material.name || "");
+
+/**
+ * Returns a plain copy of materialPrice with per_gram_price overridden by the
+ * live karat rate that matches the item's purity.
+ *
+ * The live API already returns per-karat spot prices (24K=₹14422, 22K=₹13220,
+ * 18K=₹10816). These ARE the market prices for that karat. Applying purity%
+ * on top would double-discount. We map the stored purity value to the nearest
+ * standard karat and use its rate directly:
+ *   purity ≥ 95 % → 24K rate
+ *   purity ≥ 85 % → 22K rate
+ *   purity  < 85 % → 18K rate
+ */
+const applyLiveGoldPrice = async (materialPrice, item) => {
+  if (!isGoldMaterial(item.material)) return materialPrice;
+  const purityValue = parseFloat(item.purity ? item.purity.value : NaN);
+  if (!(purityValue > 0)) return materialPrice;
+  const liveData = await getLiveGoldRate();
+  let liveRate;
+  if (purityValue >= 95) {
+    liveRate = liveData.rate;    // 24K
+  } else if (purityValue >= 85) {
+    liveRate = liveData.rate22;  // 22K
+  } else {
+    liveRate = liveData.rate18;  // 18K
+  }
+  if (!(liveRate > 0)) return materialPrice;
+  const plain = materialPrice.get
+    ? materialPrice.get({ plain: true })
+    : Object.assign({}, materialPrice);
+  plain.per_gram_price = priceFormat(liveRate);
+  return plain;
+};
+
 const calculateProductPrice = async (
   materials,
   sub_category,
@@ -628,7 +702,7 @@ const calculateProductPrice = async (
     //if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
     if (materialPricePurity) {
       //let materialPrice = materialPriceObj.materialPricePurities[0];
-      let materialPrice = materialPricePurity;
+      let materialPrice = await applyLiveGoldPrice(materialPricePurity, materials[i]);
       //mrp = parseFloat(materialPrice.per_gram_price);
       //mrp = parseFloat(materialPrice[price_type]);
       mrp = parseFloat(materialPrice.per_gram_price);
@@ -640,7 +714,10 @@ const calculateProductPrice = async (
       discount_percent = parseFloat(materialPrice[discount_type]);
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
       if (!fromCart) {
-        if (isMaterial) {
+        // Prices one piece for the listing. Metal taken as payment is weighed,
+        // not counted (quantity 0), so there is no piece to price - value the
+        // whole holding instead.
+        if (isMaterial && parseInt(materials[i].quantity) > 0) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
@@ -824,7 +901,10 @@ const calculateProductPriceCartNew = async (
         ],
       });*/
 
-      let materialPrice = materialPriceObj.materialPricePurities[0];
+      let materialPrice = await applyLiveGoldPrice(
+        materialPriceObj.materialPricePurities[0],
+        materials[i]
+      );
       mrp = parseFloat(materialPrice.per_gram_price);
 
       unit_based_mrp = convertPerGramPriceToPerUnit(
@@ -834,7 +914,10 @@ const calculateProductPriceCartNew = async (
       discount_percent = parseFloat(materialPrice[discount_type]);
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
       if (!fromCart) {
-        if (isMaterial) {
+        // Prices one piece for the listing. Metal taken as payment is weighed,
+        // not counted (quantity 0), so there is no piece to price - value the
+        // whole holding instead.
+        if (isMaterial && parseInt(materials[i].quantity) > 0) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
@@ -1111,7 +1194,10 @@ const calculateProductPriceCart = async (
       discount_percent = parseFloat(materialPrice[discount_type]);
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
       if (!fromCart) {
-        if (isMaterial) {
+        // Prices one piece for the listing. Metal taken as payment is weighed,
+        // not counted (quantity 0), so there is no piece to price - value the
+        // whole holding instead.
+        if (isMaterial && parseInt(materials[i].quantity) > 0) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
@@ -1273,7 +1359,10 @@ const calculateProductPriceReport = async (
       discount_percent = parseFloat(materialPrice[discount_type]);
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
       if (!fromCart) {
-        if (isMaterial) {
+        // Prices one piece for the listing. Metal taken as payment is weighed,
+        // not counted (quantity 0), so there is no piece to price - value the
+        // whole holding instead.
+        if (isMaterial && parseInt(materials[i].quantity) > 0) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
@@ -2707,8 +2796,12 @@ const getTotalStockByUser = async (userId, type) => {
   type = type !== undefined ? type : "product";
   const ids = Array.isArray(userId) ? userId : [userId];
   if (!ids.length) return 0;
+  // Material stock is weighed, not counted - its `quantity` column is always 0,
+  // so summing quantity reported 0 however much metal was actually held.
+  // total_weight is already normalised to grams by convertUnitToGram.
+  const measure = type === "material" ? "total_weight" : "COALESCE(quantity, 1)";
   const [row] = await dbSequelize.query(
-    `SELECT COALESCE(SUM(COALESCE(quantity, 1)), 0) AS qty
+    `SELECT COALESCE(SUM(${measure}), 0) AS qty
        FROM stocks
       WHERE type = :type AND user_id IN (:ids)`,
     { replacements: { type, ids }, type: QueryTypes.SELECT }
@@ -4446,6 +4539,7 @@ module.exports = {
   calculateProductPriceByPurity,
   getCartMaterialPrices,
   getTotalStockPriceByUser,
+  getLiveGoldRate,
   getUserColumnValue,
   getWalletBalance,
   getNextUserName,
