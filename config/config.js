@@ -11,9 +11,13 @@ const createMySqlConfig = ({ username, password, database, host, port }) => ({
   logging: false,
   pool: {
     max: 20,
-    min: 0,
-    acquire: 60000,
-    idle: 10000,
+    // min 0 drained the pool when idle, so the first request after a quiet spell
+    // paid full connection setup (measured 778 ms vs 60 ms warm).
+    min: 5,
+    // acquire 60000 meant a request that could not get a connection waited a full
+    // minute before failing - which presents to the user as a hang, not an error.
+    acquire: 10000,
+    idle: 30000,
   },
 });
 

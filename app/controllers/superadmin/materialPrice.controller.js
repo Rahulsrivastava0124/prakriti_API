@@ -1,7 +1,7 @@
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
 const db = require("@models");
 const {priceFormat, addLog, priceConvertToGram} = require("@helpers/helper");
-const {updateOrCreate} = require("@library/common");
+const {updateOrCreate, resetMaterialPriceCache} = require("@library/common");
 const { getPaginationOptions } = require('@helpers/paginator')
 const {MaterialPriceCollection} = require("@resources/superadmin/MaterialPriceCollection");
 const { Op } = require("sequelize");
@@ -140,6 +140,7 @@ exports.store = async (req, res) => {
         await MaterialPricePurityModel.create(thisObj, { transaction: t });
       }
 
+      resetMaterialPriceCache();   // stock valuation reads these through a cached map
       res.send(formatResponse([], "Price added successfully!"));
 
     });
@@ -254,6 +255,7 @@ exports.update = async (req, res) => {
       }
       await MaterialPricePurityModel.destroy({ where: { id: {[Op.notIn]: thisIds}, material_price_id: materialPrice.id}});
 
+      resetMaterialPriceCache();   // stock valuation reads these through a cached map
       res.send(formatResponse([], "Price updated successfully!"));
     //});
   } catch (error) {
@@ -276,6 +278,7 @@ exports.delete = async (req, res) => {
       await MaterialPricePurityModel.destroy({ where: { material_price_id: req.params.id}, transaction: t});
       await MaterialPriceModel.destroy({ where: { id: req.params.id}, transaction: t});
 
+      resetMaterialPriceCache();   // stock valuation reads these through a cached map
       res.send(formatResponse([], "Price deleted successfully!"));
     });
   } catch (error) {
