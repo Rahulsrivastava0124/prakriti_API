@@ -245,9 +245,15 @@ const getStockPurityId = async (material_id, fallback) => {
     return rows.length ? rows[0].purity_id : (fallback || null);
 }
 
-const UpdateStockMaterial = async (stockH, userID, t) => {
-    const stockPurityId = await getStockPurityId(stockH.material_id, stockH.purity_id);
-    let unit = stockH.unit_id ? await UnitModel.findByPk(stockH.unit_id) : null;
+// `known` lets a caller that already looked the purity/unit up hand them over
+// rather than pay for the same two reads again.
+const UpdateStockMaterial = async (stockH, userID, t, known = {}) => {
+    const stockPurityId = known.stockPurityId !== undefined
+        ? known.stockPurityId
+        : await getStockPurityId(stockH.material_id, stockH.purity_id);
+    let unit = known.unit !== undefined
+        ? known.unit
+        : (stockH.unit_id ? await UnitModel.findByPk(stockH.unit_id) : null);
     let weight_in_gram = convertUnitToGram(unit ? unit.name : 'gram', stockH.pakka_weight);
     let result = await updateOrCreate(StockModel, {
         material_id: stockH.material_id,
@@ -313,7 +319,6 @@ exports.transferStockMaterial = async (req, res) => {
 
 const transferMaterial = async (req, data) => {
     const t = await sequelize.transaction();
-    const stockPurityId = await getStockPurityId(data.material_id, data.purity_id);
     try {
         // unit_id/purity_id are INTEGER columns - "" from the caller is a DB error.
         // A payer holding no stock of ours can't supply a unit, so fall back to
@@ -323,6 +328,11 @@ const transferMaterial = async (req, data) => {
             let material = await MaterialModel.findByPk(data.material_id);
             data.unit_id = material ? material.unit_id : null;
         }
+
+        // Resolved once and reused by both the sender debit below and the
+        // receiver credit in UpdateStockMaterial. Must run after the
+        // normalisation above so the fallback is a null, never a "".
+        const stockPurityId = await getStockPurityId(data.material_id, data.purity_id);
 
         let stockH = await stockHistoryModel.create({
             belongs_to: data.from_user_id,
@@ -407,7 +417,7 @@ const transferMaterial = async (req, data) => {
         // Credit the receiver regardless of whether the sender had a tracked
         // stock row - e.g. metal paid by a customer who holds no stock with us.
         compactLog("UpdateStockMaterial ===============: ");
-        await UpdateStockMaterial(stockH, stockH.to_user_id, t);
+        await UpdateStockMaterial(stockH, stockH.to_user_id, t, { stockPurityId, unit });
 
         await t.commit();
 
