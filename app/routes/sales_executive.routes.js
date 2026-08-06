@@ -21,7 +21,7 @@ module.exports = (app, express, io) => {
     router.post("/logout", [authJwt.verifyToken, authJwt.isSalesExecutive], authController.logout);
 
     //dashboard
-    router.get("/dashboard", [], dashboardController.index);
+    router.get("/dashboard", [authJwt.verifyToken], dashboardController.index);
 
     //profile
     router.post("/edit-profile", [authJwt.verifyToken], profileController.editProfile);
