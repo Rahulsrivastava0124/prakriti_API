@@ -41,9 +41,7 @@ const getModelObject = async(data, req, userIds) => {
     let total_sale_due = await SaleModel.sum('due_amount', { where: conditions });
     let total_sale_paid = await SaleModel.sum('paid_amount', { where: conditions });
     let total_return = await SaleModel.sum('return_amount', { where: conditions });
-    console.log("data.id : ", data.id, " req.userId : ", req.userId);
     let advance_amount = req ? await getAdvanceAmount(data.id, req.userId) : 0;
-    console.log("advance_amount : ",advance_amount);
     return {
         id: data.id,
         name: data.name,

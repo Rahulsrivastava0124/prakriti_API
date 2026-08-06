@@ -76,10 +76,8 @@ exports.currentStockReportPdf = async (req, res) => {
 
     // Determine user scope for stocks
     let userID = await getStockUserID(req);
-    console.log("req.userId : ", req.userId);
     let userDtls = await UserModel.findByPk(req.userId);
     let role = await Role.findByPk(userDtls.role_id);
-    console.log('role : ', role);
     let roleName = role ? role.name : "user";
 
     let conditions = { type };
@@ -255,7 +253,6 @@ exports.currentStockReportPdf = async (req, res) => {
       overallTotals.total_value += Number(it.mrp || 0);
     }
 
-    console.log("group stocks : ", groups);
 
     // Fetch logged-in user details
     const user = await UserModel.findByPk(req.userId);
@@ -483,7 +480,7 @@ exports.currentStockReportPdf = async (req, res) => {
 
     html += `</div></body></html>`;
 
-    const htmlPdf = require("html-pdf-node");
+    const htmlPdf = require("@helpers/pdf");
     const file = { content: html };
     const options = { format: "A4", margin: { top: "10mm", bottom: "10mm" } };
 
@@ -518,17 +515,14 @@ exports.currentStockReportPdf = async (req, res) => {
         );
       } catch (e) {
         addLog("currentStockReportPdf generation error: " + (e && e.message ? e.message : e));
-        console.error("currentStockReportPdf generation error:", e);
         return res.status(errorCodes.default).send(formatErrorResponse("Failed to generate report"));
       }
     } catch (e) {
       addLog("currentStockReportPdf unexpected error: " + (e && e.message ? e.message : e));
-      console.error("currentStockReportPdf unexpected error:", e);
       return res.status(errorCodes.default).send(formatErrorResponse("Failed to generate report"));
     }
   } catch (err) {
     addLog("currentStockReportPdf error: " + (err && err.message ? err.message : err));
-    console.error("currentStockReportPdf error:", err);
     return res.status(errorCodes.default).send(formatErrorResponse("Failed to generate report"));
   }
 };
@@ -651,10 +645,8 @@ exports.index = async (req, res) => {
         : await getWorkingUserID(req)
       : user_id;
 
-    console.log("req.userId : ", req.userId);
     let userDtls = await UserModel.findByPk(req.userId);
     let role = await Role.findByPk(userDtls.role_id);
-    console.log('role : ', role);
     let roleName = role ? role.name : "user";
 
     let conditions = { type: type };
@@ -1097,7 +1089,6 @@ exports.index = async (req, res) => {
       })
       .catch((err) => {
         addLog("catch error: " + err.toString());
-        console.error('stocks.find error:', err && err.message ? err.message : err);
         res.status(errorCodes.default).send(formatErrorResponse(err));
       });
   } catch (error) {
@@ -1113,10 +1104,8 @@ exports.index = async (req, res) => {
  */
 exports.view = async (req, res) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
-  console.log("req.userId : ", req.userId);
   let userDtls = await UserModel.findByPk(req.userId);
   let role = await Role.findByPk(userDtls.role_id);
-  console.log('role : ', role);
   let roleName = role ? role.name : "user";
 
   let stock = await stocksModel.findOne({
@@ -1163,6 +1152,13 @@ exports.view = async (req, res) => {
           },
         ],
       },
+      // material stocks have no product - they hang off the material directly
+      {
+        model: materialModel,
+        as: "material",
+        required: false,
+        include: [{ model: PurityModel, as: "purities" }],
+      },
     ],
   });
 
@@ -1171,9 +1167,14 @@ exports.view = async (req, res) => {
       .status(errorCodes.default)
       .send(formatErrorResponse("Stock not found"));
   }
-  res.send(
-    formatResponse(await StocksReportCollection(stock, userID, roleName), "Stock details")
-  );
+
+  // StocksReportCollection dereferences stock.product throughout, which is null
+  // for material stocks. Those use the same collection the material list uses.
+  const details = stock.product
+    ? await StocksReportCollection(stock, userID, roleName)
+    : await StocksMaterialCollection(stock, userID);
+
+  res.send(formatResponse(details, "Stock details"));
 };
 
 /**
@@ -1354,10 +1355,8 @@ exports.getStockPriceByCategory = async (req, res) => {
     manager,
   } = req.query;
 
-  console.log("req.userId : ", req.userId);
   let userDtls = await UserModel.findByPk(req.userId);
   let role = await Role.findByPk(userDtls.role_id);
-  console.log('role : ', role);
   let roleName = role ? role.name : "user";
 
   compactLog("by_specific : ", by_specific);
@@ -1642,10 +1641,8 @@ exports.updateImage = async (req, res) => {
   try {
     let data = req.body;
 
-    console.log("req.userId : ", req.userId);
     let userDtls = await UserModel.findByPk(req.userId);
     let role = await Role.findByPk(userDtls.role_id);
-    console.log('role : ', role);
     let roleName = role ? role.name : "user";
     
     // Validate certificate_no
@@ -1765,7 +1762,6 @@ exports.updateImage = async (req, res) => {
     );
   } catch (error) {
     addLog("error: " + error.toString());
-    console.error("Error updating stock image:", error);
     res
       .status(errorCodes.default)
       .send(formatErrorResponse("Failed to update stock image: " + error.message));
@@ -1782,10 +1778,8 @@ exports.updateImageByCertificateNo = async (req, res) => {
   try {
     let data = req.body;
 
-    console.log("req.userId : ", req.userId);
     let userDtls = await UserModel.findByPk(req.userId);
     let role = await Role.findByPk(userDtls.role_id);
-    console.log('role : ', role);
     let roleName = role ? role.name : "user";
 
     let certificate_no = req.params.certificate_no;
@@ -1907,7 +1901,6 @@ exports.updateImageByCertificateNo = async (req, res) => {
     );
   } catch (error) {
     addLog("error: " + error.toString());
-    console.error("Error updating stock image:", error);
     res
       .status(errorCodes.default)
       .send(formatErrorResponse("Failed to update stock image: " + error.message));
@@ -1925,10 +1918,8 @@ exports.updateImageById = async (req, res) => {
     let data = req.body;
     let stockId = req.params.id;
 
-    console.log("req.userId : ", req.userId);
     let userDtls = await UserModel.findByPk(req.userId);
     let role = await Role.findByPk(userDtls.role_id);
-    console.log('role : ', role);
     let roleName = role ? role.name : "user";
     
     // Validate stock ID from URL parameter
@@ -2050,7 +2041,6 @@ exports.updateImageById = async (req, res) => {
     );
   } catch (error) {
     addLog("error: " + error.toString());
-    console.error("Error updating stock image:", error);
     res
       .status(errorCodes.default)
       .send(formatErrorResponse("Failed to update stock image: " + error.message));

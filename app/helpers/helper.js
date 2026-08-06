@@ -342,17 +342,14 @@ const getRawDateWhereQuery = (date_from, date_to, tablePrefix) => {
 
 const addLog = (log) => {
   log = JSON.stringify(log);
-  console.log("addLog : -------> ", log);
   try {
     if (!fs.existsSync("logs")) {
       fs.mkdirSync("logs", { recursive: true });
     }
   } catch (e) {
-    console.log("addLog mkdir error:", e && e.message ? e.message : e);
   }
   fs.appendFile("logs/request_logs.txt", log + "\n", (err) => {
     if (err) {
-      console.log(err);
     }
   });
 };
