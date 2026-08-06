@@ -50,7 +50,14 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 // ── App setup ────────────────────────────────────────────────────
 const app = express();
-app.use(require('compression')());
+let compression;
+try {
+  compression = require('compression');
+} catch (err) {
+  compression = null;
+  console.warn('Warning: compression module not installed. Response compression is disabled. Run `npm install compression` to enable it.');
+}
+if (compression) app.use(compression());
 app.use(helmet());
 
 const corsConfig = require('./config/cors.config');

@@ -2,7 +2,7 @@ const config = require("@config/auth.config");
 const db = require("@models");
 const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId, sendEmail } = require("@library/common");
+const { getRoleId, sendEmail, loginIdentifierWhere } = require("@library/common");
 const {
   generateRawToken,
   hashToken,
@@ -30,7 +30,7 @@ exports.signin = async (req, res) => {
   
   let adminRoleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
-    where: { mobile: req.body.mobile,
+    where: { ...loginIdentifierWhere(req.body.mobile),
       role_id: adminRoleId
     }
   });
@@ -98,7 +98,7 @@ exports.forgotPasswordSendOtp = async(req, res) => {
   let roleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: roleId
     }
   });
@@ -133,7 +133,7 @@ exports.forgotPasswordVerifyOtp = async(req, res) => {
   let roleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: roleId,
       reset_otp: req.body.otp || ''
     }
@@ -157,7 +157,7 @@ exports.forgotPassword = async(req, res) => {
   let roleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: roleId,
       reset_otp: req.body.otp || ''
     }
