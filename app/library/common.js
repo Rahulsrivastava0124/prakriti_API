@@ -1848,6 +1848,54 @@ const getWalletBalance = async (
   }
 };
 
+/**
+ * Normalise an email for storage/comparison. Returns null for blanks so the
+ * column stays NULL rather than holding an empty string.
+ */
+const normalizeEmail = (email) => {
+  if (isEmpty(email)) return null;
+  let value = String(email).toLowerCase().trim();
+  return value === "" ? null : value;
+};
+
+/**
+ * Email is a login identifier alongside mobile, so it has to resolve to exactly
+ * one account across every role — a customer and a retailer cannot share one.
+ * Comparison is case-insensitive; pass excludeUserId when editing a record so a
+ * user doesn't collide with themselves.
+ */
+const emailExists = async (email, excludeUserId = null) => {
+  let value = normalizeEmail(email);
+  if (!value) return false;
+
+  let conditions = {
+    [Op.and]: [
+      dbSequelize.where(dbSequelize.fn("LOWER", dbSequelize.col("email")), value),
+    ],
+  };
+  if (excludeUserId) {
+    conditions.id = { [Op.ne]: excludeUserId };
+  }
+
+  const user = await UserModel.findOne({ where: conditions });
+  return !!user;
+};
+
+/**
+ * Users sign in with either their mobile number or their email address, so any
+ * login / forgot-password lookup has to match whichever one they typed.
+ * Spread into a where clause alongside the role condition, e.g.
+ *   where: { ...loginIdentifierWhere(req.body.mobile), role_id: roleId }
+ */
+const loginIdentifierWhere = (identifier) => {
+  let value = isEmpty(identifier) ? "" : String(identifier).trim();
+  if (value === "") {
+    // Never fall through to matching a real row when nothing was supplied.
+    return { id: null };
+  }
+  return { [Op.or]: [{ mobile: value }, { email: value.toLowerCase() }] };
+};
+
 const getNextUserName = async (role, id) => {
   let prefix = "";
   let roleId = getRoleId(role);
@@ -4542,6 +4590,9 @@ module.exports = {
   getLiveGoldRate,
   getUserColumnValue,
   getWalletBalance,
+  emailExists,
+  normalizeEmail,
+  loginIdentifierWhere,
   getNextUserName,
   getWorkingUserID,
   isSuperAdmin,

@@ -3,7 +3,7 @@ const config = require("@config/auth.config");
 const db = require("@models");
 const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId } = require("@library/common");
+const { getRoleId, emailExists, normalizeEmail } = require("@library/common");
 const { addActivityLog } = require("@library/activityLog");
 const { validateNewPassword, changePasswordAndNotify } = require("@library/passwordChange");
 const {UserCollection} = require("@resources/superadmin/UserCollection");
@@ -45,9 +45,14 @@ exports.editProfile = async(req, res) => {
       return res.status(errorCodes.default).send(formatErrorResponse('User GST no. already exists'));
     }
 
+    /* email doubles as a login identifier, so it must stay unique across every role */
+    if (await emailExists(data.email, req.userId)) {
+      return res.status(errorCodes.default).send(formatErrorResponse('This email is already exists.'));
+    }
+
     const postData = {
       name: data.name,
-      email: data.email || null,
+      email: normalizeEmail(data.email),
       mobile: data.mobile,
       gst: data.gst
     };

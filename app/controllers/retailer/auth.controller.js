@@ -2,7 +2,7 @@ const config = require("@config/auth.config");
 const db = require("@models");
 const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId } = require("@library/common");
+const { getRoleId, loginIdentifierWhere } = require("@library/common");
 const {
   generateRawToken,
   hashToken,
@@ -27,7 +27,7 @@ var bcrypt = require("bcryptjs");
 exports.signin = async (req, res) => {
   let adminRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
-    where: { mobile: req.body.mobile,
+    where: { ...loginIdentifierWhere(req.body.mobile),
       role_id: adminRoleId
     }
   });
