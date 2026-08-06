@@ -3366,20 +3366,25 @@ const getStockUserID = async (req, userID) => {
 };
 
 const canStockAddCart = async (stockId, productType, user_id, certificate_no = null) => {
+  let can_add_cart;
   if (productType == "material") {
-    let stock = await StockModel.findOne({
-      where: { id: stockId, user_id: user_id },
-    });
-    let query =
-      "SELECT SUM(quantity) as total_quantity FROM carts WHERE stock_id = " +
-      stockId +
-      " AND deleted_at IS NULL";
-    const cart = await dbSequelize.query(query, { type: QueryTypes.SELECT });
+    // One round trip instead of two - the listings call this once per row, so
+    // the second trip cost as much as the whole rest of the page.
+    // ponytail: still one query per row; batch by stock_id if a page ever
+    // needs to list more rows than a screenful.
+    const rows = await dbSequelize.query(
+      `SELECT s.quantity,
+              (SELECT SUM(quantity) FROM carts
+                WHERE stock_id = s.id AND deleted_at IS NULL) AS total_quantity
+         FROM stocks s
+        WHERE s.id = :stockId AND s.user_id = :user_id
+          AND s.deleted_at IS NULL`,
+      { replacements: { stockId, user_id }, type: QueryTypes.SELECT }
+    );
     if (
-      !stock ||
-      !cart.length ||
-      !cart[0].total_quantity ||
-      cart[0].total_quantity < stock.quantity
+      !rows.length ||
+      !rows[0].total_quantity ||
+      rows[0].total_quantity < rows[0].quantity
     ) {
       can_add_cart = true;
     } else {
