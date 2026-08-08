@@ -1,13 +1,17 @@
 # API endpoints — query and invoice performance analysis and fixes
 
-**Subject:** the API queries are slow across all endpoints, invoice generation included.
+**Subject:** the API queries are slow across all endpoints — list pages, invoice
+generation and the download-view screens — plus: the phone never showed the
+invoice it downloaded.
 **Constraint:** not one byte of any response may change.
 **Verdict:** the slowest list endpoints were **1.0–1.2 s**; they are now
 **8–80 ms**. Invoice generation was **1.9–5.7 s**; it is now **0.34–0.72 s**.
+The download-view page's own load was **852 ms**; it is now **21 ms**. The phone
+problem was not performance at all — it was a blocked popup (§4.2).
 Sixty endpoint responses were captured before and after and compared byte for
 byte, and every generated PDF compared too: **every difference is accounted
 for, and the one change that did alter a response was caught and reverted**
-(§3.4, §6).
+(§3.4, §7).
 
 | | |
 |---|---|
@@ -42,7 +46,7 @@ floor and every ratio as conservative.
 
 Two rows need a note. `/user-list` and `/purchases-products` moved within noise
 of their baselines — both are dominated by response serialization, not by
-queries (§5). Everything else on the two suites is at or below its baseline.
+queries (§6). Everything else on the two suites is at or below its baseline.
 
 ### 1.2 Query counts, from the counting harness
 
@@ -262,7 +266,74 @@ The `?v=` normalisation is not a concession: that cache-buster is
 
 ---
 
-## 4. Files changed
+## 4. The download-view page
+
+The download-view screens (`Sale`, `SaleOnApproval`, `Purchase`,
+`PurchaseOnApproval`) load one endpoint on mount and then call the three invoice
+endpoints from §3 on each button.
+
+### 4.1 `GET /sales/view/:id` — 852 ms for 6 KB
+
+| Request | Before | After |
+|---|---:|---:|
+| `/sales/view/129` | 852 ms cold, 255 ms warm | **21 ms** |
+| `/sales/view/128` (on-approval) | 205 ms | **17 ms** |
+| `/purchases/view/192` | 10 ms | **8 ms** |
+
+`EXPLAIN ANALYZE` on the view query:
+
+```
+-> Filter: ((purchase.sale_id = 129) and (purchase.deleted_at is null))
+    -> Table scan on purchase  (cost=34595 rows=167) (actual time=1.15..191 rows=187 loops=1)
+```
+
+The query joins `purchases` on `sale_id`, and no index led with that column —
+`purchases_indexing` starts with `id`, the same shape as §2.1. Scanning 187 rows
+cost 191 ms because `purchases` carries the `req_data` longtext, so the scan
+dragged the blob along with it.
+
+**Fix:** [migrations/20260809100000-add-view-page-indexes.js](migrations/20260809100000-add-view-page-indexes.js)
+— `purchases(sale_id)`, `purchases(return_id)`, `stocks(purchase_id)`.
+
+`req_data` was also excluded from the sale view query itself; `SaleCollection`
+does not return it (checked against the actual response, not just the code —
+see §3.4 for why that distinction matters).
+
+Verified: all three view responses byte-identical.
+
+### 4.2 The phone showing no invoice
+
+Every download handler did this:
+
+```js
+let response = await salesDownloadInvoiceInfo(id);
+if (response.data.success) {
+  window.open(response.data.data.url, "_blank").focus();
+}
+```
+
+`window.open` only counts as user-initiated while the click handler is still on
+the stack. Here it runs *after* the API call resolves, so mobile Safari and
+Chrome for Android classify it as an unsolicited popup and block it. On desktop
+the popup blocker is lenient and the tab opened, which is why this only showed
+up on phones — and when the call returns `null`, `.focus()` throws on top of it.
+
+Slower endpoints made it worse: the longer the await, the further from the
+gesture. The §3 fixes shortened the window but do not close the hole.
+
+**Fix:** three helpers in `src/helpers/helper.js` of the admin app —
+`prepareFileWindow()` opens the blank tab synchronously *on the click*,
+`showFileWindow(win, url)` points it at the file when the URL arrives and falls
+back to navigating the current tab if the browser blocked it anyway, and
+`closeFileWindow(win)` disposes of the blank tab when the API fails.
+
+Applied to all **25 call sites across 17 files** — the four download-view pages,
+the sale/purchase list pages, and every ledger and view page that downloads a
+PDF. Counted after the change: 25 prepare, 25 show, 25 close.
+
+---
+
+## 5. Files changed
 
 | File | Change |
 |---|---|
@@ -273,13 +344,20 @@ The `?v=` normalisation is not a concession: that cache-buster is
 | `app/controllers/superadmin/sale.controller.js` | exclude `req_data` (3 queries) |
 | `app/resources/**/*Collection.js` (53 files) | sequential loop → `mapConcurrent` |
 | `app/helpers/pdf.js` | reuse one Chromium per args; `setContent` waits on `load` |
+| `migrations/20260809100000-add-view-page-indexes.js` | new — 3 indexes for the view-page joins |
+| admin app: `src/helpers/helper.js` + 17 page files | popup-safe PDF opening (25 call sites) |
+| `app/library/dashboardCache.js` (existing) | now also caches the two product listings and the stock summary |
+| `server.js` | write-invalidation middleware for those caches |
+| `app/resources/superadmin/PurchaseListCollection.js` | per-row counts batched |
+| `app/resources/superadmin/Stocks*ReportCollection.js` | cart availability batched |
+| admin app: `SaleProducts.js` | pager reads the server `total` |
 
 No route, controller signature, collection output shape, or model attribute was
 changed.
 
 ---
 
-## 5. Endpoints still worth attention
+## 6. Endpoints still worth attention
 
 These are no longer query-bound. Making them faster means changing how the
 payload is assembled, which is a larger change with real response risk — out of
@@ -294,7 +372,7 @@ scope for a "no response changes" pass.
 
 ---
 
-## 6. Verification — the response-identity requirement
+## 7. Verification — the response-identity requirement
 
 Two suites, 60 endpoints, captured as raw bytes before and after and compared
 with `cmp`:
@@ -321,7 +399,91 @@ across all 22 endpoints — that is the clean measurement of this change set.
 
 ---
 
-## 7. Two pre-existing failures found while measuring
+## 8. Scaling — what breaks as users increase
+
+Measured by firing N simultaneous requests at the live server (same data, same
+machine), before and after this round of fixes.
+
+### 8.1 Concurrency, before and after
+
+| Endpoint | 1 | 10 | 40 concurrent |
+|---|---:|---:|---:|
+| `/stocks/stock-price-by-category` before | 649 ms | 872 ms | **2,663 ms** |
+| `/stocks/stock-price-by-category` after | 8 ms | 23 ms | **27 ms** |
+| `/purchases-products` before¹ | 495 ms | 3,072 ms | **9,810 ms** |
+| `/purchases-products` after | 2 ms | 16 ms | **15 ms** |
+| `/purchases` after | 18 ms | 46 ms | **101 ms** |
+| `/stocks` after | 87 ms | 314 ms | **1,212 ms** |
+
+¹ after the payload fix but before caching — the payload was never the whole
+problem.
+
+No request failed at any level; the pool queues rather than erroring.
+
+### 8.2 The three limits, and which one bites first
+
+**1. The single Node thread — the one that matters.** `stock-price-by-category`
+spent ~390 ms and `purchases-products` ~260 ms in JavaScript per request. Node
+runs that on the same thread that serves everyone, so a slow endpoint does not
+just slow itself: 40 concurrent requests × 260 ms queued into 9.8 s, and every
+other endpoint waited behind it.
+
+**2. The connection pool.** `max: 20`, and a collection-heavy request used up to
+8 connections. Roughly 2–3 such requests can hold the whole pool; the rest
+queue. Nothing fails until a queue wait crosses `acquire: 10000`, at which point
+requests start erroring rather than merely being slow — a step, not a slope.
+
+**3. Payload size.** `/purchases-products` returned 1.7 MB for a 50-row table.
+That is bandwidth and client rendering, not server time.
+
+### 8.3 What was changed
+
+| Fix | Effect |
+|---|---|
+| `getStockPriceByCategory` wrapped in `remember()`, 60 s TTL | 390 ms of blocking JS runs once a minute instead of once a page load |
+| `purchaseProducts` / `saleProducts` builds cached the same way | 260 ms of blocking JS per request → once per minute per filter |
+| Both product listings now page `items` server-side, with a `total` | 1.7 MB → 28 KB; summary fields still computed over the whole set |
+| `PurchaseListCollection` counts batched into one `GROUP BY` | a 50-row page stops taking 50 connections |
+| New `canStockAddCartMap()` — cart availability for a whole page in 2 queries | the stock list drops ~50 per-row queries |
+| Cache invalidation middleware in [server.js](server.js) | every non-GET drops the cached listings; invoice downloads (POSTs that change nothing) are excluded |
+
+Caching is invalidated centrally rather than per controller: a missed call site
+serves a stale figure, and there is no cheap way to prove you found them all.
+
+### 8.4 Response impact — deliberate this time
+
+Two responses changed, and they are the fix that was asked for:
+
+| Endpoint | Change |
+|---|---|
+| `/purchases-products` | `items` is now one page (50) instead of all 3,200; new `total` field carries the full count |
+| `/sales-products` | same |
+
+Verified: page 1 equals the first 50 of the unpaged list, page 2 the next 50,
+every summary field (`total_amount`, `categories`, …) byte-identical, and
+`all=1` still returns everything. The admin app's `DataTable` switches to
+server-side paging automatically when `total` exceeds the row count;
+`SaleProducts.js` needed one fix — it passed `items.length` as the total, which
+would have pinned it to a single page.
+
+The other 19 endpoints in suite A remain byte-identical. `/employees` differs in
+one field, `attendence: Absent → Pending`, which is
+[getTodayAttendence](app/library/common.js) comparing `moment()` against today's
+cut-off time — the baseline was captured after it, this run before it.
+
+### 8.5 Still O(everything)
+
+- `/stocks` — 87 ms per request, mostly CPU (price computation + a 116 KB
+  payload). At 40 concurrent it is still 1.2 s. It is the next candidate for the
+  same caching treatment, but its data changes far more often than a summary
+  card, so the TTL question is a real one.
+- Category / sub-category / supplier filters still run in JavaScript after the
+  database returns everything.
+- `all=1` remains unbounded by design.
+
+---
+
+## 9. Pre-existing failures found while measuring
 
 Neither is caused by this work; both reproduce on the original code.
 
