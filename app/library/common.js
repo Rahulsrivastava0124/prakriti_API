@@ -3658,16 +3658,21 @@ const getPurchaseProducts = async (params) => {
   let managerIds = await avlStockUserIdsNew(null, getRoleId("superadmin"));
   //console.log(managerIds);
 
+  let purchaseWhere = {
+    is_approved: { [Op.ne]: 2 },
+    is_assigned: false,
+    is_approval: false,
+    sale_id: { [Op.is]: null },
+    //type: { [Op.in]: ["product", "order_purchase"] },
+    type: {[Op.ne]: "material"},
+    user_id: { [Op.in]: managerIds },
+  };
+  if (isObject(params) && !isEmpty(params.supplier_id)) {
+    purchaseWhere.supplier_id = params.supplier_id;
+  }
+
   let purchases = await PurchaseModel.findAll({
-    where: {
-      is_approved: { [Op.ne]: 2 },
-      is_assigned: false,
-      is_approval: false,
-      sale_id: { [Op.is]: null },
-      //type: { [Op.in]: ["product", "order_purchase"] },
-      type: {[Op.ne]: "material"},
-      user_id: { [Op.in]: managerIds },
-    },
+    where: purchaseWhere,
     order: [["createdAt", "DESC"]],
     include: [
       {
@@ -3743,6 +3748,11 @@ const getPurchaseProducts = async (params) => {
       if (isObject(params)) {
         if (!isEmpty(params.category_id)) {
           if (!product || product.category_id != params.category_id) {
+            pushItem = false;
+          }
+        }
+        if (!isEmpty(params.sub_category_id)) {
+          if (!product || product.sub_category_id != params.sub_category_id) {
             pushItem = false;
           }
         }
@@ -3889,16 +3899,20 @@ const getPurchaseProducts = async (params) => {
 
 const getPurchaseProductsUser = async (req, params) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+  let purchaseWhere = {
+    is_approved: { [Op.ne]: 2 },
+    is_assigned: false,
+    is_approval: false,
+    //sale_id: { [Op.is]: null },
+    //type: { [Op.in]: ["product", "order_purchase"] },
+    user_id: userID,
+  };
+  if (isObject(params) && !isEmpty(params.supplier_id)) {
+    purchaseWhere.supplier_id = params.supplier_id;
+  }
   // fetch pruchase records
   let purchases = await PurchaseModel.findAll({
-    where: {
-      is_approved: { [Op.ne]: 2 },
-      is_assigned: false,
-      is_approval: false,
-      //sale_id: { [Op.is]: null },
-      //type: { [Op.in]: ["product", "order_purchase"] },
-      user_id: userID,
-    },
+    where: purchaseWhere,
     order: [["createdAt", "DESC"]],
     include: [
       {
@@ -3975,6 +3989,11 @@ const getPurchaseProductsUser = async (req, params) => {
       if (isObject(params)) {
         if (!isEmpty(params.category_id)) {
           if (!product || product.category_id != params.category_id) {
+            pushItem = false;
+          }
+        }
+        if (!isEmpty(params.sub_category_id)) {
+          if (!product || product.sub_category_id != params.sub_category_id) {
             pushItem = false;
           }
         }
