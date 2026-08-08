@@ -3434,6 +3434,60 @@ const getStockUserID = async (req, userID) => {
   return userID;
 };
 
+/**
+ * Cart availability for a whole page of stock rows, in two queries.
+ *
+ * canStockAddCart() answers this one row at a time, so a 50-row stock page
+ * spent 50 round trips - and 50 pooled connections - on a question the database
+ * can answer for the page in one go. Same rules, evaluated the same way:
+ *
+ *   material rows      - a row is available unless the carts hold at least the
+ *                        whole stocked quantity
+ *   everything else    - available unless the row is already in this user's cart
+ *
+ * Returns a Map keyed by stock id. Rows missing from the map are treated as
+ * available, which is what the per-row version returns when the stock is not
+ * found for that user.
+ */
+const canStockAddCartMap = async (stockIds, user_id) => {
+  const result = new Map();
+  const ids = [...new Set((stockIds || []).filter((id) => id !== null && id !== undefined))];
+  if (!ids.length) return result;
+
+  const [stockRows, cartRows] = await Promise.all([
+    dbSequelize.query(
+      `SELECT s.id, s.quantity,
+              (SELECT SUM(quantity) FROM carts
+                WHERE stock_id = s.id AND deleted_at IS NULL) AS total_quantity
+         FROM stocks s
+        WHERE s.id IN (:ids) AND s.user_id = :user_id
+          AND s.deleted_at IS NULL`,
+      { replacements: { ids, user_id }, type: QueryTypes.SELECT }
+    ),
+    cartsModel.findAll({
+      attributes: ["stock_id"],
+      where: { stock_id: { [Op.in]: ids }, user_id: user_id },
+      raw: true,
+    }),
+  ]);
+
+  const stockById = new Map();
+  stockRows.forEach((row) => stockById.set(String(row.id), row));
+  const inCart = new Set(cartRows.map((row) => String(row.stock_id)));
+
+  ids.forEach((id) => {
+    const key = String(id);
+    result.set(key, {
+      material: (() => {
+        const row = stockById.get(key);
+        return !row || !row.total_quantity || row.total_quantity < row.quantity;
+      })(),
+      other: !inCart.has(key),
+    });
+  });
+  return result;
+};
+
 const canStockAddCart = async (stockId, productType, user_id, certificate_no = null) => {
   let can_add_cart;
   if (productType == "material") {
@@ -4726,6 +4780,7 @@ module.exports = {
   updateProductAvgReview,
   getStockUserID,
   canStockAddCart,
+  canStockAddCartMap,
   updateStockRawMaterialOutStanding,
   getTodayAttendence,
   haveLeave,

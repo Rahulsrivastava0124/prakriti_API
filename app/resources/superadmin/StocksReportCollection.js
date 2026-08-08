@@ -1,7 +1,7 @@
 const {
   mapConcurrent, isObject, isEmpty, displayAmount, priceFormat, weightFormat } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
-const {calculateProductPriceReport, calculateProductPriceCart, getSuperAdminId, canStockAddCart} = require("@library/common");
+const {calculateProductPriceReport, calculateProductPriceCart, getSuperAdminId, canStockAddCart, canStockAddCartMap} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const {getFileAbsulatePath} = require("../../helpers/helper");
@@ -17,11 +17,13 @@ const StocksReportCollection = async (data, user_id, roleName = null) => {
         /* every row prices the same few material + purity pairs, so they share
            one lookup for the length of this response */
         const priceCache = new Map();
-        return await mapConcurrent(data, (item, i) => getModelObject(item, user_id, roleName, priceCache));
+        /* cart availability for the whole page in two queries instead of one per row */
+        const cartMap = await canStockAddCartMap(data.map(item => item.id), user_id);
+        return await mapConcurrent(data, (item, i) => getModelObject(item, user_id, roleName, priceCache, cartMap));
     }
 }
 
-const getModelObject = async (data, user_id, roleName = null, priceCache = null) => {
+const getModelObject = async (data, user_id, roleName = null, priceCache = null, cartMap = null) => {
     let materialItem = [], materialString = [];
     let taxInfo = null;
     if('tax' in data.product && data.product.tax){
@@ -109,7 +111,10 @@ const getModelObject = async (data, user_id, roleName = null, priceCache = null)
         total_weight_display = weightFormat(data.total_weight) + ' gm';
     }
     
-    let can_add_cart = await canStockAddCart(data.id, data.product.type, user_id, data.certificate_no);
+    let cartFlags = cartMap ? cartMap.get(String(data.id)) : null;
+    let can_add_cart = cartFlags
+        ? (data.product.type == "material" ? cartFlags.material : cartFlags.other)
+        : await canStockAddCart(data.id, data.product.type, user_id, data.certificate_no);
     let stock_user_name = data.user ? (data.user.company_name ? data.user.company_name : data.user.name) : '';
     
 

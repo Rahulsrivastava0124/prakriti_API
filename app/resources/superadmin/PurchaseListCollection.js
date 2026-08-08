@@ -1,6 +1,7 @@
 const {
   mapConcurrent, isObject, formatDateTime, isEmpty, displayAmount, ucWords } = require("@helpers/helper");
 const db = require("@models");
+const { Op } = require("sequelize");
 const PaymentModel = db.payments;
 const {PaymentCollection} = require("@resources/superadmin/PaymentCollection");
 const PurchaseProductModel = db.purchase_products;
@@ -9,12 +10,32 @@ const PurchaseListCollection = async(data, loadPayments) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, loadPayments));
-
+        /**
+         * One grouped count for the whole page instead of a COUNT(*) per row.
+         * Same numbers - the per-row query had no condition beyond purchase_id,
+         * and the model's own paranoid scope applies to both - but a 50-row
+         * page stops taking 50 connections to answer.
+         */
+        const counts = await countProductsByPurchase(data.map(item => item.id));
+        return await mapConcurrent(data, (item, i) => getModelObject(item, loadPayments, counts));
     }
 }
 
-const getModelObject = async(data, loadPayments) => {
+/** purchase_id -> number of purchase products, for the given purchases */
+const countProductsByPurchase = async(ids) => {
+    const counts = new Map();
+    if(!ids.length) return counts;
+    const rows = await PurchaseProductModel.findAll({
+        attributes: ["purchase_id", [db.sequelize.fn("COUNT", db.sequelize.col("id")), "total"]],
+        where: { purchase_id: { [Op.in]: ids } },
+        group: ["purchase_id"],
+        raw: true,
+    });
+    rows.forEach(row => counts.set(String(row.purchase_id), parseInt(row.total, 10)));
+    return counts;
+}
+
+const getModelObject = async(data, loadPayments, counts = null) => {
     let payments = [];
     if(loadPayments){
         payments = await PaymentModel.findAll({order:[['id', 'DESC']], where: {user_id: data.supplier_id}});
@@ -38,7 +59,9 @@ const getModelObject = async(data, loadPayments) => {
         approve_status = "Return Pending";
     }
     
-    let no_of_products = await PurchaseProductModel.count({where: {purchase_id: data.id}});
+    let no_of_products = counts
+        ? (counts.get(String(data.id)) || 0)
+        : await PurchaseProductModel.count({where: {purchase_id: data.id}});
     return {
         id: data.id,
         supplier_name: data.supplier ? data.supplier.name : '',
