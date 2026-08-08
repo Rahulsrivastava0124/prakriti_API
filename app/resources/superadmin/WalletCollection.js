@@ -1,4 +1,5 @@
 const {
+  mapConcurrent,
   isObject,
   formatDateTime,
   isEmpty,
@@ -13,11 +14,8 @@ const WalletCollection = async (data, p_mode = null) => {
   if (isObject(data)) {
     return await getModelObject(data, null, p_mode);
   } else {
-    let arr = [];
-    for (let i = 0; i < data.length; i++) {
-      arr.push(await getModelObject(data[i], i, p_mode));
-    }
-    return arr;
+    return await mapConcurrent(data, (item, i) => getModelObject(item, i, p_mode));
+
   }
 };
 
