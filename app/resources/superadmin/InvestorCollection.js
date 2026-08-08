@@ -1,4 +1,5 @@
-const { isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount } = require("@helpers/helper");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const sequelize = db.sequelize;
@@ -7,11 +8,8 @@ const InvestorCollection = async(data) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i]));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item));
+
     }
 }
 

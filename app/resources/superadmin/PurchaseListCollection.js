@@ -1,4 +1,5 @@
-const { isObject, formatDateTime, isEmpty, displayAmount, ucWords } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, formatDateTime, isEmpty, displayAmount, ucWords } = require("@helpers/helper");
 const db = require("@models");
 const PaymentModel = db.payments;
 const {PaymentCollection} = require("@resources/superadmin/PaymentCollection");
@@ -8,11 +9,8 @@ const PurchaseListCollection = async(data, loadPayments) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], loadPayments));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, loadPayments));
+
     }
 }
 

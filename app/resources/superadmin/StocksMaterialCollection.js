@@ -1,4 +1,5 @@
-const { isObject, isEmpty, displayAmount, priceFormat, weightFormat, noImage } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, isEmpty, displayAmount, priceFormat, weightFormat, noImage } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
 const {PurityCollection} = require("@resources/superadmin/PurityCollection");
 const {calculateProductPriceCartNew, getSuperAdminId, canStockAddCart, getLiveGoldRate} = require("@library/common");
@@ -13,11 +14,8 @@ const StocksMaterialCollection = async (data, user_id) => {
     if(isObject(data)){
         return await getModelObject(data, user_id);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], user_id));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, user_id));
+
     }
 }
 

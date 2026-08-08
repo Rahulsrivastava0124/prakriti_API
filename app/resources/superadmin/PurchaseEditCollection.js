@@ -1,4 +1,5 @@
-const { isObject, formatDateTime, isEmpty, displayAmount, weightFormat, priceFormat } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, formatDateTime, isEmpty, displayAmount, weightFormat, priceFormat } = require("@helpers/helper");
 const db = require("@models");
 const moment = require('moment');
 const ReturnPolicyModel = db.return_policy;
@@ -8,11 +9,8 @@ const PurchaseEditCollection = async(data, req) => {
     if(isObject(data)){
         return await getModelObject(data, req);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], req));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, req));
+
     }
 }
 
