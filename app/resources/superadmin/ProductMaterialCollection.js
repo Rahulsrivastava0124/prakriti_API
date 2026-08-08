@@ -1,15 +1,13 @@
-const { isObject, isEmpty } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, isEmpty } = require("@helpers/helper");
 const {PurityCollection} = require("@resources/superadmin/PurityCollection");
 
 const ProductMaterialCollection = async(data, params) => {
     if(isObject(data)){
         return await getModelObject(data, params);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], params));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, params));
+
     }
 }
 

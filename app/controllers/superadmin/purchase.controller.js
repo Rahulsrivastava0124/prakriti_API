@@ -189,6 +189,9 @@ exports.index = async (req, res) => {
 
   const paginatorOptions = getPaginationOptions(page, limit);
   PurchaseModel.findAndCountAll({
+    // req_data is an unread longtext audit blob - PurchaseListCollection never
+    // reads it, and selecting it dominated this query
+    attributes: { exclude: ["req_data"] },
     order: [["id", "DESC"]],
     offset: paginatorOptions.offset,
     limit: paginatorOptions.limit,
@@ -262,6 +265,8 @@ exports.txnLedger = async (req, res) => {
   try {
     // Fetch all purchases with their related payments
     const allPurchases = await PurchaseModel.findAll({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
       include: [
         {
           model: PaymentModel,
@@ -519,6 +524,8 @@ exports.downloadTxnLedger = async (req, res) => {
   try {
     // Fetch all purchases with their related payments
     const allPurchases = await PurchaseModel.findAll({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
       include: [
         {
           model: PaymentModel,
@@ -1938,6 +1945,8 @@ exports.onapprove_index = async (req, res) => {
   PurchaseModel.findAndCountAll({
     order: [["id", "DESC"]],
     offset: paginatorOptions.offset,
+  // req_data is an unread longtext audit blob, nothing below reads it
+  attributes: { exclude: ["req_data"] },
     limit: paginatorOptions.limit,
     where: conditions,
     include: [
@@ -5497,6 +5506,8 @@ exports.downloadInvoiceItemList = async (req, res) => {
   const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id /*, user_id: userID*/ },
     include: [
       {
@@ -6167,6 +6178,8 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id /*, user_id: userID*/ },
     /* include: [
       {

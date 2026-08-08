@@ -1,4 +1,5 @@
-const { isObject, isEmpty, displayAmount, priceFormat, weightFormat } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, isEmpty, displayAmount, priceFormat, weightFormat } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
 const {calculateProductPriceReport, calculateProductPriceCart, getSuperAdminId, canStockAddCart} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
@@ -13,15 +14,14 @@ const StocksReportCollection = async (data, user_id, roleName = null) => {
     if(isObject(data)){
         return await getModelObject(data, user_id, roleName);
     }else{
-        let arr = []; 
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], user_id, roleName));
-        }
-        return arr;
+        /* every row prices the same few material + purity pairs, so they share
+           one lookup for the length of this response */
+        const priceCache = new Map();
+        return await mapConcurrent(data, (item, i) => getModelObject(item, user_id, roleName, priceCache));
     }
 }
 
-const getModelObject = async (data, user_id, roleName = null) => {
+const getModelObject = async (data, user_id, roleName = null, priceCache = null) => {
     let materialItem = [], materialString = [];
     let taxInfo = null;
     if('tax' in data.product && data.product.tax){
@@ -50,7 +50,7 @@ const getModelObject = async (data, user_id, roleName = null) => {
         priceRole = "retailer";
     }
 
-    let priceMaterials = await calculateProductPriceCart(data.stockMaterials, data.product.sub_category, isMaterialStock, priceRole, null, true);
+    let priceMaterials = await calculateProductPriceCart(data.stockMaterials, data.product.sub_category, isMaterialStock, priceRole, null, true, priceCache);
 
     // net material price + net (discounted) making charge = sale page "Price" (pre-tax)
     let netMaterialPrice = priceMaterials.price;

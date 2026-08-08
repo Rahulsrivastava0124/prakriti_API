@@ -1187,7 +1187,16 @@ const calculateProductPriceCart = async (
   isMaterial,
   price_by_role,
   tax_info,
-  fromCart
+  fromCart,
+  /**
+   * Optional per-response cache of material price rows, keyed by material +
+   * purity. A listing asks for the same handful of prices once per row, and
+   * the rows are only read here, so one lookup can serve them all. The
+   * promise is cached rather than the result, so rows running side by side
+   * share the single query. Omit it and nothing changes - every call goes to
+   * the database exactly as before.
+   */
+  priceCache = null
 ) => {
   let price_type = "",
     discount_type = "",
@@ -1219,18 +1228,30 @@ const calculateProductPriceCart = async (
     total_material_discount = 0,
     total_mrp_price = 0,
     total_sale_price = 0;
+  const loadMaterialPrice = (material_id, purity_id) => {
+    const query = () =>
+      MaterialPriceModel.findOne({
+        where: { material_id: material_id },
+        include: [
+          {
+            model: MaterialPricePurityModel,
+            as: "materialPricePurities",
+            where: { purity_id: purity_id },
+            separate: true,
+          },
+        ],
+      });
+    if (!priceCache) return query();
+    const key = material_id + ":" + purity_id;
+    if (!priceCache.has(key)) priceCache.set(key, query());
+    return priceCache.get(key);
+  };
+
   for (let i = 0; i < materials.length; i++) {
-    let materialPriceObj = await MaterialPriceModel.findOne({
-      where: { material_id: materials[i].material_id },
-      include: [
-        {
-          model: MaterialPricePurityModel,
-          as: "materialPricePurities",
-          where: { purity_id: materials[i].purity_id },
-          separate: true,
-        },
-      ],
-    });
+    let materialPriceObj = await loadMaterialPrice(
+      materials[i].material_id,
+      materials[i].purity_id
+    );
     let price = 0,
       mrp = 0,
       unit_based_mrp = 0,
@@ -3825,6 +3846,18 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
             pushItem = false;
           }
         }
+
+        if (!isEmpty(params.sub_category_id)) {
+          if (!product || product.sub_category_id != params.sub_category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.supplier_id)) {
+          if (!p || p.supplier_id != params.supplier_id) {
+            pushItem = false;
+          }
+        }
       }
 
       let image = "";
@@ -4059,6 +4092,18 @@ const getPurchaseProductsUser = async (req, params) => {
       if (isObject(params)) {
         if (!isEmpty(params.category_id)) {
           if (!product || product.category_id != params.category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.sub_category_id)) {
+          if (!product || product.sub_category_id != params.sub_category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.supplier_id)) {
+          if (!p || p.supplier_id != params.supplier_id) {
             pushItem = false;
           }
         }
