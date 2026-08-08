@@ -3679,6 +3679,30 @@ const haveLeave = async (userId, date) => {
   return leave ? true : false;
 };
 
+/**
+ * Purchase products list filters. Shared by the superadmin and the per-user
+ * listing so both stay in sync. Query values are strings, hence the loose !=.
+ */
+const matchesPurchaseProductFilters = (params, purchase, product) => {
+  if (!isObject(params)) return true;
+  if (
+    !isEmpty(params.category_id) &&
+    (!product || product.category_id != params.category_id)
+  ) {
+    return false;
+  }
+  if (
+    !isEmpty(params.sub_category_id) &&
+    (!product || product.sub_category_id != params.sub_category_id)
+  ) {
+    return false;
+  }
+  if (!isEmpty(params.supplier_id) && purchase.supplier_id != params.supplier_id) {
+    return false;
+  }
+  return true;
+};
+
 const getPurchaseProducts = async (params) => {
   /*let mansgers = await UserModel.findAll({
     attributes: ["id"],
@@ -3771,14 +3795,7 @@ const getPurchaseProducts = async (params) => {
         total_return_product++;
         continue;
       }
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
-      }
+      let pushItem = matchesPurchaseProductFilters(params, p, product);
 
       let image = "";
       if (product && isArray(product.images)) {
@@ -3999,14 +4016,7 @@ const getPurchaseProductsUser = async (req, params) => {
         continue;
       }
 
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
-      }
+      let pushItem = matchesPurchaseProductFilters(params, p, product);
 
       let image = "";
       if (product && isArray(product.images)) {
@@ -4579,6 +4589,7 @@ module.exports = {
   getLoginLogoutAddress,
   getTotalAbsent,
   getPurchaseProducts,
+  matchesPurchaseProductFilters,
   getPurchaseProductsUser,
   avlStockUserIds,
   avlStockUserIdsNew,
