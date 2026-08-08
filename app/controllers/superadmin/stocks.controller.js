@@ -8,6 +8,10 @@ const db = require("@models");
 const sequelize = db.sequelize;
 const { Op, QueryTypes } = require("sequelize");
 const { getPaginationOptions } = require("@helpers/paginator");
+const { remember } = require("@library/dashboardCache");
+
+// stock summary cards; dropped by invalidateStockCaches() on any stock movement
+const STOCK_PRICE_TTL = 60 * 1000;
 const { UnitCollection } = require("@resources/superadmin/UnitCollection");
 const { StocksCollection } = require("@resources/superadmin/StocksCollection");
 const {
@@ -1559,7 +1563,28 @@ exports.getStockPriceByCategory = async (req, res) => {
     userIdArr = [userID];
   }
 
-  let result = await getTotalStockPriceByUser(true, userIdArr, type, roleName);
+  /**
+   * The category totals are ~390 ms of pure JavaScript: every stock row is
+   * priced through calculateProductPrice, and Node runs that on the one thread
+   * that also serves every other request - so under load this endpoint slows
+   * down the whole API, not just itself (measured: 649 ms alone, 2,663 ms at
+   * 40 concurrent).
+   *
+   * The result is a summary of stock that changes on sale, purchase and
+   * transfer, so it is cached for a minute and invalidated by those write
+   * paths. Same shape, same numbers, computed once per minute instead of once
+   * per page load.
+   */
+  const cacheKey = [
+    "stockPriceByCategory",
+    type,
+    roleName,
+    userIdArr.slice().sort().join(","),
+  ].join(":");
+
+  let result = await remember(cacheKey, STOCK_PRICE_TTL, () =>
+    getTotalStockPriceByUser(true, userIdArr, type, roleName)
+  );
 
   return res.send(formatResponse(result));
 };

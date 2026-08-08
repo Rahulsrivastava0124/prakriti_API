@@ -5,6 +5,7 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
+const { remember } = require("@library/dashboardCache");
 const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const { base64FileUpload, removeFile } = require("@helpers/upload");
@@ -2588,6 +2589,9 @@ exports.transferItems = async (req, res) => {
 exports.view = async (req, res) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
+    // req_data is an unread longtext audit blob; SaleCollection does not
+    // return it, so it is not part of this response
+    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id /*, sale_by: userID*/ },
     /* include: [
       {
@@ -5184,13 +5188,47 @@ exports.returnStockTransfer = async (req, res) => {
  * @param {*} req
  * @param {*} res
  */
+/**
+ * Page the item list of a product listing.
+ *
+ * These endpoints built every row in memory and returned all of them whatever
+ * `limit` said - 3,200 items and 1.7 MB for a 50-row table, growing with the
+ * business. The summary fields (totals, per-category cards) still come from the
+ * whole set, because that is what they are summarising; only `items` is paged,
+ * and `total` carries the full count so the table can page through it.
+ *
+ * `all=1` is the table's "All" option and returns everything, as before.
+ */
+const pageListItems = (result, query) => {
+  const items = Array.isArray(result.items) ? result.items : [];
+  result.total = items.length;
+  if (String(query.all) === "1") return result;
+  const page = Math.max(parseInt(query.page, 10) || 1, 1);
+  const limit = Math.max(parseInt(query.limit, 10) || 50, 1);
+  result.items = items.slice((page - 1) * limit, page * limit);
+  return result;
+};
+
+/** see purchase.controller: the same build, the same reason to cache it */
+const PRODUCT_LIST_TTL = 60 * 1000;
+
+const productListCacheKey = (prefix, req) => {
+  const q = req.query || {};
+  return [prefix, req.userId, req.role, q.category_id || "", q.sub_category_id || "",
+    q.supplier_id || "", q.sale_by || "", q.type || "", q.search || ""].join(":");
+};
+
 exports.saleProducts = async (req, res) => {
   //let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   //let adminRoleId = getRoleId("admin");
   let superAdminRoleId = getRoleId("superadmin");
   compactLog("req ====> ", req.userId, req.role);
-  let saleProductsRes = await getOwnUserSaleProducts(req, req.query, req.role);
-  res.send(formatResponse(saleProductsRes));
+  let saleProductsRes = await remember(
+    productListCacheKey("saleProducts", req),
+    PRODUCT_LIST_TTL,
+    () => getOwnUserSaleProducts(req, req.query, req.role)
+  );
+  res.send(formatResponse(pageListItems({ ...saleProductsRes }, req.query)));
 };
 
 /**
