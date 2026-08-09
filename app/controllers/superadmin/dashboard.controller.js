@@ -55,6 +55,7 @@ const RetailerVisitModel = db.retailer_visits;
 const {
   NotificationCollection,
 } = require("@resources/superadmin/NotificationCollection");
+const { remember } = require("@library/dashboardCache");
 
 /**
  * Super Admin Dashboard
@@ -62,25 +63,71 @@ const {
  * @param req
  * @param res
  */
-// 60-second in-memory response cache keyed by userId+role
-const _dashCache = new Map();
-const _DASH_TTL  = 60 * 1000;
-const _dashRemember = async (key, build) => {
-  const hit = _dashCache.get(key);
-  if (hit && Date.now() - hit.at < _DASH_TTL) return hit.value;
-  const value = await build();
-  _dashCache.set(key, { value, at: Date.now() });
-  return value;
+const DASH_TTL = 60 * 1000;
+
+/**
+ * Which response fields belong to which section endpoint.
+ *
+ * The split exists so the cheap tiles are not held behind the expensive ones:
+ * summary and charts are a few milliseconds of work each, stock valuation is the
+ * rest. GET /dashboard still returns all three merged, so the frontend can move
+ * over one screen at a time.
+ */
+const SECTION_FIELDS = {
+  charts: [
+    "all_months", "month_wise_customer", "month_wise_retailer",
+    "month_wise_order", "month_wise_sales", "best_admin", "poor_admins",
+  ],
+  stock: [
+    "total_stock", "material_total_stock", "total_stock_price",
+    "material_total_stock_price", "return_stock", "return_stock_price",
+    "total_se_stock", "total_se_stock_price",
+    "total_own_se_stock", "total_own_se_stock_price",
+    "total_distributor_stock", "total_distributor_stock_price",
+    "total_other_distributor_stock", "total_other_distributor_stock_price",
+    "total_admin_stock", "total_admin_stock_price",
+    "total_other_admin_stock", "total_other_admin_stock_price",
+    "total_manager_stock", "total_manager_stock_price",
+    "total_avl_stock", "total_avl_stock_price",
+    "total_avl_pending_stock", "total_avl_pending_stock_price",
+    "super_admin_total_avl_stock", "super_admin_total_avl_stock_price",
+    "live_gold_rate", "live_gold_rate_display",
+  ],
+  summary: [
+    "total_admin", "total_other_admin", "total_distributor",
+    "total_other_admin_buyer", "total_other_admin_buyer_due_amount",
+    "total_other_distributor", "total_other_distributor_due_amount",
+    "total_retailer", "total_supplier", "total_customer",
+    "total_sales_executive", "total_own_sales_executive",
+    "purchase_due_amount", "sale_due_amount", "my_retailer_due_amount",
+    "wallet_balance", "my_retailer", "is_own",
+    "total_own_sale", "total_own_sale_products",
+    "total_purchase", "total_purchase_product",
+    "total_return_amount", "total_return_product", "total_retailer_due",
+  ],
 };
 
-exports.index = async (req, res) => {
-  const cacheKey = `dash:${req.userId}:${req.role}`;
-  try {
-    const cached = _dashCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < _DASH_TTL) {
-      return res.send(formatResponse(cached.value, 'Dashboard'));
-    }
+const ALL_SECTIONS = { summary: true, stock: true, charts: true };
 
+/**
+ * Builds the dashboard payload.
+ *
+ * `want` selects which sections to compute. Anything not requested is skipped
+ * rather than computed and discarded - that is the entire point of the split.
+ * Cheap shared work (resolving the user-id tree, ~4 ms) always runs because
+ * several sections depend on it.
+ *
+ * exports.index wraps this in remember(), which adds the TTL cache and - unlike
+ * the plain Map this replaced - shares one in-flight promise across concurrent
+ * misses. Without that, every request arriving after the TTL expires starts its
+ * own rebuild, so a busy moment turns one expensive build into N of them.
+ */
+const buildDashboard = async (req, want = ALL_SECTIONS) => {
+    const ZERO_PURCHASE = { total_amount: 0, total_product: 0, total_return_amount: 0, total_return_product: 0 };
+    const ZERO_TRANSFER = { totalStock: 0, totalPrice: 0 };
+    // skip(): run the promise only when its section was asked for
+    const ifStock   = (fn, zero = 0) => (want.stock ? fn() : Promise.resolve(zero));
+    const ifSummary = (fn, zero = 0) => (want.summary ? fn() : Promise.resolve(zero));
     // Request-level memoization — avlStockUserIdsNew is called 2-3x with identical args
     const _avlMemo = new Map();
     const avlMemo = async (reqArg, roleId) => {
@@ -152,30 +199,34 @@ exports.index = async (req, res) => {
         _admins, _otheradmins,
         _ownAdmins, _ownDistributors,
         _managerUsers,
-        _liveGoldRate,
+        _goldRate,
       ] = await Promise.all([
         UserModel.count({ where: { role_id: customerRoleId } }),
-        getTotalStockByUser(userID),
-        getTotalStockPriceByUser(null, userID),
-        getTotalStockByUser(userID, "material"),
-        getTotalStockPriceByUser(null, userID, "material"),
-        getTotalStockByUser(userID, "return"),
-        getTotalStockPriceByUser(null, userID, "return"),
+        ifStock(() => getTotalStockByUser(userID)),
+        ifStock(() => getTotalStockPriceByUser(null, userID)),
+        ifStock(() => getTotalStockByUser(userID, "material")),
+        ifStock(() => getTotalStockPriceByUser(null, userID, "material")),
+        ifStock(() => getTotalStockByUser(userID, "return")),
+        ifStock(() => getTotalStockPriceByUser(null, userID, "return")),
         UserModel.count({ where: { role_id: supplierRoleId, parent_id: userID } }),
         saleModel.sum("due_amount", { where: { sale_by: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } }),
         PurchaseModel.sum("due_amount", { where: { user_id: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } }),
         getWalletBalance(userID),
         avlMemo(null, superAdminRoleId),
-        getPurchaseProducts(),
-        getTransferSale(userID),
+        // countsOnly: the dashboard reads only the four totals, never items/categories
+        ifSummary(() => getPurchaseProducts(null, true), ZERO_PURCHASE),
+        ifStock(() => getTransferSale(userID), ZERO_TRANSFER),
         UserModel.findAll({ attributes: ["id"], where: { role_id: adminRoleId, own: true } }),
         UserModel.findAll({ attributes: ["id"], where: { role_id: adminRoleId, own: false } }),
         UserModel.findAll({ attributes: ["id"], where: { role_id: adminRoleId, own: true, parent_id: superAdminId } }),
         UserModel.findAll({ attributes: ["id"], where: { role_id: distributorRoleId, own: true, parent_id: superAdminId } }),
         UserModel.findAll({ attributes: ["id"], where: { role_id: getRoleId("manager") } }),
-        getLiveGoldRate(),
+        ifStock(() => getLiveGoldRate(), { rate: 0, display: null }),
       ]);
 
+      // was `_liveGoldRate` in the destructuring above, which block-shadowed the
+      // outer let - superadmin fetched the rate then always returned null for it.
+      _liveGoldRate            = _goldRate;
       totalCustomer            = _totalCustomer;
       totalStock               = _totalStock;
       totalStockPrice          = _totalStockPrice;
@@ -215,12 +266,12 @@ exports.index = async (req, res) => {
         ownAdminIds.length
           ? UserModel.findAll({ attributes: ["id"], where: { role_id: distributorRoleId, own: true, parent_id: { [Op.in]: ownAdminIds } } })
           : Promise.resolve([]),
-        adminIds.length      ? getTotalStockByUser(adminIds)                  : Promise.resolve(0),
-        adminIds.length      ? getTotalStockPriceByUser(null, adminIds)       : Promise.resolve(0),
-        otheradminIds.length ? getTotalStockByUser(otheradminIds)             : Promise.resolve(0),
-        otheradminIds.length ? getTotalStockPriceByUser(null, otheradminIds)  : Promise.resolve(0),
-        managerUsersIds.length ? getTotalStockByUser(managerUsersIds)              : Promise.resolve(0),
-        managerUsersIds.length ? getTotalStockPriceByUser(null, managerUsersIds)   : Promise.resolve(0),
+        ifStock(() => adminIds.length      ? getTotalStockByUser(adminIds)                  : 0),
+        ifStock(() => adminIds.length      ? getTotalStockPriceByUser(null, adminIds)       : 0),
+        ifStock(() => otheradminIds.length ? getTotalStockByUser(otheradminIds)             : 0),
+        ifStock(() => otheradminIds.length ? getTotalStockPriceByUser(null, otheradminIds)  : 0),
+        ifStock(() => managerUsersIds.length ? getTotalStockByUser(managerUsersIds)            : 0),
+        ifStock(() => managerUsersIds.length ? getTotalStockPriceByUser(null, managerUsersIds) : 0),
         UserModel.count({ where: { role_id: retailerRoleId, parent_id: { [Op.in]: avlUserIds } } }),
       ]);
 
@@ -251,10 +302,10 @@ exports.index = async (req, res) => {
         _ownSaleRows,   // FIX: replaces getOwnUserSaleProducts (heavy 8-level ORM)
         _retailerDueRows, // FIX: replaces broken group+sum returning array
       ] = await Promise.all([
-        distributorIds.length      ? getTotalStockByUser(distributorIds)                 : Promise.resolve(0),
-        distributorIds.length      ? getTotalStockPriceByUser(null, distributorIds)      : Promise.resolve(0),
-        otherdistributorIds.length ? getTotalStockByUser(otherdistributorIds)            : Promise.resolve(0),
-        otherdistributorIds.length ? getTotalStockPriceByUser(null, otherdistributorIds) : Promise.resolve(0),
+        ifStock(() => distributorIds.length      ? getTotalStockByUser(distributorIds)                 : 0),
+        ifStock(() => distributorIds.length      ? getTotalStockPriceByUser(null, distributorIds)      : 0),
+        ifStock(() => otherdistributorIds.length ? getTotalStockByUser(otherdistributorIds)            : 0),
+        ifStock(() => otherdistributorIds.length ? getTotalStockPriceByUser(null, otherdistributorIds) : 0),
         otherdistributorIds.length
           ? saleModel.sum("due_amount", { where: { user_id: { [Op.in]: otherdistributorIds }, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } })
           : Promise.resolve(0),
@@ -267,15 +318,16 @@ exports.index = async (req, res) => {
         se_parent_ids.length
           ? UserModel.findAll({ attributes: ["id"], where: { role_id: sales_executiveRoleId, parent_id: { [Op.in]: se_parent_ids } } })
           : Promise.resolve([]),
-        avlUserIds.length ? getTotalStockByUser(avlUserIds)              : Promise.resolve(0),
-        avlUserIds.length ? getTotalStockPriceByUser(null, avlUserIds)   : Promise.resolve(0),
+        ifStock(() => avlUserIds.length ? getTotalStockByUser(avlUserIds)            : 0),
+        ifStock(() => avlUserIds.length ? getTotalStockPriceByUser(null, avlUserIds) : 0),
         // Direct SQL — replaces getOwnUserSaleProducts (loads every sale with 8-level include)
         avlUserIds.length
           ? dbSequelize.query(
               `SELECT COALESCE(SUM(sp.total), 0) AS total_amount, COUNT(sp.id) AS total_product
                  FROM sales s JOIN sale_products sp ON sp.sale_id = s.id
                 WHERE s.sale_by IN (:ids) AND s.is_approved <> 2
-                  AND s.is_assigned = 0 AND s.is_approval = 0 AND sp.is_return = 0`,
+                  AND s.is_assigned = 0 AND s.is_approval = 0 AND sp.is_return = 0
+                  AND s.deleted_at IS NULL AND sp.deleted_at IS NULL`,
               { replacements: { ids: avlUserIds }, type: QueryTypes.SELECT })
           : Promise.resolve([{ total_amount: 0, total_product: 0 }]),
         // FIX: direct SQL for retailer due — saleModel.sum+group returns array not number
@@ -284,7 +336,8 @@ exports.index = async (req, res) => {
               `SELECT COALESCE(SUM(s.due_amount), 0) AS total FROM sales s
                 JOIN users u ON u.id = s.user_id AND u.role_id = :rid
                WHERE s.is_approved <> 2 AND s.is_assigned = 0
-                 AND s.is_approval = 0 AND s.sale_by IN (:ids)`,
+                 AND s.is_approval = 0 AND s.sale_by IN (:ids)
+                 AND s.deleted_at IS NULL AND u.deleted_at IS NULL`,
               { replacements: { rid: retailerRoleId, ids: avlUserIds }, type: QueryTypes.SELECT })
           : Promise.resolve([{ total: 0 }]),
       ]);
@@ -305,8 +358,8 @@ exports.index = async (req, res) => {
 
       // ── Batch 4: depends on seIds ────────────────────────────────
       const [_totalSeStock, _totalSeStockPrice] = await Promise.all([
-        seIds.length ? getTotalStockByUser(seIds)             : Promise.resolve(0),
-        seIds.length ? getTotalStockPriceByUser(null, seIds)  : Promise.resolve(0),
+        ifStock(() => seIds.length ? getTotalStockByUser(seIds)            : 0),
+        ifStock(() => seIds.length ? getTotalStockPriceByUser(null, seIds) : 0),
       ]);
       totalSeStock      = _totalSeStock;
       totalSeStockPrice = _totalSeStockPrice;
@@ -405,7 +458,8 @@ exports.index = async (req, res) => {
               `SELECT COALESCE(SUM(sp.total), 0) AS total_amount, COUNT(sp.id) AS total_product
                  FROM sales s JOIN sale_products sp ON sp.sale_id = s.id
                 WHERE s.sale_by IN (:ids) AND s.is_approved <> 2
-                  AND s.is_assigned = 0 AND s.is_approval = 0 AND sp.is_return = 0`,
+                  AND s.is_assigned = 0 AND s.is_approval = 0 AND sp.is_return = 0
+                  AND s.deleted_at IS NULL AND sp.deleted_at IS NULL`,
               { replacements: { ids: avl_stockUser_ids }, type: QueryTypes.SELECT })
           : Promise.resolve([{ total_amount: 0, total_product: 0 }]),
         UserModel.findAll({ attributes: ["id"], where: { role_id: sales_executiveRoleId, parent_id: { [Op.in]: parentIds } } }),
@@ -464,7 +518,7 @@ exports.index = async (req, res) => {
       const _adminRetailerDue = await dbSequelize.query(
         `SELECT COALESCE(SUM(due_amount), 0) AS total FROM sales
           WHERE is_approved <> 2 AND is_assigned = 0 AND is_approval = 0
-            AND sale_by IN (:ids)`,
+            AND sale_by IN (:ids) AND deleted_at IS NULL`,
         { replacements: { ids: allSaleByIds }, type: QueryTypes.SELECT }
       );
       total_retailer_due = parseFloat(_adminRetailerDue[0]?.total || 0);
@@ -646,7 +700,8 @@ exports.index = async (req, res) => {
         `SELECT COALESCE(SUM(s.due_amount), 0) AS total FROM sales s
           JOIN users u ON u.id = s.user_id AND u.role_id = :rid
          WHERE s.sale_by = :uid AND s.is_approved <> 2
-           AND s.is_assigned = 0 AND s.is_approval = 0`,
+           AND s.is_assigned = 0 AND s.is_approval = 0
+           AND s.deleted_at IS NULL AND u.deleted_at IS NULL`,
         { replacements: { rid: retailerRoleId, uid: userID }, type: QueryTypes.SELECT }
       ).then(rows => parseFloat(rows[0]?.total || 0));
 
@@ -684,12 +739,15 @@ exports.index = async (req, res) => {
     const yearStart = `${year}-01-01 00:00:00`;
     const yearEnd   = `${year}-12-31 23:59:59`;
 
-    if (isSuperAdmin(req)) {
+    if (!want.charts) {
+      // caller did not ask for the chart section - skip all six GROUP BY queries
+      customerMonthwise = retailerMonthwise = orderMonthwise = salesMonthwise = [];
+    } else if (isSuperAdmin(req)) {
       const ids = avl_stockUser_ids;
       const [mCustomers, mOrders, mSales] = await Promise.all([
-        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM users WHERE role_id = :r AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { r: customerRoleId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
-        dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE order_from = 'front_website' AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
-        ids.length ? dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by IN (:ids) AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { ids, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
+        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM users WHERE deleted_at IS NULL AND role_id = :r AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { r: customerRoleId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE deleted_at IS NULL AND order_from = 'front_website' AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        ids.length ? dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by IN (:ids) AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND deleted_at IS NULL AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { ids, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
       ]);
       customerMonthwise = toSeries(mCustomers);
       orderMonthwise    = toSeries(mOrders);
@@ -698,9 +756,9 @@ exports.index = async (req, res) => {
       const adminDisIds   = arrayColumn(await UserModel.findAll({ attributes: ["id"], where: { role_id: distributorRoleId, state_id: state_id } }), "id");
       const adminSaleByIds = [...avl_stockUser_ids];
       const [mCustomers, mOrders, mSales] = await Promise.all([
-        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM users WHERE role_id = :r AND state_id = :sid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { r: customerRoleId, sid: state_id, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
-        adminDisIds.length ? dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE order_from = 'front_website' AND to_user_id IN (:ids) AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { ids: adminDisIds, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
-        adminSaleByIds.length ? dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by IN (:ids) AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { ids: adminSaleByIds, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
+        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM users WHERE deleted_at IS NULL AND role_id = :r AND state_id = :sid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { r: customerRoleId, sid: state_id, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        adminDisIds.length ? dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE deleted_at IS NULL AND order_from = 'front_website' AND to_user_id IN (:ids) AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { ids: adminDisIds, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
+        adminSaleByIds.length ? dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by IN (:ids) AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND deleted_at IS NULL AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { ids: adminSaleByIds, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
       ]);
       customerMonthwise = toSeries(mCustomers);
       orderMonthwise    = toSeries(mOrders);
@@ -708,9 +766,9 @@ exports.index = async (req, res) => {
     } else if (isDistributor(req)) {
       const distrSaleByIds = [...avl_stockUser_ids];
       const [mCustomers, mOrders, mSales] = await Promise.all([
-        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM users WHERE role_id = :r AND district_id = :did AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { r: customerRoleId, did: user.district_id, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
-        dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE order_from = 'front_website' AND to_user_id = :uid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
-        distrSaleByIds.length ? dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by IN (:ids) AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { ids: distrSaleByIds, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
+        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM users WHERE deleted_at IS NULL AND role_id = :r AND district_id = :did AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { r: customerRoleId, did: user.district_id, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE deleted_at IS NULL AND order_from = 'front_website' AND to_user_id = :uid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        distrSaleByIds.length ? dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by IN (:ids) AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND deleted_at IS NULL AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { ids: distrSaleByIds, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }) : Promise.resolve([]),
       ]);
       customerMonthwise = toSeries(mCustomers);
       orderMonthwise    = toSeries(mOrders);
@@ -718,9 +776,9 @@ exports.index = async (req, res) => {
     } else if (isSalesExecutive(req)) {
       const retailerRoleIdLocal = getRoleId("retailer");
       const [mRetailers, mOrders, mSales] = await Promise.all([
-        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM user_to_users WHERE to_role_id = :rid AND user_id = :uid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { rid: retailerRoleIdLocal, uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
-        dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE order_from = 'front_website' AND sales_executive_id = :uid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
-        dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by = :uid AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        dbSequelize.query(`SELECT MONTH(created_at) AS m, COUNT(*) AS v FROM user_to_users WHERE deleted_at IS NULL AND to_role_id = :rid AND user_id = :uid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { rid: retailerRoleIdLocal, uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        dbSequelize.query(`SELECT MONTH(created_at) AS m, COALESCE(SUM(total_amount),0) AS v FROM orders WHERE deleted_at IS NULL AND order_from = 'front_website' AND sales_executive_id = :uid AND created_at >= :s AND created_at <= :e GROUP BY MONTH(created_at)`, { replacements: { uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
+        dbSequelize.query(`SELECT MONTH(invoice_date) AS m, COALESCE(SUM(total_payable),0) AS v FROM sales WHERE sale_by = :uid AND is_approved <> 2 AND is_assigned = 0 AND is_approval = 0 AND deleted_at IS NULL AND invoice_date >= :s AND invoice_date <= :e GROUP BY MONTH(invoice_date)`, { replacements: { uid: req.userId, s: yearStart, e: yearEnd }, type: QueryTypes.SELECT }),
       ]);
       retailerMonthwise = toSeries(mRetailers);
       orderMonthwise    = toSeries(mOrders);
@@ -792,12 +850,39 @@ exports.index = async (req, res) => {
       live_gold_rate_display: _liveGoldRate && _liveGoldRate.display ? _liveGoldRate.display : null,
     };
 
-    _dashCache.set(cacheKey, { value: result, at: Date.now() });
-    res.send(formatResponse(result, "Dashboard"));
+    // Return only the requested sections' fields. Anything not asked for was not
+    // computed above, so returning it would hand back a zero dressed as a figure.
+    const wanted = Object.keys(want).filter((s) => want[s]);
+    if (wanted.length === Object.keys(SECTION_FIELDS).length) return result;
+
+    const keep = new Set(wanted.flatMap((s) => SECTION_FIELDS[s] || []));
+    return Object.fromEntries(
+      Object.entries(result).filter(([field]) => keep.has(field))
+    );
+};
+
+/**
+ * Serve one or more sections. `remember` is keyed by section, so /summary and
+ * /dashboard do not share a cache entry (they hold different field sets).
+ */
+const serveSections = (want, label) => async (req, res) => {
+  try {
+    const key = `dashboard:${Object.keys(want).filter((s) => want[s]).sort().join("+")}:${req.userId}:${req.role}`;
+    const result = await remember(key, DASH_TTL, () => buildDashboard(req, want));
+    res.send(formatResponse(result, label));
   } catch (error) {
     return res.status(errorCodes.default).send(formatErrorResponse(error.toString()));
   }
 };
+
+// Full payload - unchanged shape, so existing clients keep working.
+exports.index = serveSections(ALL_SECTIONS, "Dashboard");
+
+// Section endpoints: each computes only its own work.
+exports.summary = serveSections({ summary: true }, "Dashboard summary");
+exports.stock   = serveSections({ stock: true },   "Dashboard stock");
+exports.charts  = serveSections({ charts: true },  "Dashboard charts");
+
 exports.nextUserName = async (req, res) => {
   let id = req.query.id || "";
   let name = await getNextUserName(req.query.role, id);

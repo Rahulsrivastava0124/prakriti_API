@@ -1,4 +1,5 @@
-const { isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount, ucWords } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount, ucWords } = require("@helpers/helper");
 const { getTotalStockPriceByUser, getTotalStockByUser, getWalletBalance, getTodayAttendence, getLoginLogoutAddress } = require("@library/common");
 
 
@@ -6,11 +7,8 @@ const EmployeeListCollection = async(data, load_stock_wallet) => {
     if(isObject(data)){
         return await getModelObject(data, load_stock_wallet);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], load_stock_wallet));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, load_stock_wallet));
+
     }
 }
 

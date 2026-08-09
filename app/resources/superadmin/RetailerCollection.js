@@ -1,4 +1,5 @@
-const { isObject, getFileAbsulatePath, isEmpty, isArray, priceFormat, displayAmount, defaultProfileImage, formatDateTime } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, isArray, priceFormat, displayAmount, defaultProfileImage, formatDateTime } = require("@helpers/helper");
 const {getAdvanceAmount, isDistributor, isSalesExecutive, isAdmin} = require("@library/common");
 const db = require("@models");
 const { Op } = require("sequelize");
@@ -10,11 +11,8 @@ const RetailerCollection = async(data, req, userIds) => {
     if(isObject(data)){
         return await getModelObject(data, req, userIds);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], req, userIds));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, req, userIds));
+
     }
 }
 

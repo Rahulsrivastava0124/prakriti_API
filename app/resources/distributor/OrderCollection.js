@@ -1,4 +1,5 @@
-const { isObject, isEmpty, formatDateTime, displayAmount, statusDisplay, getFormatedAddress, priceFormat, paymentModeDisplay, getFileAbsulatePath } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, isEmpty, formatDateTime, displayAmount, statusDisplay, getFormatedAddress, priceFormat, paymentModeDisplay, getFileAbsulatePath } = require("@helpers/helper");
 const {OrderProductCollection} = require("@resources/distributor/OrderProductCollection");
 const { getRoleId } = require("@library/common");
 
@@ -6,11 +7,8 @@ const OrderCollection = async(data) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i]));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item));
+
     }
 }
 

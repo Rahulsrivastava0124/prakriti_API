@@ -736,7 +736,33 @@ function cleanInput(value) {
 }
 
 
+/**
+ * Map with bounded concurrency, results in input order.
+ *
+ * The collections awaited one row at a time. Those awaits are independent
+ * reads, so a window of them can run together: same calls, same arguments,
+ * same order out - only the round trips stop stacking up. The limit stays
+ * well under the connection pool (max 20) so a busy moment queues inside
+ * sequelize instead of failing to acquire.
+ */
+const mapConcurrent = async (items, fn, limit = 8) => {
+  const list = Array.isArray(items) ? items : [];
+  const out = new Array(list.length);
+  let next = 0;
+  const runner = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= list.length) return;
+      out[i] = await fn(list[i], i);
+    }
+  };
+  const size = Math.min(limit, list.length);
+  await Promise.all(new Array(size).fill(0).map(runner));
+  return out;
+};
+
 module.exports = {
+  mapConcurrent,
   isToday,
   getItemFromMultidimensionalArray,
   getPlusMinus,

@@ -8,6 +8,10 @@ const db = require("@models");
 const sequelize = db.sequelize;
 const { Op, QueryTypes } = require("sequelize");
 const { getPaginationOptions } = require("@helpers/paginator");
+const { remember } = require("@library/dashboardCache");
+
+// stock summary cards; dropped by invalidateStockCaches() on any stock movement
+const STOCK_PRICE_TTL = 60 * 1000;
 const { UnitCollection } = require("@resources/superadmin/UnitCollection");
 const { StocksCollection } = require("@resources/superadmin/StocksCollection");
 const {
@@ -637,6 +641,7 @@ exports.index = async (req, res) => {
       manager,
       total_weight,
       certificate_no,
+      stock_user_id,
     } = req.query;
     type = type === undefined ? "product" : type;
     let userID = !user_id
@@ -826,6 +831,55 @@ exports.index = async (req, res) => {
     }
     if (!("user_id" in conditions)) {
       conditions.user_id = await getStockUserID(req, userID);
+    }
+
+    /**
+     * Who currently holds the stock in scope - the options of the "Avl By"
+     * filter. Collected before the filter narrows the scope so the dropdown
+     * keeps every holder, and off the plain scope only (no search/category
+     * conditions, those reference joined tables this query does not include).
+     */
+    let avl_users = [];
+    try {
+      let holderRows = await stocksModel.findAll({
+        attributes: ["user_id"],
+        where: {
+          type: conditions.type,
+          ...(conditions.user_id !== undefined
+            ? { user_id: conditions.user_id }
+            : {}),
+        },
+        group: ["user_id"],
+        raw: true,
+      });
+      let holderIds = arrayColumn(holderRows, "user_id").filter((id) => !!id);
+      if (holderIds.length) {
+        let holders = await UserModel.findAll({
+          attributes: ["id", "name", "company_name"],
+          where: { id: { [Op.in]: holderIds } },
+          raw: true,
+        });
+        avl_users = holders
+          .map((u) => ({ id: u.id, name: u.company_name || u.name || "" }))
+          .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      }
+    } catch (err) {
+      addLog("avl_users error: " + err.toString());
+    }
+
+    if (!isEmpty(stock_user_id)) {
+      // a filter can only narrow what the role is already allowed to see
+      let allowed = conditions.user_id;
+      let allowedIds =
+        allowed && allowed[Op.in]
+          ? allowed[Op.in].map(String)
+          : allowed !== undefined && allowed !== null
+            ? [String(allowed)]
+            : null;
+      conditions.user_id =
+        !allowedIds || allowedIds.includes(String(stock_user_id))
+          ? stock_user_id
+          : 0;
     }
     let productConditions = {};
     let stockMaterialConditions = {};
@@ -1059,6 +1113,7 @@ exports.index = async (req, res) => {
               ? await StocksReportCollection(data.rows, userID, roleName)
               : await StocksMaterialReportCollection(data.rows, userID, roleName),
           total: data.count,
+          avl_users: avl_users,
         };
         /* compactLog("result : ", result);
         compactLog("search : ", search); */
@@ -1508,7 +1563,28 @@ exports.getStockPriceByCategory = async (req, res) => {
     userIdArr = [userID];
   }
 
-  let result = await getTotalStockPriceByUser(true, userIdArr, type, roleName);
+  /**
+   * The category totals are ~390 ms of pure JavaScript: every stock row is
+   * priced through calculateProductPrice, and Node runs that on the one thread
+   * that also serves every other request - so under load this endpoint slows
+   * down the whole API, not just itself (measured: 649 ms alone, 2,663 ms at
+   * 40 concurrent).
+   *
+   * The result is a summary of stock that changes on sale, purchase and
+   * transfer, so it is cached for a minute and invalidated by those write
+   * paths. Same shape, same numbers, computed once per minute instead of once
+   * per page load.
+   */
+  const cacheKey = [
+    "stockPriceByCategory",
+    type,
+    roleName,
+    userIdArr.slice().sort().join(","),
+  ].join(":");
+
+  let result = await remember(cacheKey, STOCK_PRICE_TTL, () =>
+    getTotalStockPriceByUser(true, userIdArr, type, roleName)
+  );
 
   return res.send(formatResponse(result));
 };

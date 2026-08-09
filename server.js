@@ -122,6 +122,23 @@ const server = http.createServer(app);
 const io = socketIO(server);
 
 app.use((req, res, next) => { req.io = io; req.pusher = pusher; next(); });
+
+/**
+ * Anything that writes can move stock, so the cached stock-summary totals are
+ * dropped on every write. Central rather than per-controller: a missed call
+ * site would serve a stale figure, and there is no cheap way to prove you found
+ * them all. Invoice downloads are POSTs that change nothing, so they are
+ * skipped - otherwise downloading a PDF would throw the cache away.
+ */
+const { invalidate: invalidateCache } = require("@library/dashboardCache");
+app.use((req, res, next) => {
+  if (req.method !== "GET" && !/download|auth|login|logout/i.test(req.path)) {
+    invalidateCache("stockPriceByCategory:");
+    invalidateCache("purchaseProducts:");
+    invalidateCache("saleProducts:");
+  }
+  next();
+});
 io.sockets.on('connection', (socket) => { socket.on('echo', () => {}); });
 
 // ── Routes ───────────────────────────────────────────────────────
