@@ -12,6 +12,10 @@ const UnitModel = db.units;
 const _ = require("lodash");
 
 const ProductCollection = async(data, params) => {
+    // Shared for the whole batch so every product/material/purity combo that
+    // repeats (materials are reused across many products) hits the DB once,
+    // not once per product - see PurityCollection and calculateProductPriceCart.
+    params = { ...(isObject(params) ? params : {}), priceCache: new Map() };
     if(isObject(data)){
         return await getModelObject(data, params);
     }else{
@@ -155,7 +159,7 @@ const getModelObject = async(data, params) => {
                 quantity: data.type != "material" ? item.materials[i].quantity : 1,
             })
         }
-        let priceMaterials = await calculateProductPriceCart(materials_for_price, data.sub_category, data.type == "material", 'admin');
+        let priceMaterials = await calculateProductPriceCart(materials_for_price, data.sub_category, data.type == "material", 'admin', undefined, undefined, params.priceCache);
         total_mrp_price = priceMaterials.total_mrp_price;
         if(data.type == "material"){
             total_weight = materials_for_price.length ? weightFormat(materials_for_price[0].weight) : 0;
