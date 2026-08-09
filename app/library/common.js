@@ -3793,50 +3793,11 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
 
   let managerIds = await avlStockUserIdsNew(null, getRoleId("superadmin"));
 
-  // The dashboard reads only the four totals below, never `items`/`categories`.
-  // In that mode the material/purity/unit/size/category joins and all the display
-  // formatting are pure waste, so both are skipped. The counting logic itself is
-  // untouched - it encodes business rules that are not safe to restate as SQL.
-  const purchaseProductInclude = countsOnly
-    ? [
-        {
-          model: productsModel,
-          as: "product",
-          attributes: ["id", "type"],
-        },
-        {
-          model: PurchaseProductMaterialModel,
-          as: "purchaseMaterials",
-          separate: true,
-          attributes: ["id", "purchase_product_id", "quantity", "return_qty"],
-        },
-      ]
-    : [
-        {
-          model: productsModel,
-          as: "product",
-          include: [
-            {
-              model: CategoryModel,
-              as: "category",
-            },
-          ],
-        },
-        {
-          model: PurchaseProductMaterialModel,
-          as: "purchaseMaterials",
-          separate: true,
-          include: [
-            { model: MaterialModel, as: "material" },
-            { model: PurityModel, as: "purity" },
-            { model: UnitModel, as: "unit" },
-          ],
-        },
-        {
-          model: SizeModel,
-          as: "size",
-        },
-      ];
+  let productWhere = {};
+  if (isObject(params) && !isEmpty(params.category_id)) {
+    productWhere.category_id = params.category_id;
+  }
+  let productRequired = !isEmpty(productWhere);
 
   let purchases = await PurchaseModel.findAll({
     // req_data is a longtext audit blob (~570 MB across the rows this matches)
@@ -3859,10 +3820,43 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         model: PurchaseProductModel,
         as: "purchaseProducts",
         separate: true,
-        ...(countsOnly
-          ? { attributes: ["id", "purchase_id", "product_id", "is_return", "certificate_no"] }
-          : {}),
-        include: purchaseProductInclude,
+        include: [
+          {
+            model: productsModel,
+            as: "product",
+            where: productRequired ? productWhere : undefined,
+            required: productRequired,
+            include: [
+              {
+                model: CategoryModel,
+                as: "category",
+              },
+            ],
+          },
+          {
+            model: PurchaseProductMaterialModel,
+            as: "purchaseMaterials",
+            separate: true,
+            include: [
+              {
+                model: MaterialModel,
+                as: "material",
+              },
+              {
+                model: PurityModel,
+                as: "purity",
+              },
+              {
+                model: UnitModel,
+                as: "unit",
+              },
+            ],
+          },
+          {
+            model: SizeModel,
+            as: "size",
+          },
+        ],
       },
     ],
   });
@@ -3892,26 +3886,6 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         //total_return_amount += parseFloat(p.return_amount);
         total_return_product++;
         continue;
-      }
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.sub_category_id)) {
-          if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.supplier_id)) {
-          if (!p || p.supplier_id != params.supplier_id) {
-            pushItem = false;
-          }
-        }
       }
 
       let image = "";
@@ -3999,10 +3973,7 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
           mrp_display: displayAmount(pp.total),
         };
 
-        if (pushItem) {
-          items.push(item);
-        }
-      }
+      items.push(item);
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
         total_return_product += materialItem.length
@@ -4058,6 +4029,13 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
 
 const getPurchaseProductsUser = async (req, params) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+
+  let productWhere = {};
+  if (isObject(params) && !isEmpty(params.category_id)) {
+    productWhere.category_id = params.category_id;
+  }
+  let productRequired = !isEmpty(productWhere);
+
   // fetch pruchase records
   let purchases = await PurchaseModel.findAll({
     // see getPurchaseProducts - req_data is an unread longtext blob
@@ -4080,6 +4058,8 @@ const getPurchaseProductsUser = async (req, params) => {
           {
             model: productsModel,
             as: "product",
+            where: productRequired ? productWhere : undefined,
+            required: productRequired,
             include: [
               {
                 model: CategoryModel,
@@ -4140,27 +4120,6 @@ const getPurchaseProductsUser = async (req, params) => {
         //total_return_amount += parseFloat(p.return_amount);
         total_return_product++;
         continue;
-      }
-
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.sub_category_id)) {
-          if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.supplier_id)) {
-          if (!p || p.supplier_id != params.supplier_id) {
-            pushItem = false;
-          }
-        }
       }
 
       let image = "";
@@ -4242,9 +4201,7 @@ const getPurchaseProductsUser = async (req, params) => {
         mrp_display: displayAmount(pp.total),
       };
 
-      if (pushItem) {
-        items.push(item);
-      }
+      items.push(item);
 
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
