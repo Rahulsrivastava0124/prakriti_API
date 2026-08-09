@@ -3793,11 +3793,50 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
 
   let managerIds = await avlStockUserIdsNew(null, getRoleId("superadmin"));
 
-  let productWhere = {};
-  if (isObject(params) && !isEmpty(params.category_id)) {
-    productWhere.category_id = params.category_id;
-  }
-  let productRequired = !isEmpty(productWhere);
+  // The dashboard reads only the four totals below, never `items`/`categories`.
+  // In that mode the material/purity/unit/size/category joins and all the display
+  // formatting are pure waste, so both are skipped. The counting logic itself is
+  // untouched - it encodes business rules that are not safe to restate as SQL.
+  const purchaseProductInclude = countsOnly
+    ? [
+        {
+          model: productsModel,
+          as: "product",
+          attributes: ["id", "type"],
+        },
+        {
+          model: PurchaseProductMaterialModel,
+          as: "purchaseMaterials",
+          separate: true,
+          attributes: ["id", "purchase_product_id", "quantity", "return_qty"],
+        },
+      ]
+    : [
+        {
+          model: productsModel,
+          as: "product",
+          include: [
+            {
+              model: CategoryModel,
+              as: "category",
+            },
+          ],
+        },
+        {
+          model: PurchaseProductMaterialModel,
+          as: "purchaseMaterials",
+          separate: true,
+          include: [
+            { model: MaterialModel, as: "material" },
+            { model: PurityModel, as: "purity" },
+            { model: UnitModel, as: "unit" },
+          ],
+        },
+        {
+          model: SizeModel,
+          as: "size",
+        },
+      ];
 
   let purchases = await PurchaseModel.findAll({
     // req_data is a longtext audit blob (~570 MB across the rows this matches)
@@ -3820,43 +3859,10 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         model: PurchaseProductModel,
         as: "purchaseProducts",
         separate: true,
-        include: [
-          {
-            model: productsModel,
-            as: "product",
-            where: productRequired ? productWhere : undefined,
-            required: productRequired,
-            include: [
-              {
-                model: CategoryModel,
-                as: "category",
-              },
-            ],
-          },
-          {
-            model: PurchaseProductMaterialModel,
-            as: "purchaseMaterials",
-            separate: true,
-            include: [
-              {
-                model: MaterialModel,
-                as: "material",
-              },
-              {
-                model: PurityModel,
-                as: "purity",
-              },
-              {
-                model: UnitModel,
-                as: "unit",
-              },
-            ],
-          },
-          {
-            model: SizeModel,
-            as: "size",
-          },
-        ],
+        ...(countsOnly
+          ? { attributes: ["id", "purchase_id", "product_id", "is_return", "certificate_no"] }
+          : {}),
+        include: purchaseProductInclude,
       },
     ],
   });
@@ -3886,6 +3892,26 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         //total_return_amount += parseFloat(p.return_amount);
         total_return_product++;
         continue;
+      }
+      let pushItem = true;
+      if (isObject(params)) {
+        if (!isEmpty(params.category_id)) {
+          if (!product || product.category_id != params.category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.sub_category_id)) {
+          if (!product || product.sub_category_id != params.sub_category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.supplier_id)) {
+          if (!p || p.supplier_id != params.supplier_id) {
+            pushItem = false;
+          }
+        }
       }
 
       let image = "";
@@ -3973,7 +3999,10 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
           mrp_display: displayAmount(pp.total),
         };
 
-      items.push(item);
+        if (pushItem) {
+          items.push(item);
+        }
+      }
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
         total_return_product += materialItem.length
@@ -4047,6 +4076,9 @@ const getPurchaseProductsUser = async (req, params) => {
       //sale_id: { [Op.is]: null },
       //type: { [Op.in]: ["product", "order_purchase"] },
       user_id: userID,
+      ...(isObject(params) && !isEmpty(params.supplier_id)
+        ? { supplier_id: params.supplier_id }
+        : {}),
     },
     order: [["createdAt", "DESC"]],
     include: [
@@ -4058,8 +4090,6 @@ const getPurchaseProductsUser = async (req, params) => {
           {
             model: productsModel,
             as: "product",
-            where: productRequired ? productWhere : undefined,
-            required: productRequired,
             include: [
               {
                 model: CategoryModel,
@@ -4120,6 +4150,27 @@ const getPurchaseProductsUser = async (req, params) => {
         //total_return_amount += parseFloat(p.return_amount);
         total_return_product++;
         continue;
+      }
+
+      let pushItem = true;
+      if (isObject(params)) {
+        if (!isEmpty(params.category_id)) {
+          if (!product || product.category_id != params.category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.sub_category_id)) {
+          if (!product || product.sub_category_id != params.sub_category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.supplier_id)) {
+          if (!p || p.supplier_id != params.supplier_id) {
+            pushItem = false;
+          }
+        }
       }
 
       let image = "";
@@ -4263,7 +4314,14 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
   //userIds.push(superadminId);
   let sales = await SaleModel.findAll({
     where: {
-      sale_by: { [Op.in]: userIds },
+      // sale_by must stay AND-ed with the userIds scope, not overwrite it -
+      // a plain `sale_by:` key here would clobber the authorization filter above.
+      [Op.and]: [
+        { sale_by: { [Op.in]: userIds } },
+        ...(isObject(params) && !isEmpty(params.sale_by)
+          ? [{ sale_by: params.sale_by }]
+          : []),
+      ],
       //is_assigned: false, is_approval: false, /* is_approved: { [Op.ne]: 2 } */
       /* [Op.or]: [
         { is_approval: false, is_approved: { [Op.ne]: 2 } },
@@ -4282,6 +4340,22 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
           {
             model: productsModel,
             as: "product",
+            // see getPurchaseProducts - pushing the filter into SQL instead of
+            // filtering the fetched rows in JS is what makes these dropdowns fast.
+            ...(isObject(params) &&
+            (!isEmpty(params.category_id) || !isEmpty(params.sub_category_id))
+              ? {
+                  required: true,
+                  where: {
+                    ...(!isEmpty(params.category_id)
+                      ? { category_id: params.category_id }
+                      : {}),
+                    ...(!isEmpty(params.sub_category_id)
+                      ? { sub_category_id: params.sub_category_id }
+                      : {}),
+                  },
+                }
+              : {}),
             include: [
               {
                 model: CategoryModel,
@@ -4337,26 +4411,8 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
       if (pp.is_return) {
         continue;
       }
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.sub_category_id)) {
-          if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.sale_by)) {
-          if (!p || p.sale_by != params.sale_by) {
-            pushItem = false;
-          }
-        }
-      }
+      // category_id/sub_category_id/sale_by are now applied as SQL filters
+      // above, so every saleProduct reaching this point already matches.
 
       let image = "";
       if (product && isArray(product.images)) {
@@ -4431,9 +4487,7 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
         sale_by: p.sale_by,
         sale_by_name: p.saleBy ? p.saleBy.name : "",
       };
-      if (pushItem) {
-        items.push(item);
-      }
+      items.push(item);
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
       } else if(product && isEmpty(pp.certificate_no) && product.type != "material"){
