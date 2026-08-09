@@ -3690,6 +3690,12 @@ const getPurchaseProducts = async (params) => {
 
   let managerIds = await avlStockUserIdsNew(null, getRoleId("superadmin"));
 
+  let productWhere = {};
+  if (isObject(params) && !isEmpty(params.category_id)) {
+    productWhere.category_id = params.category_id;
+  }
+  let productRequired = !isEmpty(productWhere);
+
   let purchases = await PurchaseModel.findAll({
     where: {
       is_approved: { [Op.ne]: 2 },
@@ -3710,6 +3716,8 @@ const getPurchaseProducts = async (params) => {
           {
             model: productsModel,
             as: "product",
+            where: productRequired ? productWhere : undefined,
+            required: productRequired,
             include: [
               {
                 model: CategoryModel,
@@ -3770,14 +3778,6 @@ const getPurchaseProducts = async (params) => {
         //total_return_amount += parseFloat(p.return_amount);
         total_return_product++;
         continue;
-      }
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
       }
 
       let image = "";
@@ -3859,9 +3859,7 @@ const getPurchaseProducts = async (params) => {
         mrp_display: displayAmount(pp.total),
       };
 
-      if (pushItem) {
-        items.push(item);
-      }
+      items.push(item);
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
         total_return_product += materialItem.length
@@ -3917,6 +3915,13 @@ const getPurchaseProducts = async (params) => {
 
 const getPurchaseProductsUser = async (req, params) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+
+  let productWhere = {};
+  if (isObject(params) && !isEmpty(params.category_id)) {
+    productWhere.category_id = params.category_id;
+  }
+  let productRequired = !isEmpty(productWhere);
+
   // fetch pruchase records
   let purchases = await PurchaseModel.findAll({
     where: {
@@ -3937,6 +3942,8 @@ const getPurchaseProductsUser = async (req, params) => {
           {
             model: productsModel,
             as: "product",
+            where: productRequired ? productWhere : undefined,
+            required: productRequired,
             include: [
               {
                 model: CategoryModel,
@@ -3999,15 +4006,6 @@ const getPurchaseProductsUser = async (req, params) => {
         continue;
       }
 
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
-      }
-
       let image = "";
       if (product && isArray(product.images)) {
         for (let img = 0; img < product.images.length; img++) {
@@ -4087,9 +4085,7 @@ const getPurchaseProductsUser = async (req, params) => {
         mrp_display: displayAmount(pp.total),
       };
 
-      if (pushItem) {
-        items.push(item);
-      }
+      items.push(item);
 
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
