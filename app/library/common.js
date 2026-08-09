@@ -4106,6 +4106,13 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
 
 const getPurchaseProductsUser = async (req, params) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+
+  let productWhere = {};
+  if (isObject(params) && !isEmpty(params.category_id)) {
+    productWhere.category_id = params.category_id;
+  }
+  let productRequired = !isEmpty(productWhere);
+
   // fetch pruchase records
   let purchases = await PurchaseModel.findAll({
     // see getPurchaseProducts - req_data is an unread longtext blob
@@ -4117,6 +4124,9 @@ const getPurchaseProductsUser = async (req, params) => {
       //sale_id: { [Op.is]: null },
       //type: { [Op.in]: ["product", "order_purchase"] },
       user_id: userID,
+      ...(isObject(params) && !isEmpty(params.supplier_id)
+        ? { supplier_id: params.supplier_id }
+        : {}),
     },
     order: [["createdAt", "DESC"]],
     include: [
@@ -4290,9 +4300,7 @@ const getPurchaseProductsUser = async (req, params) => {
         mrp_display: displayAmount(pp.total),
       };
 
-      if (pushItem) {
-        items.push(item);
-      }
+      items.push(item);
 
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
@@ -4354,7 +4362,14 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
   //userIds.push(superadminId);
   let sales = await SaleModel.findAll({
     where: {
-      sale_by: { [Op.in]: userIds },
+      // sale_by must stay AND-ed with the userIds scope, not overwrite it -
+      // a plain `sale_by:` key here would clobber the authorization filter above.
+      [Op.and]: [
+        { sale_by: { [Op.in]: userIds } },
+        ...(isObject(params) && !isEmpty(params.sale_by)
+          ? [{ sale_by: params.sale_by }]
+          : []),
+      ],
       //is_assigned: false, is_approval: false, /* is_approved: { [Op.ne]: 2 } */
       /* [Op.or]: [
         { is_approval: false, is_approved: { [Op.ne]: 2 } },
@@ -4373,6 +4388,22 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
           {
             model: productsModel,
             as: "product",
+            // see getPurchaseProducts - pushing the filter into SQL instead of
+            // filtering the fetched rows in JS is what makes these dropdowns fast.
+            ...(isObject(params) &&
+            (!isEmpty(params.category_id) || !isEmpty(params.sub_category_id))
+              ? {
+                  required: true,
+                  where: {
+                    ...(!isEmpty(params.category_id)
+                      ? { category_id: params.category_id }
+                      : {}),
+                    ...(!isEmpty(params.sub_category_id)
+                      ? { sub_category_id: params.sub_category_id }
+                      : {}),
+                  },
+                }
+              : {}),
             include: [
               {
                 model: CategoryModel,
@@ -4428,26 +4459,8 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
       if (pp.is_return) {
         continue;
       }
-      let pushItem = true;
-      if (isObject(params)) {
-        if (!isEmpty(params.category_id)) {
-          if (!product || product.category_id != params.category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.sub_category_id)) {
-          if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.sale_by)) {
-          if (!p || p.sale_by != params.sale_by) {
-            pushItem = false;
-          }
-        }
-      }
+      // category_id/sub_category_id/sale_by are now applied as SQL filters
+      // above, so every saleProduct reaching this point already matches.
 
       let image = "";
       if (product && isArray(product.images)) {
@@ -4522,9 +4535,7 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
         sale_by: p.sale_by,
         sale_by_name: p.saleBy ? p.saleBy.name : "",
       };
-      if (pushItem) {
-        items.push(item);
-      }
+      items.push(item);
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
       } else if(product && isEmpty(pp.certificate_no) && product.type != "material"){
