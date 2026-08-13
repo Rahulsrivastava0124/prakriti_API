@@ -25,6 +25,7 @@ const {
   encodeForStorage,
   decodeFromStorage,
   cleanInput,
+  requiresPaymentApproval,
 } = require("@helpers/helper");
 const {
   updateOrCreate,
@@ -1234,7 +1235,7 @@ exports.store = async (req, res) => {
     let status = "due",
       paid_amount = 0,
       due_amount = 0;
-    if (data.payment_mode != "cheque") {
+    if (!requiresPaymentApproval(data.payment_mode)) {
       status =
         priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
           ? "paid"
@@ -1720,7 +1721,7 @@ exports.store = async (req, res) => {
           payment_date: moment().format("YYYY-MM-DD"),
           txn_id: data.transaction_no,
           cheque_no: data.cheque_no,
-          status: data.payment_mode == "cheque" ? "pending" : "success",
+          status: requiresPaymentApproval(data.payment_mode) ? "pending" : "success",
           type: "credit",
           table_type: "sale",
           table_id: sale.id,
@@ -2133,7 +2134,7 @@ exports.statuschange = async (req, res) => {
         where: { table_type: "sale", table_id: sale.id },
       });
       if (payment) {
-        if (payment.payment_mode == "cheque" && payment.status == "pending") {
+        if (requiresPaymentApproval(payment.payment_mode) && payment.status == "pending") {
           paidAmnt = priceFormat(paidAmnt - parseFloat(payment.amount));
         }
       }
@@ -2185,7 +2186,7 @@ exports.statuschange = async (req, res) => {
           where: { table_type: "sale", table_id: sale.id },
         });
         if (payment) {
-          if (payment.payment_mode == "cheque" && payment.status == "pending") {
+          if (requiresPaymentApproval(payment.payment_mode) && payment.status == "pending") {
             await paymentModel.destroy({ where: { id: payment.id } });
             await paymentModel.destroy({
               where: { table_type: "purchase", table_id: sale.id },

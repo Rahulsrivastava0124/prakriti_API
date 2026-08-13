@@ -33,6 +33,8 @@ const {
   updateRetailerAvgReview,
   getAdminDistributorIds,
   getAdminSEWhereCondition,
+  emailExists,
+  normalizeEmail,
 } = require("@library/common");
 const {
   RetailerCollection,
@@ -288,33 +290,51 @@ exports.store = async (req, res) => {
   }
 
   /**
-   * The uploads went one after another, so the form waited for the sum of them.
-   * They are independent files on the same service - send them together and the
-   * wait is the slowest one, not the total.
+   * check if email is exist or not
    */
-  const [
-    _profileImage,
-    _panImage,
-    _adharImage,
-    _companyLogo,
-    _documents,
-    user_name,
-  ] = await Promise.all([
-    base64FileUpload(data.profile_image, "users"),
-    base64FileUpload(data.pan_image, "users"),
-    base64FileUpload(data.adhar_image, "users"),
-    base64FileUpload(data.company_logo, "users"),
-    Promise.all(
-      (data.documents || []).map((doc) => base64FileUpload(doc, "users"))
-    ),
-    getNextUserName("retailer"),
-  ]);
+  if (await emailExists(data.email)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
+  }
 
-  let profile_image = _profileImage ? _profileImage.path : null;
-  let pan_image     = _panImage ? _panImage.path : null;
-  let adhar_image   = _adharImage ? _adharImage.path : null;
-  let company_logo  = _companyLogo ? _companyLogo.path : null;
-  let documents     = _documents.filter(Boolean);
+  //upload profile image
+  let profile_image = null;
+  let result = await base64FileUpload(data.profile_image, "users");
+  if (result) {
+    profile_image = result.path;
+  }
+
+  //upload pan image
+  let pan_image = null;
+  result = await base64FileUpload(data.pan_image, "users");
+  if (result) {
+    pan_image = result.path;
+  }
+
+  //upload adhar image
+  let adhar_image = null;
+  result = await base64FileUpload(data.adhar_image, "users");
+  if (result) {
+    adhar_image = result.path;
+  }
+
+  //upload company logo
+  let company_logo = null;
+  result = await base64FileUpload(data.company_logo, "users");
+  if (result) {
+    company_logo = result.path;
+  }
+
+  //upload documents
+  let documents = [];
+  for (let i = 0; i < data.documents.length; i++) {
+    let result = await base64FileUpload(data.documents[i], "users");
+    if (result) {
+      documents.push(result);
+    }
+  }
+  let user_name = await getNextUserName("retailer");
 
   const postData = {
     role_id: roleId,
@@ -322,7 +342,7 @@ exports.store = async (req, res) => {
     created_by: req.userId,
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -425,6 +445,15 @@ exports.update = async (req, res) => {
       .send(formatErrorResponse("This mobile is already exists."));
   }
 
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email, req.params.id)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
+  }
+
   //upload profile image
   let profile_image = admin.profile_image;
   if (!isEmpty(data.profile_image) || data.remove_profile_image) {
@@ -520,7 +549,7 @@ exports.update = async (req, res) => {
   let postData = {
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,

@@ -19,6 +19,7 @@ const {
   encodeForStorage,
   decodeFromStorage,
   cleanInput,
+  requiresPaymentApproval,
 } = require("@helpers/helper");
 const {
   updateOrCreate,
@@ -199,7 +200,7 @@ exports.store = async (req, res) => {
       let status = "due",
         paid_amount = 0,
         due_amount = 0;
-      if (data.payment_mode != "cheque") {
+      if (!requiresPaymentApproval(data.payment_mode)) {
         status =
           priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
             ? "paid"
