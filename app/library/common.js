@@ -565,31 +565,60 @@ const GOLD_RATE_TTL = 10 * 60 * 1000;
 // Cache stores per-karat rates directly from the API.
 let goldRateCache = { rate: 0, rate22: 0, rate18: 0, display: "", at: 0 };
 
+/**
+ * A failed lookup is remembered too, and concurrent callers share one request.
+ *
+ * applyLiveGoldPrice() calls this once per priced material row. Only a
+ * *successful* fetch was cached, so with the feed down every row started its
+ * own request and waited the full 5 s abort - the admin dashboard's stock
+ * section sat idle for minutes, doing no queries and no work, and never
+ * answered. The failure window is short so a feed that comes back is picked up
+ * quickly; a healthy feed behaves exactly as before.
+ */
+const GOLD_RATE_FAIL_TTL = 60 * 1000;
+let goldRateFailedAt = 0;
+let goldRateInFlight = null;
+
 const getLiveGoldRate = async () => {
   if (goldRateCache.rate && Date.now() - goldRateCache.at < GOLD_RATE_TTL) {
     return goldRateCache;
   }
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
-    clearTimeout(timer);
-    const body = await res.json();
-    const pg = body && body.per_gram ? body.per_gram : {};
-    const rate = parseFloat(pg["24K"] || 0);
-    if (rate > 0) {
-      goldRateCache = {
-        rate:    rate,
-        rate22:  parseFloat(pg["22K"] || 0),
-        rate18:  parseFloat(pg["18K"] || 0),
-        display: body.display || "",
-        at:      Date.now(),
-      };
-    }
-  } catch (e) {
-    addLog({ getLiveGoldRate: e.message });
+  if (goldRateFailedAt && Date.now() - goldRateFailedAt < GOLD_RATE_FAIL_TTL) {
+    return goldRateCache;
   }
-  return goldRateCache;
+  if (goldRateInFlight) return goldRateInFlight;
+
+  goldRateInFlight = (async () => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
+      clearTimeout(timer);
+      const body = await res.json();
+      const pg = body && body.per_gram ? body.per_gram : {};
+      const rate = parseFloat(pg["24K"] || 0);
+      if (rate > 0) {
+        goldRateCache = {
+          rate:    rate,
+          rate22:  parseFloat(pg["22K"] || 0),
+          rate18:  parseFloat(pg["18K"] || 0),
+          display: body.display || "",
+          at:      Date.now(),
+        };
+        goldRateFailedAt = 0;
+      } else {
+        goldRateFailedAt = Date.now();
+      }
+    } catch (e) {
+      goldRateFailedAt = Date.now();
+      addLog({ getLiveGoldRate: e.message });
+    } finally {
+      goldRateInFlight = null;
+    }
+    return goldRateCache;
+  })();
+
+  return goldRateInFlight;
 };
 
 const isGoldMaterial = (material) =>
@@ -1664,6 +1693,23 @@ const getAdminDistributorIds = async (id, state_id) => {
   }
   let ids = await UserModel.findAll({
     where: { state_id: state_id, role_id: getRoleId("distributor") },
+    attributes: ["id"],
+    raw: true,
+  });
+  return arrayColumn(ids, "id");
+};
+
+/**
+ * Get distributors that belong directly to this admin (own distributors).
+ * These are distributors where parent_id = admin_id AND own = true.
+ */
+const getAdminOwnDistributorIds = async (adminId) => {
+  let ids = await UserModel.findAll({
+    where: { 
+      parent_id: adminId, 
+      role_id: getRoleId("distributor"),
+      own: true
+    },
     attributes: ["id"],
     raw: true,
   });
@@ -2913,12 +2959,121 @@ const getTransferSale = async (userId, type) => {
 
 const getMyRetailerIds = async (userId) => {
   let roleId = getRoleId("retailer");
-  let ids = await UserToUserModel.findAll({
+  
+  // Check user_to_users table
+  let userToUserIds = await UserToUserModel.findAll({
     where: { to_role_id: roleId, user_id: userId },
     attributes: ["to_user_id"],
     raw: true,
   });
-  return arrayColumn(ids, "to_user_id");
+  
+  // Also check parent_id OR created_by on retailers (retailers created by this user)
+  let retailersByLink = await UserModel.findAll({
+    where: { 
+      role_id: roleId, 
+      [Op.or]: [
+        { parent_id: userId },
+        { created_by: userId }
+      ]
+    },
+    attributes: ["id"],
+    raw: true,
+  });
+  
+  // Combine all sources and deduplicate
+  const fromUserToUser = arrayColumn(userToUserIds, "to_user_id");
+  const fromRetailers = arrayColumn(retailersByLink, "id");
+  return [...new Set([...fromUserToUser, ...fromRetailers])];
+};
+
+/**
+ * The users whose retailers count as "mine".
+ *
+ * A sales executive or distributor owns the retailers it created - the link
+ * lives in user_to_users. An admin creates none directly; its retailers are the
+ * ones belonging to its distributors and sales executives. Shared by the
+ * retailer list and the dashboard card so the two cannot disagree.
+ */
+const getMyRetailerOwnerIds = async (req) => {
+  /**
+   * Sales executives under one parent work the same book: a retailer added by
+   * one of them belongs to the group, not to whoever happened to enter it. So
+   * "mine" for a sales executive is the parent plus every sales executive that
+   * reports to it, itself included.
+   */
+  if (isSalesExecutive(req)) {
+    const parentId = await getUserColumnValue(req.userId, "parent_id");
+    if (!parentId) return [req.userId];
+    const siblings = await UserModel.findAll({
+      attributes: ["id"],
+      where: { parent_id: parentId, role_id: getRoleId("sales_executive") },
+    });
+    return [...new Set([req.userId, parentId, ...arrayColumn(siblings, "id")])];
+  }
+
+  if (!isAdmin(req)) return [req.userId];
+  // Get admin's own distributors (those with parent_id = admin_id)
+  const ownDistributorIds = [...new Set(await getAdminOwnDistributorIds(req.userId))];
+  // Get SEs under those distributors
+  const seUnderDistributors = ownDistributorIds.length > 0 
+    ? await UserModel.findAll({ 
+        attributes: ["id"], 
+        where: { parent_id: { [Op.in]: ownDistributorIds }, role_id: getRoleId("sales_executive") } 
+      })
+    : [];
+  // Get admin's own direct SEs (those with parent_id = admin_id)
+  const ownSE = await UserModel.findAll({
+    attributes: ["id"],
+    where: { parent_id: req.userId, role_id: getRoleId("sales_executive") },
+  });
+  return [
+    req.userId,
+    ...ownDistributorIds,
+    ...arrayColumn(seUnderDistributors, "id"),
+    ...arrayColumn(ownSE, "id"),
+  ];
+};
+
+/** retailer ids linked to any of the given owners */
+const getMyRetailerIdsFor = async (ownerIds) => {
+  const all = await Promise.all(ownerIds.map((id) => getMyRetailerIds(id)));
+  return [...new Set(all.flat())];
+};
+
+/**
+ * "My Retailer" is what this user created - nobody else's.
+ */
+const getOwnRetailerIds = async (req) => getMyRetailerIdsFor([req.userId]);
+
+/**
+ * The retailers of the whole group, which is what the Total Retailer figure
+ * shows: for a sales executive that is the parent and every sales executive
+ * reporting to it, so one team sees one book. Kept separate from
+ * getOwnRetailerIds on purpose - Total is shared, My Retailer is not.
+ */
+const getGroupRetailerIds = async (req) =>
+  getMyRetailerIdsFor(await getMyRetailerOwnerIds(req));
+
+/** 
+ * Retailer ids that belong to the caller based on their role:
+ * - Admin: retailers from self + own distributors + own SEs + SEs under distributors
+ * - Distributor: retailers from self + own SEs
+ * - SE: retailers from self only (team sharing handled separately)
+ */
+const getMyRetailerIdsForRequest = async (req) => {
+  if (isAdmin(req)) {
+    // Admin sees retailers created by themselves, their distributors, and their SEs
+    return getMyRetailerIdsFor(await getMyRetailerOwnerIds(req));
+  }
+  if (isDistributor(req)) {
+    // Distributor sees retailers created by themselves and their SEs
+    const seCondition = { parent_id: req.userId, role_id: getRoleId("sales_executive") };
+    const ownSEs = await UserModel.findAll({ attributes: ["id"], where: seCondition });
+    const ownerIds = [req.userId, ...arrayColumn(ownSEs, "id")];
+    return getMyRetailerIdsFor(ownerIds);
+  }
+  // SE and others: only their own retailers
+  return getOwnRetailerIds(req);
 };
 
 const insertLoanEMI = async (loan, startDate, emi, amount) => {
@@ -4056,7 +4211,14 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
   };
 };
 
-const getPurchaseProductsUser = async (req, params) => {
+/**
+ * `countsOnly` mirrors getPurchaseProducts: the dashboard reads only the four
+ * totals below, never `items`/`categories`, so in that mode the material,
+ * purity, unit, size and category joins and all the display formatting are
+ * skipped. The counting itself is untouched - it encodes business rules that
+ * are not safe to restate as SQL.
+ */
+const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
 
   let productWhere = {};
@@ -4086,7 +4248,20 @@ const getPurchaseProductsUser = async (req, params) => {
         model: PurchaseProductModel,
         as: "purchaseProducts",
         separate: true,
-        include: [
+        ...(countsOnly
+          ? { attributes: ["id", "purchase_id", "product_id", "is_return", "certificate_no"] }
+          : {}),
+        include: countsOnly
+          ? [
+              { model: productsModel, as: "product", attributes: ["id", "type"] },
+              {
+                model: PurchaseProductMaterialModel,
+                as: "purchaseMaterials",
+                separate: true,
+                attributes: ["id", "purchase_product_id", "quantity", "return_qty"],
+              },
+            ]
+          : [
           {
             model: productsModel,
             as: "product",
@@ -4174,6 +4349,7 @@ const getPurchaseProductsUser = async (req, params) => {
       }
 
       let image = "";
+      // countsOnly: the caller never reads items[], so skip the display work
       if (product && isArray(product.images)) {
         for (let img = 0; img < product.images.length; img++) {
           image = getFileAbsulatePath(product.images[img].path);
@@ -4224,7 +4400,7 @@ const getPurchaseProductsUser = async (req, params) => {
         purity_display.push(pm.purity ? pm.purity.name : "-");
       }
       let total_weight_display = "";
-      if (materialItem.length == 1) {
+      if (!countsOnly && materialItem.length == 1) {
         total_weight_display =
           weightFormat(materialItem[0].weight) +
           " , " +
@@ -4252,7 +4428,7 @@ const getPurchaseProductsUser = async (req, params) => {
         mrp_display: displayAmount(pp.total),
       };
 
-      items.push(item);
+      if (!countsOnly) items.push(item);
 
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
@@ -4728,12 +4904,18 @@ module.exports = {
   getProductSizeMaterials,
   getTotalStockByUser,
   getMyRetailerIds,
+  getMyRetailerOwnerIds,
+  getMyRetailerIdsFor,
+  getMyRetailerIdsForRequest,
+  getOwnRetailerIds,
+  getGroupRetailerIds,
   getTransferSale,
   insertLoanEMI,
   updateRetailerAvgReview,
   insertVisit,
   productHaveWishlist,
   getAdminDistributorIds,
+  getAdminOwnDistributorIds,
   getOrderStatusProgress,
   getNotificationLabelByType,
   convertToNotificationGroup,

@@ -1,0 +1,12 @@
+require('module-alias/register');
+global.compactLog=()=>{};
+const db=require('@models');
+let n=0,dbms=0,last='';
+const orig=db.sequelize.query.bind(db.sequelize);
+db.sequelize.query=async function(sql,opts){ n++; last=((typeof sql==='string'?sql:sql.query)||'').replace(/\s+/g,' ').slice(0,70); const t=Date.now(); try{return await orig(sql,opts);} finally{dbms+=Date.now()-t;} };
+const ctrl=require('@controllers/superadmin/dashboard.controller');
+const t0=Date.now();
+const res={send:(d)=>{console.log(`RESULT ${Date.now()-t0}ms | ${dbms}ms DB | ${n} queries | success=${d&&d.success}`);process.exit(0);},status:()=>res};
+const iv=setInterval(()=>console.log(`  tick ${((Date.now()-t0)/1000).toFixed(0)}s  q=${n}  db=${dbms}ms  last=${last}`),5000);
+ctrl.stock({userId:31,role:2,query:{},params:{},body:{},headers:{}},res);
+setTimeout(()=>{console.log(`GAVE UP at 25s: q=${n} db=${dbms}ms last=${last}`);process.exit(1);},25000);

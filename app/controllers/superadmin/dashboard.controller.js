@@ -18,6 +18,8 @@ const {
   isSalesExecutive,
   getTotalStockByUser,
   getMyRetailerIds,
+  getMyRetailerIdsForRequest,
+  getGroupRetailerIds,
   isManager,
   getPurchaseProducts,
   getPurchaseProductsUser,
@@ -108,6 +110,45 @@ const SECTION_FIELDS = {
 };
 
 const ALL_SECTIONS = { summary: true, stock: true, charts: true };
+
+/**
+ * Card counts must agree with the page the card opens.
+ *
+ * Every role branch below computes its own subset of the shared fields, and
+ * whatever a branch forgets keeps its initial 0 - which the response then
+ * reports as a real count. That is where "Total Admin: 0" came from on a
+ * dashboard whose Admin page lists seven of them. These helpers count with the
+ * same rule the corresponding list controller uses, so the two cannot drift.
+ */
+const countAdminsForRole = async (req) => {
+  // /admin lists every admin, minus yourself when you are one
+  const base = { role_id: getRoleId("admin") };
+  if (isAdmin(req)) base.id = { [Op.ne]: req.userId };
+  const [own, other] = await Promise.all([
+    UserModel.count({ where: { ...base, own: true } }),
+    UserModel.count({ where: { ...base, own: false } }),
+  ]);
+  return { own, other };
+};
+
+const countCustomersForRole = async (req) => {
+  // mirrors customer.controller: district for a distributor, state for an admin
+  const where = { role_id: getRoleId("customer") };
+  if (isDistributor(req)) {
+    where.district_id = await getUserColumnValue(req.userId, "district_id");
+  } else if (isAdmin(req)) {
+    where.state_id = await getUserColumnValue(req.userId, "state_id");
+  }
+  return UserModel.count({ where });
+};
+
+const countSuppliersForRole = async (req) =>
+  // mirrors supplier.controller: the suppliers that belong to this user
+  UserModel.count({
+    where: { role_id: getRoleId("supplier"), parent_id: await getWorkingUserID(req) },
+  });
+
+
 
 /**
  * Builds the dashboard payload.
@@ -272,7 +313,10 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
         ifStock(() => otheradminIds.length ? getTotalStockPriceByUser(null, otheradminIds)  : 0),
         ifStock(() => managerUsersIds.length ? getTotalStockByUser(managerUsersIds)            : 0),
         ifStock(() => managerUsersIds.length ? getTotalStockPriceByUser(null, managerUsersIds) : 0),
-        UserModel.count({ where: { role_id: retailerRoleId, parent_id: { [Op.in]: avlUserIds } } }),
+        // every retailer in the system: the card links to /retailers, which for a
+        // super admin lists them all, so scoping this by parent_id made the tile
+        // disagree with the page it opens (1 vs 19)
+        UserModel.count({ where: { role_id: retailerRoleId } }),
       ]);
 
       const distributorIds            = arrayColumn(_distributors,          "id");
@@ -287,6 +331,11 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
       totalManagerStock         = _totalManagerStock;
       totalManagerStockPrice    = _totalManagerStockPrice;
       totalRetailer             = _totalRetailer;
+      // My Retailer was never computed here, so the card read 0 while the
+      // page's My Retailer tab listed them
+      myRetailer = await UserModel.count({
+        where: { role_id: retailerRoleId, id: { [Op.in]: await getMyRetailerIdsForRequest(req) } },
+      });
       avl_stockUser_ids         = avlUserIds; // already computed — free
 
       const se_parent_ids = ownDistributorOfAdminsIds.concat(ownDistributorsIds);
@@ -383,16 +432,17 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
         _otherAdminBuyers,
       ] = await Promise.all([
         UserModel.count({ where: { role_id: customerRoleId, state_id: state_id } }),
-        getTotalStockByUser(userID),
-        getTotalStockPriceByUser(null, userID),
-        getTotalStockByUser(userID, "material"),
-        getTotalStockPriceByUser(null, userID, "material"),
+        ifStock(() => getTotalStockByUser(userID)),
+        ifStock(() => getTotalStockPriceByUser(null, userID)),
+        ifStock(() => getTotalStockByUser(userID, "material")),
+        ifStock(() => getTotalStockPriceByUser(null, userID, "material")),
         saleModel.sum("due_amount", { where: { sale_by: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } }),
         PurchaseModel.sum("due_amount", { where: { user_id: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } }),
         getWalletBalance(userID),
         UserModel.findAll({ attributes: ["id"], where: { role_id: distributorRoleId, own: true,  state_id: state_id, parent_id: userID } }),
         UserModel.findAll({ attributes: ["id"], where: { role_id: distributorRoleId, own: false, state_id: state_id, parent_id: userID } }),
-        getPurchaseProductsUser(req),
+        // only the four totals are read from this - see countsOnly
+        getPurchaseProductsUser(req, null, true),
         getTransferSale(userID),
         avlMemo(req, adminRoleId),
         PurchaseModel.findAll({ where: { user_id: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false }, attributes: ["supplier_id"] }),
@@ -400,6 +450,16 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
       ]);
 
       totalCustomer           = _totalCustomer;
+      // the Admin card opens the Admin page; count what that page lists
+      const _adminCounts = await countAdminsForRole(req);
+      totalAdmin      = _adminCounts.own;
+      totalOtherAdmin = _adminCounts.other;
+      // an admin owns its team's retailers, not just its own direct links -
+      // same helper the My Retailer tab uses. Count the users rather than the
+      // links: a link can point at a deleted retailer.
+      myRetailer      = await UserModel.count({
+        where: { role_id: retailerRoleId, id: { [Op.in]: await getMyRetailerIdsForRequest(req) } },
+      });
       totalStock              = _totalStock;
       totalStockPrice         = _totalStockPrice;
       materialTotalStock      = _materialTotalStock;
@@ -438,20 +498,23 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
         _otherAdminSupplierObjs,
         _otherAdminBuyerObjs,
       ] = await Promise.all([
-        distributorIds.length      ? getTotalStockByUser(distributorIds)                 : Promise.resolve(0),
-        distributorIds.length      ? getTotalStockPriceByUser(null, distributorIds)      : Promise.resolve(0),
-        otherdistributorIds.length ? getTotalStockByUser(otherdistributorIds)            : Promise.resolve(0),
-        otherdistributorIds.length ? getTotalStockPriceByUser(null, otherdistributorIds) : Promise.resolve(0),
+        ifStock(() => distributorIds.length      ? getTotalStockByUser(distributorIds)                 : 0),
+        ifStock(() => distributorIds.length      ? getTotalStockPriceByUser(null, distributorIds)      : 0),
+        ifStock(() => otherdistributorIds.length ? getTotalStockByUser(otherdistributorIds)            : 0),
+        ifStock(() => otherdistributorIds.length ? getTotalStockPriceByUser(null, otherdistributorIds) : 0),
         otherdistributorIds.length
           ? saleModel.sum("due_amount", { where: { user_id: { [Op.in]: otherdistributorIds }, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } })
           : Promise.resolve(0),
-        UserModel.count({ where: { role_id: retailerRoleId, state_id: state_id } }),
+        // Total Retailer for Admin: retailers created by admin + own distributors + own SEs
+        getMyRetailerIdsForRequest(req).then(ids => 
+          ids.length ? UserModel.count({ where: { role_id: retailerRoleId, id: { [Op.in]: ids } } }) : 0
+        ),
         UserModel.count({ where: { role_id: supplierRoleId, parent_id: userID } }),
         UserModel.count({ where: { role_id: sales_executiveRoleId, parent_id: userID } }),
-        avl_stockUser_ids.length ? getTotalStockByUser(avl_stockUser_ids)             : Promise.resolve(0),
-        avl_stockUser_ids.length ? getTotalStockPriceByUser(null, avl_stockUser_ids)  : Promise.resolve(0),
-        avlMemo(null, superAdminRoleId).then(ids => ids.length ? getTotalStockByUser(ids)            : 0),
-        avlMemo(null, superAdminRoleId).then(ids => ids.length ? getTotalStockPriceByUser(null, ids) : 0),
+        ifStock(() => avl_stockUser_ids.length ? getTotalStockByUser(avl_stockUser_ids)             : 0),
+        ifStock(() => avl_stockUser_ids.length ? getTotalStockPriceByUser(null, avl_stockUser_ids)  : 0),
+        ifStock(() => avlMemo(null, superAdminRoleId).then(ids => ids.length ? getTotalStockByUser(ids)            : 0)),
+        ifStock(() => avlMemo(null, superAdminRoleId).then(ids => ids.length ? getTotalStockPriceByUser(null, ids) : 0)),
         // Direct SQL for own sales
         avl_stockUser_ids.length
           ? dbSequelize.query(
@@ -499,8 +562,8 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
       total_own_sales_executive  += extraSeCount;
 
       const [_totalOwnSeStock, _totalOwnSeStockPrice] = await Promise.all([
-        seIds.length ? getTotalStockByUser(seIds)            : Promise.resolve(0),
-        seIds.length ? getTotalStockPriceByUser(null, seIds) : Promise.resolve(0),
+        ifStock(() => seIds.length ? getTotalStockByUser(seIds)            : 0),
+        ifStock(() => seIds.length ? getTotalStockPriceByUser(null, seIds) : 0),
       ]);
       totalOwnSeStock      = _totalOwnSeStock;
       totalOwnSeStockPrice = _totalOwnSeStockPrice;
@@ -543,7 +606,10 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
       ] = await Promise.all([
         getTotalStockByUser(userID),
         getTotalStockPriceByUser(null, userID),
-        UserModel.count({ where: { role_id: retailerRoleId, district_id: district_id } }),
+        // Total Retailer for Distributor: retailers created by distributor + own SEs
+        getMyRetailerIdsForRequest(req).then(ids => 
+          ids.length ? UserModel.count({ where: { role_id: retailerRoleId, id: { [Op.in]: ids } } }) : 0
+        ),
         getMyRetailerIds(req.userId),
         saleModel.sum("due_amount", { where: { is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false, sale_by: { [Op.in]: [userID] } } }),
         PurchaseModel.sum("due_amount", { where: { user_id: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } }),
@@ -559,9 +625,21 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
       walletBalance     = _walletBalance;
       totalAvlTransferStock      = superAdminTotalTransferStock       = _transferStockData.totalStock;
       totalAvlTransferStockPrice = superAdminTotalTransferStockPrice  = _transferStockData.totalPrice;
-      totalSupplier = 1;
 
-      myRetailer = await UserModel.count({ where: { role_id: retailerRoleId, id: { [Op.in]: _myRetailerIds } } });
+      // fields this branch never filled in, counted the way their pages do
+      const _distAdminCounts = await countAdminsForRole(req);
+      totalAdmin      = _distAdminCounts.own;
+      totalOtherAdmin = _distAdminCounts.other;
+      totalCustomer   = await countCustomersForRole(req);
+      totalSupplier   = await countSuppliersForRole(req);
+      // /distributors is state scoped for this role (distributor.controller)
+      totalDistributor = await UserModel.count({
+        where: { role_id: distributorRoleId, state_id: state_id },
+      });
+
+      myRetailer = await UserModel.count({
+        where: { role_id: retailerRoleId, id: { [Op.in]: await getMyRetailerIdsForRequest(req) } },
+      });
 
       const adminDistributors = arrayColumn(_distributors, "id");
       const parentIds         = [admin_id, ...adminDistributors];
@@ -657,9 +735,17 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
       total_avl_stockUser_ids = _superAvlIds;
       totalAvlTransferStock      = superAdminTotalTransferStock       = _transferStockData.totalStock;
       totalAvlTransferStockPrice = superAdminTotalTransferStockPrice  = _transferStockData.totalPrice;
-      totalSupplier = 1;
 
-      myRetailer = await UserModel.count({ where: { role_id: retailerRoleId, id: { [Op.in]: _myRetailerIds } } });
+      // fields this branch never filled in, counted the way their pages do
+      const _seAdminCounts = await countAdminsForRole(req);
+      totalAdmin      = _seAdminCounts.own;
+      totalOtherAdmin = _seAdminCounts.other;
+      totalCustomer   = await countCustomersForRole(req);
+      totalSupplier   = await countSuppliersForRole(req);
+
+      myRetailer = await UserModel.count({
+        where: { role_id: retailerRoleId, id: { [Op.in]: await getMyRetailerIdsForRequest(req) } },
+      });
 
       const distributorsIds = arrayColumn(_ownDistributors, "id");
       const uIdsArr_SE      = [...distributorsIds, admin_id];
@@ -689,7 +775,11 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
         ? await UserModel.count({ where: { role_id: retailerRoleId, parent_id: { [Op.in]: allSEIds } } })
         : 0;
 
-      totalRetailer  = _retailerFromAdmin + _retailerFromDistrs + _retailerFromSE;
+      // Total Retailer is the team's book - the same set the Retailer page
+      // lists for a sales executive
+      totalRetailer = await UserModel.count({
+        where: { role_id: retailerRoleId, id: { [Op.in]: await getGroupRetailerIds(req) } },
+      });
       totalAvlStock        = _totalAvlStock;
       totalAvlStockPrice   = _totalAvlStockPrice;
       superAdminTotalAvlStock      = _superAvlStock;
@@ -714,8 +804,15 @@ const buildDashboard = async (req, want = ALL_SECTIONS) => {
     // COMMON (non-superadmin roles — superadmin already computed above)
     // ─────────────────────────────────────────────────────────────
     if (!isSuperAdmin(req)) {
-      // Fetch live gold rate for all roles (superadmin already got it in batch 1)
-      _liveGoldRate = await getLiveGoldRate();
+      /**
+       * The gold rate is an external HTTPS call with a 5 s abort timeout, and
+       * it feeds two stock-section fields only. Awaiting it for every role
+       * meant /dashboard/summary sat idle for the full 5 s whenever the feed
+       * was slow or unreachable - measured 4,965 ms of a 5,049 ms response,
+       * with 91 ms of database work in it. The superadmin branch already gates
+       * it the same way.
+       */
+      _liveGoldRate = await ifStock(() => getLiveGoldRate(), { rate: 0, display: null });
       [purchaseDueAmount, walletBalance] = await Promise.all([
         purchaseDueAmount ? Promise.resolve(purchaseDueAmount) : PurchaseModel.sum("due_amount", { where: { user_id: userID, is_approved: { [Op.ne]: 2 }, is_assigned: false, is_approval: false } }),
         walletBalance     ? Promise.resolve(walletBalance)     : getWalletBalance(userID),
