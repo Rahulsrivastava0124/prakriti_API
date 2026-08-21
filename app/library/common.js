@@ -2843,6 +2843,73 @@ const getMyRetailerIds = async (userId) => {
   return arrayColumn(ids, "to_user_id");
 };
 
+/**
+ * A sales executive's Total Retailer figure: the book of the admin at the top
+ * of its chain - that admin's own retailers, the retailers of the admin's own
+ * distributors, and those of every sales executive in the chain. The three
+ * groups are keyed on parent_id, so a retailer falls in exactly one of them and
+ * the counts add up without overlap.
+ *
+ * Lifted out of the sales executive's dashboard card so the executive list can
+ * show the same number the executive itself sees. Two copies of a rule this
+ * shaped drift.
+ */
+const getSalesExecutiveTotalRetailerCount = async (userId) => {
+  const retailerRoleId = getRoleId("retailer");
+  const distributorRoleId = getRoleId("distributor");
+
+  const parentId = await getUserColumnValue(userId, "parent_id");
+  if (!parentId) return 0;
+
+  /* the parent is a distributor most of the time, but an admin may own a
+     sales executive directly, and then it is its own admin */
+  const parentRoleId = await getUserColumnValue(parentId, "role_id");
+  const adminId =
+    parentRoleId == getRoleId("admin")
+      ? parentId
+      : await getUserColumnValue(parentId, "parent_id");
+  if (!adminId) return 0;
+
+  let total = await UserModel.count({
+    where: { role_id: retailerRoleId, parent_id: adminId },
+  });
+
+  const distributors = await UserModel.findAll({
+    attributes: ["id"],
+    where: { role_id: distributorRoleId, own: true, parent_id: adminId },
+  });
+  const distributorIds = arrayColumn(distributors, "id");
+  total += await UserModel.count({
+    where: { role_id: retailerRoleId, parent_id: { [Op.in]: distributorIds } },
+  });
+
+  const seCondition = await getAdminSEWhereCondition(
+    distributorIds.concat(adminId),
+    null,
+    true
+  );
+  const allSE = await UserModel.findAll({
+    attributes: ["id"],
+    where: seCondition,
+  });
+  total += await UserModel.count({
+    where: {
+      role_id: retailerRoleId,
+      parent_id: { [Op.in]: arrayColumn(allSE, "id") },
+    },
+  });
+
+  return total;
+};
+
+/** How many retailers this user brought in - the "My Retailer" figure. */
+const getMyRetailerCount = async (userId) => {
+  const ids = await getMyRetailerIds(userId);
+  return UserModel.count({
+    where: { role_id: getRoleId("retailer"), id: { [Op.in]: ids } },
+  });
+};
+
 const insertLoanEMI = async (loan, startDate, emi, amount) => {
   let nextMonth = startDate.add(1, "month");
   startDate = nextMonth.startOf("month");
@@ -4558,6 +4625,8 @@ module.exports = {
   getProductSizeMaterials,
   getTotalStockByUser,
   getMyRetailerIds,
+  getMyRetailerCount,
+  getSalesExecutiveTotalRetailerCount,
   getTransferSale,
   insertLoanEMI,
   updateRetailerAvgReview,

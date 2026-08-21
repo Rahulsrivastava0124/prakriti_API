@@ -18,6 +18,7 @@ const {
   isSalesExecutive,
   getTotalStockByUser,
   getMyRetailerIds,
+  getSalesExecutiveTotalRetailerCount,
   isManager,
   getPurchaseProducts,
   getPurchaseProductsUser,
@@ -735,57 +736,19 @@ exports.index = async (req, res) => {
         tatolStockUserIds
       );
     } else if (isSalesExecutive(req)) {
-      // let state_id = await getUserColumnValue(req.userId, "state_id");
-
-      /* total Retailer (admin-distributer-SE) */
-      // parent distributor
+      /* the admin at the top of this executive's chain - still needed below for
+         the available-stock lookup */
       let distributor_id = await getUserColumnValue(req.userId, "parent_id");
       let distributorRole = await getUserColumnValue(distributor_id, "role_id");
-      //let distributorUser = await UserModel.findByPk(distributor_id);
-      /* totalRetailer += await UserModel.count({
-        where: { role_id: retailerRoleId, parent_id: distributor_id },
-      }); */
-      compactLog("distributor_id", distributor_id);
-      compactLog("distributorRole", distributorRole);
-      let admin_id = null;
-      /* check if admin own SE or not */
-      if(distributorRole == adminRoleId){
-        admin_id = distributor_id;
-      } else {
-        admin_id = await getUserColumnValue(distributor_id, "parent_id");
-      }
+      let admin_id =
+        distributorRole == adminRoleId
+          ? distributor_id
+          : await getUserColumnValue(distributor_id, "parent_id");
       compactLog("admin_id", admin_id);
-      // admin own created Retailer
-      totalRetailer += await UserModel.count({
-        where: { role_id: retailerRoleId, parent_id: admin_id },
-      });
 
-      // all distributors by admin
-      let distributors = await UserModel.findAll({
-        attributes: ["id"],
-        where: { role_id: distributorRoleId, own: true, parent_id: admin_id },
-      });
-      let distributorsIds = arrayColumn(distributors, "id");
-
-      totalRetailer += await UserModel.count({
-        where: {
-          role_id: retailerRoleId,
-          parent_id: { [Op.in]: distributorsIds },
-        },
-      });
-
-      // all SE by admin
-      let uIdsArr_SE = distributorsIds.concat(admin_id);
-      let _cond_se_in_chain = await getAdminSEWhereCondition(uIdsArr_SE, null, true);
-      let allSE = await UserModel.findAll({
-        attributes: ["id"],
-        where: _cond_se_in_chain,
-      });
-      let allSEIds = arrayColumn(allSE, "id");
-      compactLog("==================== _cond_se_in_chain :", _cond_se_in_chain);
-      totalRetailer += await UserModel.count({
-        where: { role_id: retailerRoleId, parent_id: { [Op.in]: allSEIds } },
-      });
+      /* total Retailer (admin-distributer-SE) - the same rule the executive
+         list uses, so the card and the list cannot disagree */
+      totalRetailer += await getSalesExecutiveTotalRetailerCount(req.userId);
 
       totalStock = await getTotalStockByUser(userID);
       totalStockPrice = await getTotalStockPriceByUser(null, userID);
