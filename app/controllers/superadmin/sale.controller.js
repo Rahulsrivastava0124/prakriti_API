@@ -5,6 +5,7 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
+const { remember } = require("@library/dashboardCache");
 const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const { base64FileUpload, removeFile } = require("@helpers/upload");
@@ -24,6 +25,7 @@ const {
   encodeForStorage,
   decodeFromStorage,
   cleanInput,
+  requiresPaymentApproval,
 } = require("@helpers/helper");
 const {
   updateOrCreate,
@@ -45,8 +47,18 @@ const {
   getOwnUserSaleProducts,
   getUserColumnValue,
   avlStockUserIdsNew,
+  getLiveGoldRate,
 } = require("@library/common");
 const { getPaginationOptions } = require("@helpers/paginator");
+const { byTxnDateDesc } = require("@helpers/ledgerOrder");
+const { repriceSaleAtLiveGold } = require("@library/liveInvoicePricing");
+
+/* The "Current Invoice" button posts current=1; accepted on the query string or
+   in the body so either style of call works. */
+const isCurrentRateInvoice = (req) => {
+  const flag = req.query?.current ?? req.body?.current;
+  return flag === true || flag === 1 || flag === "1" || flag === "true";
+};
 const { SaleCollection } = require("@resources/superadmin/SaleCollection");
 const {
   SaleListCollection,
@@ -101,7 +113,7 @@ const _ = require("lodash");
 //const puppeteer = require("puppeteer");
 /* -------------- commented by Soumalya Nandy ------------ */
 
-const html_to_pdf = require("html-pdf-node");
+const html_to_pdf = require("@helpers/pdf");
 
 const { updateAdvanceAmount } = require("../../library/common");
 const orderProductModel = db.order_products;
@@ -199,7 +211,14 @@ exports.index = async (req, res) => {
   const paginatorOptions = getPaginationOptions(page, limit);
 
   SaleModel.findAndCountAll({
-    order: [["id", "DESC"]],
+    // Date first so the list reads chronologically; id breaks ties between
+    // invoices raised on the same day and keeps paging stable.
+    order: [
+      ["invoice_date", "DESC"],
+      ["id", "DESC"],
+    ],
+  // req_data is an unread longtext audit blob, nothing below reads it
+  attributes: { exclude: ["req_data"] },
     where: conditions,
     offset: paginatorOptions.offset,
     limit: paginatorOptions.limit,
@@ -280,6 +299,8 @@ exports.txnLedger = async (req, res) => {
   try {
     // Fetch all sales with their related payments
     const allSales = await SaleModel.findAll({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
       include: [
         {
           model: PaymentModel,
@@ -376,19 +397,8 @@ exports.txnLedger = async (req, res) => {
 
     //compactLog("before tableData: ", tableData);
 
-    tableData.sort((a, b) => new Date(b.index) - new Date(a.index));
-    // Sort transactions by txn_date descending
-    tableData.sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date));
-    tableData.sort((a, b) => {
-      /* compactLog(
-        "----------a.invoice_number,b.invoice_number----------",
-        a.invoice_number.split("").pop(),
-        b.invoice_number.split("").pop(),
-      ); */
-      return (
-        b.invoice_number.split("-").pop() - a.invoice_number.split("-").pop()
-      );
-    });
+    // Passbook order: newest transaction first, regardless of invoice.
+    tableData.sort(byTxnDateDesc);
 
     if (
       !isEmpty(search) &&
@@ -400,37 +410,6 @@ exports.txnLedger = async (req, res) => {
     }
 
     //compactLog("tableData: ", tableData);
-
-    let temp_invoice_no = "";
-    let temp_invoice_index = -1;
-    let temp_balance = 0;
-    for (let i = 0; i < tableData.length; i++) {
-      let tx = tableData[i];
-
-      if (temp_invoice_no == "") {
-        temp_invoice_no = tx.invoice_number;
-        temp_invoice_index = i;
-      } else if (
-        temp_invoice_no != "" &&
-        temp_invoice_no != tx.invoice_number
-      ) {
-        tableData[temp_invoice_index].txn_amount = temp_balance;
-        //tableData[temp_invoice_index].payment_amount = displayAmount(temp_balance);
-        temp_invoice_no = tx.invoice_number;
-        temp_invoice_index = i;
-      }
-
-      if (tx.type.toLowerCase() == "payment" && tx.txn_type == "credit") {
-        //compactLog(`temp_balance : ${temp_balance}, credited txn_amount : ${tx.txn_amount}, balance : ${temp_balance - tx.txn_amount}`)
-        temp_balance -= tx.txn_amount;
-        temp_balance = temp_balance > 0 ? temp_balance : 0;
-      } else if (tx.type.toLowerCase() == "sale" && tx.is_approved != 2) {
-        temp_balance = tx.txn_amount;
-      }
-      //compactLog("temp_invoice_no : ", temp_invoice_no, "temp_balance : ", temp_balance);
-    }
-
-    //compactLog("after tableData: ", tableData);
 
     // Compute running balance (Due Amount)
     let runningBalance = 0;
@@ -485,7 +464,6 @@ exports.txnLedger = async (req, res) => {
     };
     res.send(formatResponse(result, "Sale Ledger List"));
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -541,6 +519,8 @@ exports.downloadTxnLedger = async (req, res) => {
   try {
     // Fetch all sales with their related payments
     const allSales = await SaleModel.findAll({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
       include: [
         {
           model: PaymentModel,
@@ -636,19 +616,9 @@ exports.downloadTxnLedger = async (req, res) => {
       });
     });
 
-    tableData.sort((a, b) => new Date(b.index) - new Date(a.index));
-    // Sort transactions by txn_date descending
-    tableData.sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date));
-    tableData.sort((a, b) => {
-      /* compactLog(
-        "----------a.invoice_number,b.invoice_number----------",
-        a.invoice_number.split("").pop(),
-        b.invoice_number.split("").pop(),
-      ); */
-      return (
-        b.invoice_number.split("-").pop() - a.invoice_number.split("-").pop()
-      );
-    });
+    // Same comparator as the on-screen ledger — the PDF must not disagree with
+    // what the user just looked at.
+    tableData.sort(byTxnDateDesc);
 
     if (
       !isEmpty(search) &&
@@ -663,37 +633,6 @@ exports.downloadTxnLedger = async (req, res) => {
       "tableData length:",
       Array.isArray(tableData) ? tableData.length : typeof tableData,
     );
-
-    let temp_invoice_no = "";
-    let temp_invoice_index = -1;
-    let temp_balance = 0;
-    for (let i = 0; i < tableData.length; i++) {
-      let tx = tableData[i];
-
-      if (temp_invoice_no == "") {
-        temp_invoice_no = tx.invoice_number;
-        temp_invoice_index = i;
-      } else if (
-        temp_invoice_no != "" &&
-        temp_invoice_no != tx.invoice_number
-      ) {
-        tableData[temp_invoice_index].txn_amount = temp_balance;
-        //tableData[temp_invoice_index].payment_amount = displayAmount(temp_balance);
-        temp_invoice_no = tx.invoice_number;
-        temp_invoice_index = i;
-      }
-
-      if (tx.type.toLowerCase() == "payment" && tx.txn_type == "credit") {
-        //compactLog(`temp_balance : ${temp_balance}, credited txn_amount : ${tx.txn_amount}, balance : ${temp_balance - tx.txn_amount}`)
-        temp_balance -= tx.txn_amount;
-        temp_balance = temp_balance > 0 ? temp_balance : 0;
-      } else if (tx.type.toLowerCase() == "sale" && tx.is_approved != 2) {
-        temp_balance = tx.txn_amount;
-      }
-      //compactLog("temp_invoice_no : ", temp_invoice_no, "temp_balance : ", temp_balance);
-    }
-
-    //compactLog("after tableData: ", tableData);
 
     // Compute running balance (Due Amount)
     let runningBalance = 0;
@@ -1207,14 +1146,13 @@ exports.downloadTxnLedger = async (req, res) => {
             "Ledger pdf",
           ),
         );
-      })();
+      })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
     } catch (error) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse(error.toString()));
     }
   } catch (err) {
-    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -1260,7 +1198,7 @@ exports.store = async (req, res) => {
     (isDistributor(req) || isSalesExecutive(req))
   ) {
     let invObj = moment(data.invoice_date, "MM/DD/YYYY");
-    let sttlObj = moment(data.settlement_date);
+    let sttlObj = moment(data.settlement_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]);
     if (sttlObj.diff(invObj, "days") > 30) {
       return res
         .status(errorCodes.default)
@@ -1297,7 +1235,7 @@ exports.store = async (req, res) => {
     let status = "due",
       paid_amount = 0,
       due_amount = 0;
-    if (data.payment_mode != "cheque") {
+    if (!requiresPaymentApproval(data.payment_mode)) {
       status =
         priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
           ? "paid"
@@ -1341,7 +1279,7 @@ exports.store = async (req, res) => {
       order_id: data.order_id || null,
       sale_by: userID,
       invoice_number: invoice_number,
-      invoice_date: moment(data.invoice_date).format("YYYY-MM-DD"), //, "MM/DD/YYYY"
+      invoice_date: moment(data.invoice_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"), //, "MM/DD/YYYY"
       notes: data.notes,
       payment_mode: data.payment_mode,
       transaction_no: data.transaction_no,
@@ -1359,10 +1297,10 @@ exports.store = async (req, res) => {
       total_payable: priceFormat(data.total_payable),
       due_amount: due_amount,
       due_date: data.due_date
-        ? moment(data.due_date).format("YYYY-MM-DD")
+        ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
         : null,
       settlement_date: data.settlement_date
-        ? moment(data.settlement_date).format("YYYY-MM-DD")
+        ? moment(data.settlement_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
         : null,
       product_discount: priceFormat(data.product_discount),
       total_tag_price: priceFormat(data.total_tag_price),
@@ -1406,7 +1344,7 @@ exports.store = async (req, res) => {
         total_payable: priceFormat(data.total_payable),
         due_amount: due_amount,
         due_date: data.due_date
-          ? moment(data.due_date).format("YYYY-MM-DD")
+          ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
           : null,
         status: status,
         is_approved: data.on_approval ? 3 : is_approved,
@@ -1783,7 +1721,7 @@ exports.store = async (req, res) => {
           payment_date: moment().format("YYYY-MM-DD"),
           txn_id: data.transaction_no,
           cheque_no: data.cheque_no,
-          status: data.payment_mode == "cheque" ? "pending" : "success",
+          status: requiresPaymentApproval(data.payment_mode) ? "pending" : "success",
           type: "credit",
           table_type: "sale",
           table_id: sale.id,
@@ -2196,7 +2134,7 @@ exports.statuschange = async (req, res) => {
         where: { table_type: "sale", table_id: sale.id },
       });
       if (payment) {
-        if (payment.payment_mode == "cheque" && payment.status == "pending") {
+        if (requiresPaymentApproval(payment.payment_mode) && payment.status == "pending") {
           paidAmnt = priceFormat(paidAmnt - parseFloat(payment.amount));
         }
       }
@@ -2248,7 +2186,7 @@ exports.statuschange = async (req, res) => {
           where: { table_type: "sale", table_id: sale.id },
         });
         if (payment) {
-          if (payment.payment_mode == "cheque" && payment.status == "pending") {
+          if (requiresPaymentApproval(payment.payment_mode) && payment.status == "pending") {
             await paymentModel.destroy({ where: { id: payment.id } });
             await paymentModel.destroy({
               where: { table_type: "purchase", table_id: sale.id },
@@ -2584,6 +2522,9 @@ exports.transferItems = async (req, res) => {
 exports.view = async (req, res) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
+    // req_data is an unread longtext audit blob; SaleCollection does not
+    // return it, so it is not part of this response
+    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id /*, sale_by: userID*/ },
     /* include: [
       {
@@ -2715,7 +2656,34 @@ exports.view = async (req, res) => {
       .status(errorCodes.default)
       .send(formatErrorResponse("Sale not found"));
   }
-  res.send(formatResponse(SaleCollection(sale), "Sale details"));
+
+  /* The sale view page asks for current=1 so it always shows the metal at
+     today's rate. Opt-in rather than automatic: this same endpoint prefills the
+     sale form when a sale on approval is turned into a sale, and repricing there
+     would bake live rates into a brand new sale. Nothing is persisted either
+     way — the instance is only reshaped for this response. */
+  let liveGold = null;
+  if (isCurrentRateInvoice(req)) {
+    const liveRates = await getLiveGoldRate();
+    const repricing = repriceSaleAtLiveGold(sale, liveRates);
+    /* The page has to be able to say which rate it is showing, and to stay
+       quiet when the feed gave us nothing (rate 0) rather than print a zero. */
+    liveGold = {
+      applied: repricing.changes.length > 0,
+      rate_24k: liveRates.rate || 0,
+      rate_22k: liveRates.rate22 || 0,
+      rate_18k: liveRates.rate18 || 0,
+      display: liveRates.display || "",
+      changes: repricing.changes,
+    };
+  }
+
+  res.send(
+    formatResponse(
+      { ...SaleCollection(sale), live_gold: liveGold },
+      "Sale details"
+    )
+  );
 };
 
 /**
@@ -5180,13 +5148,47 @@ exports.returnStockTransfer = async (req, res) => {
  * @param {*} req
  * @param {*} res
  */
+/**
+ * Page the item list of a product listing.
+ *
+ * These endpoints built every row in memory and returned all of them whatever
+ * `limit` said - 3,200 items and 1.7 MB for a 50-row table, growing with the
+ * business. The summary fields (totals, per-category cards) still come from the
+ * whole set, because that is what they are summarising; only `items` is paged,
+ * and `total` carries the full count so the table can page through it.
+ *
+ * `all=1` is the table's "All" option and returns everything, as before.
+ */
+const pageListItems = (result, query) => {
+  const items = Array.isArray(result.items) ? result.items : [];
+  result.total = items.length;
+  if (String(query.all) === "1") return result;
+  const page = Math.max(parseInt(query.page, 10) || 1, 1);
+  const limit = Math.max(parseInt(query.limit, 10) || 50, 1);
+  result.items = items.slice((page - 1) * limit, page * limit);
+  return result;
+};
+
+/** see purchase.controller: the same build, the same reason to cache it */
+const PRODUCT_LIST_TTL = 60 * 1000;
+
+const productListCacheKey = (prefix, req) => {
+  const q = req.query || {};
+  return [prefix, req.userId, req.role, q.category_id || "", q.sub_category_id || "",
+    q.supplier_id || "", q.sale_by || "", q.type || "", q.search || ""].join(":");
+};
+
 exports.saleProducts = async (req, res) => {
   //let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   //let adminRoleId = getRoleId("admin");
   let superAdminRoleId = getRoleId("superadmin");
   compactLog("req ====> ", req.userId, req.role);
-  let saleProductsRes = await getOwnUserSaleProducts(req, req.query, req.role);
-  res.send(formatResponse(saleProductsRes));
+  let saleProductsRes = await remember(
+    productListCacheKey("saleProducts", req),
+    PRODUCT_LIST_TTL,
+    () => getOwnUserSaleProducts(req, req.query, req.role)
+  );
+  res.send(formatResponse(pageListItems({ ...saleProductsRes }, req.query)));
 };
 
 /**
@@ -5199,6 +5201,8 @@ exports.downloadInvoice = async (req, res) => {
   const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id, sale_by: userID },
     include: [
       {
@@ -6520,7 +6524,6 @@ exports.downloadInvoice = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -6599,7 +6602,7 @@ exports.downloadInvoice = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {
@@ -6729,6 +6732,35 @@ exports.downloadInvoiceInfo = async (req, res) => {
       .status(errorCodes.default)
       .send(formatErrorResponse("Sale not found"));
   }
+
+  /* "Current Invoice": the same jewellery re-costed at today's gold rate. The
+     plain Invoice button keeps printing the rates frozen at sale time; this
+     branch reprices the loaded instance IN MEMORY ONLY — never saved — so the
+     template below renders the live figures instead. */
+  const atCurrentRate = isCurrentRateInvoice(req);
+  let liveRepricing = null;
+  if (atCurrentRate) {
+    const liveRates = await getLiveGoldRate();
+    liveRepricing = repriceSaleAtLiveGold(sale, liveRates);
+    liveRepricing.rate_display = liveRates.display || "";
+    liveRepricing.rates = liveRates;
+  }
+
+  /**
+   * A current invoice prints the rate it was costed at, otherwise the reader
+   * cannot tell it apart from the historical one. Stays silent when the feed
+   * gave nothing, rather than printing a zero rate.
+   */
+  const liveGoldLine =
+    atCurrentRate && liveRepricing && liveRepricing.changes.length
+      ? `<li><span style="font-weight: 400; font-size: 12px; margin: 0;">Gold Rate (today) - </span>` +
+        `<span style="font-weight: 600; font-size: 12px; margin: 0;">` +
+        [
+          liveRepricing.rates && liveRepricing.rates.rate22 ? `22K ${displayAmount(liveRepricing.rates.rate22)}/g` : "",
+          liveRepricing.rates && liveRepricing.rates.rate18 ? `18K ${displayAmount(liveRepricing.rates.rate18)}/g` : "",
+        ].filter(Boolean).join(" · ") +
+        `</span></li>`
+      : "";
 
   let saleData = SaleCollection(sale);
 
@@ -6999,6 +7031,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                               600; font-size:
                                                               12px; margin:
                                                               0;">${saleData.invoice_number}</span></li>
+                                                      ${liveGoldLine}
                                                   </ul>
                                                   <ul style="margin: 0;
                                                       padding: 0;margin-left:52px; list-style:
@@ -7490,7 +7523,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
-      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight != null) {
+      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight) {
         metalExists = true;
         receive_metal += parseFloat(itm.weight);
       }
@@ -7569,7 +7602,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     <td style="font-size: 12px;">${payments[i].payment_date}</td>
                     <td style="font-size: 12px;">${payments[i].payment_mode}</td>
                     <td style="font-size: 12px;">${payments[i].notes}</td>
-                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
+                    <td style="font-size: 12px;">${payments[i].amount}${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight ? " (" + payments[i].weight + (payments[i].metal_rate ? " @ " + payments[i].metal_rate + "/GM" : "") + ")" : ""}</td>
                 </tr>`;
     }
     html += `</table>`;
@@ -7634,7 +7667,11 @@ exports.downloadInvoiceInfo = async (req, res) => {
   `;
 
   try {
-    let file_path = "public/invoices/" + saleData.invoice_number + "_info.pdf";
+    /* Separate file, so a current-rate copy can never overwrite the real invoice
+       sitting at <invoice>_info.pdf. */
+    const file_suffix = atCurrentRate ? "_info_current.pdf" : "_info.pdf";
+    let file_path =
+      "public/invoices/" + saleData.invoice_number + file_suffix;
     const options = { format: "A4" };
 
     (async () => {
@@ -7653,17 +7690,19 @@ exports.downloadInvoiceInfo = async (req, res) => {
       res.send(
         formatResponse(
           {
-            file_name: saleData.invoice_number + "_info.pdf",
+            file_name: saleData.invoice_number + file_suffix,
             url: `${getFileAbsulatePathPDF(file_path)}?v=${Date.now()}`,
             html,
             sale,
             saleData,
             payments,
+            at_current_rate: atCurrentRate,
+            live_repricing: liveRepricing,
           },
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -7681,6 +7720,8 @@ exports.downloadInvoiceItemList = async (req, res) => {
   const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id, sale_by: userID },
     include: [
       {
@@ -8313,7 +8354,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -8331,6 +8372,8 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let sale = await SaleModel.findOne({
+    // req_data is an unread longtext audit blob, nothing below reads it
+    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id, sale_by: userID },
     include: [
       {
@@ -9729,7 +9772,6 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -9810,7 +9852,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {

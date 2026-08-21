@@ -28,9 +28,13 @@ const {
   isDistributor,
   isSalesExecutive,
   getMyRetailerIds,
+  getMyRetailerIdsForRequest,
+  getGroupRetailerIds,
   updateRetailerAvgReview,
   getAdminDistributorIds,
   getAdminSEWhereCondition,
+  emailExists,
+  normalizeEmail,
 } = require("@library/common");
 const {
   RetailerCollection,
@@ -107,8 +111,7 @@ exports.index = async (req, res) => {
           .send(formatErrorResponse(errorCodes.defaultErrorMsg));
       });
   } else {
-    let userIds = await getMyRetailerIds(req.userId);
-    userIds = [...new Set(userIds)];
+    let userIds = await getMyRetailerIdsForRequest(req);
     let conditions = await getCommonCondition(req, my_retailer, userIds);
     if (!isEmpty(search)) {
       search = search.trim();
@@ -191,6 +194,9 @@ exports.index = async (req, res) => {
           }
         }
         let userWhere = { role_id: roleId };
+        if (isAdmin(req) && my_retailer == 1) {
+          userWhere.id = { [Op.in]: userIds };
+        }
         if (isSalesExecutive(req)) {
           if (my_retailer == 1) {
             userWhere.id = { [Op.in]: userIds };
@@ -283,6 +289,15 @@ exports.store = async (req, res) => {
       .send(formatErrorResponse("This mobile is already exists."));
   }
 
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
+  }
+
   //upload profile image
   let profile_image = null;
   let result = await base64FileUpload(data.profile_image, "users");
@@ -327,7 +342,7 @@ exports.store = async (req, res) => {
     created_by: req.userId,
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -362,13 +377,8 @@ exports.store = async (req, res) => {
   userModel
     .create(postData)
     .then(async (result) => {
-      if (isSalesExecutive(req)) {
-        await UserToUserModel.create({
-          user_id: req.userId,
-          to_user_id: result.id,
-          to_role_id: roleId,
-        });
-      } else if (isDistributor(req)) {
+      // the creator owns the retailer, which is what "My Retailer" lists
+      if (isSalesExecutive(req) || isDistributor(req) || isAdmin(req)) {
         await UserToUserModel.create({
           user_id: req.userId,
           to_user_id: result.id,
@@ -433,6 +443,15 @@ exports.update = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
+  }
+
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email, req.params.id)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
   }
 
   //upload profile image
@@ -530,7 +549,7 @@ exports.update = async (req, res) => {
   let postData = {
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -766,18 +785,27 @@ exports.reviewUpdate = async (req, res) => {
 
 const getCommonCondition = async (req, my_retailer, userIds) => {
   if (isSuperAdmin(req)) {
-    return {};
+    // my_retailer means the same thing for every role: linked to me
+    return my_retailer == 1 ? { id: { [Op.in]: userIds || [] } } : {};
   } else if (isAdmin(req)) {
+    if (my_retailer == 1) {
+      return { id: { [Op.in]: userIds || [] } };
+    }
     let state_id = await getUserColumnValue(req.userId, "state_id");
     return { state_id: state_id };
   } else {
     if (isSalesExecutive(req)) {
       if (my_retailer == 1) {
-        userIds = !userIds ? await getMyRetailerIds(req.userId) : userIds;
-        return { id: { [Op.in]: userIds } };
+        // only what this sales executive created
+        return { id: { [Op.in]: userIds || [] } };
       } else {
-        let state_id = await getUserColumnValue(req.userId, "state_id");
-        return { state_id: state_id };
+        /**
+         * Total Retailer is the team's book: every retailer belonging to this
+         * sales executive's parent and to the sales executives beside it. The
+         * old state scope showed strangers' retailers as if they were the
+         * team's, and missed any team retailer registered in another state.
+         */
+        return { id: { [Op.in]: await getGroupRetailerIds(req) } };
       }
       /*if(my_retailer == 'all'){
         return {[Op.or]: [{parent_id: req.userId}, {parent_id: {[Op.eq]: null}, district_id: district_id}]};

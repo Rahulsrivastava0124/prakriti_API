@@ -2,7 +2,7 @@ const config = require("@config/auth.config");
 const db = require("@models");
 const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId, updateCartByCookieID, sendEmail } = require("@library/common");
+const { getRoleId, updateCartByCookieID, sendEmail, loginIdentifierWhere } = require("@library/common");
 const {
   generateRawToken,
   hashToken,
@@ -10,7 +10,7 @@ const {
   sendPasswordResetEmail,
   RESET_TOKEN_EXPIRES_MINUTES,
 } = require("@library/passwordReset");
-const { isEmpty } = require("@helpers/helper");
+const { isEmpty, addLog } = require("@helpers/helper");
 const { addActivityLog } = require("@library/activityLog");
 const {UserCollection} = require("@resources/customer/UserCollection");
 const UserModel = db.users;
@@ -30,7 +30,7 @@ exports.signin = async (req, res) => {
   let sales_executiveRoleId = getRoleId('sales_executive');
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
-    where: { mobile: req.body.mobile,
+    where: { ...loginIdentifierWhere(req.body.mobile),
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     },
     include: [
@@ -104,7 +104,7 @@ exports.logout = async(req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     }
   });
@@ -141,7 +141,7 @@ exports.forgotPasswordVerifyOtp = async(req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]},
       reset_otp: req.body.otp || ''
     }
@@ -167,7 +167,7 @@ exports.forgotPassword = async(req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]},
       reset_otp: req.body.otp || ''
     }
@@ -215,7 +215,7 @@ exports.existingUser = async (req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.mobile,
+      ...loginIdentifierWhere(req.body.mobile),
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     }
   });
@@ -233,7 +233,7 @@ exports.sendpassword = async (req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.mobile,
+      ...loginIdentifierWhere(req.body.mobile),
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     }
   });
@@ -270,7 +270,6 @@ exports.sendpassword = async (req, res) => {
             return res.status(errorCodes.default).send(formatErrorResponse(errorCodes.defaultErrorMsg));
         }
     } catch (error) {
-      console.error("email send error:", error && error.message ? error.message : error);
         return res.status(errorCodes.default).send(formatErrorResponse(errorCodes.defaultErrorMsg));
     }
 
@@ -298,7 +297,13 @@ exports.forgotPasswordSendLink = async(req, res) => {
     const user = await UserModel.findOne({ where: { email, role_id: roleId } });
 
     // Only proceed for a real user with an email, but always return the same
-    // generic response so we never reveal whether an account exists.
+    // generic response so we never reveal whether an account exists. Log the
+    // no-match case though: without it a typo'd/unregistered address is
+    // indistinguishable from a broken mail server — both answer "sent".
+    if (!user || isEmpty(user.email)) {
+      addLog(`forgot-password (customer): no account with a registered email matches "${email}" — no mail sent`);
+    }
+
     if (user && !isEmpty(user.email)) {
       let rawToken = generateRawToken();
       let expiry = new Date(Date.now() + RESET_TOKEN_EXPIRES_MINUTES * 60 * 1000);
@@ -320,6 +325,7 @@ exports.forgotPasswordSendLink = async(req, res) => {
           accountLabel: "Prakriti",
         });
       } catch (mailErr) {
+        addLog(`forgot-password (customer): sending to ${user.email} failed — ${mailErr}`);
         await UserModel.update(
           { reset_token: null, reset_token_expiry: null },
           { where: { id: user.id } }

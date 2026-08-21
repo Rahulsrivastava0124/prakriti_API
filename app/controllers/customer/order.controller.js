@@ -13,7 +13,7 @@ const { CartCollection } = require("@resources/customer/CartCollection");
 const { AddressCollection } = require("@resources/customer/AddressCollection");
 const orderModel = db.orders;
 const sequelize = db.sequelize;
-const { isEmpty, generateOrderNo, priceFormat } = require("@helpers/helper");
+const { isEmpty, generateOrderNo, priceFormat, requiresPaymentApproval } = require("@helpers/helper");
 const { base64FileUpload, removeFile } = require("@helpers/upload");
 const {
   getCartMaterialPrices,
@@ -149,7 +149,6 @@ exports.index = async (req, res) => {
 exports.placeOrder = async (req, res) => {
   let data = req.body;
 
-  console.warn("placing order payload keys:", data && typeof data === 'object' ? Object.keys(data).length : typeof data);
 
   const t = await sequelize.transaction();
   try {
@@ -207,7 +206,7 @@ exports.placeOrder = async (req, res) => {
         ? data.discount_amount
         : 0,
       total_amount: !isEmpty(data.total_amount) ? data.total_amount : 0,
-      paid_amount: data.payment_mode == "cheque" ? 0 : paid_amount,
+      paid_amount: requiresPaymentApproval(data.payment_mode) ? 0 : paid_amount,
       payment_mode: data.payment_mode,
       delivery_address: JSON.stringify(address),
       status: "pending",
@@ -360,7 +359,7 @@ exports.placeOrder = async (req, res) => {
             remaining_balance: 0,
             notes: data.notes || null,
             cheque_no: data.cheque_no || null,
-            status: data.payment_mode != "cheque" ? "success" : "pending",
+            status: !requiresPaymentApproval(data.payment_mode) ? "success" : "pending",
             payment_date: moment().format("YYYY-MM-DD"),
             payment_belongs: req.userId,
             due_date: null,
@@ -376,7 +375,7 @@ exports.placeOrder = async (req, res) => {
 
     await t.commit();
 
-    if (payment && data.payment_mode != "cheque") {
+    if (payment && !requiresPaymentApproval(data.payment_mode)) {
       await updateWalletRemainingBalance(payment.payment_belongs, payment.id);
 
       await updateAdvanceAmount(

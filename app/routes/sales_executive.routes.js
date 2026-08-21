@@ -2,6 +2,7 @@ const { authJwt } = require("@middlewares");
 const { signIn, editProfile, changePassword,updateWishlist } = require('@utils/validators/sales_executive');
 const authController = require("@controllers/sales_executive/auth.controller");
 const dashboardController = require("@controllers/sales_executive/dashboard.controller");
+const superadminDashboardController = require("@controllers/superadmin/dashboard.controller");
 const profileController = require("@controllers/sales_executive/profile.controller");
 const changePasswordController = require("@controllers/sales_executive/changePassword.controller");
 const CategoryController = require("@controllers/sales_executive/category.controller");
@@ -21,7 +22,22 @@ module.exports = (app, express, io) => {
     router.post("/logout", [authJwt.verifyToken, authJwt.isSalesExecutive], authController.logout);
 
     //dashboard
-    router.get("/dashboard", [], dashboardController.index);
+    router.get("/dashboard", [authJwt.verifyToken], dashboardController.index);
+
+  /**
+   * Dashboard sections for the panel this role actually renders.
+   *
+   * The screen is the shared SuperAdmin dashboard page, and its numbers come
+   * from the superadmin controller, which already branches per role off
+   * req.role. Every role was therefore calling /api/superadmin/dashboard/* -
+   * working only because the role guard there does not reject, and confusing to
+   * read in the network tab. The controller is the same; only the prefix and
+   * the guard change. The role's own /dashboard is left untouched for whatever
+   * else calls it.
+   */
+    router.get("/dashboard/summary", [authJwt.verifyToken], superadminDashboardController.summary);
+    router.get("/dashboard/stock",   [authJwt.verifyToken], superadminDashboardController.stock);
+    router.get("/dashboard/charts",  [authJwt.verifyToken], superadminDashboardController.charts);
 
     //profile
     router.post("/edit-profile", [authJwt.verifyToken], profileController.editProfile);

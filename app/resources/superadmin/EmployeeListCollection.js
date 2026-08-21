@@ -1,4 +1,5 @@
-const { isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount, ucWords } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount, ucWords } = require("@helpers/helper");
 const { getTotalStockPriceByUser, getTotalStockByUser, getWalletBalance, getTodayAttendence, getLoginLogoutAddress } = require("@library/common");
 
 
@@ -6,11 +7,8 @@ const EmployeeListCollection = async(data, load_stock_wallet) => {
     if(isObject(data)){
         return await getModelObject(data, load_stock_wallet);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], load_stock_wallet));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, load_stock_wallet));
+
     }
 }
 
@@ -25,6 +23,12 @@ const getModelObject = async(data, load_stock_wallet) => {
         }
     }
     let parent_user_name = ('parent' in data && data.parent) ? data.parent.name : '';
+    /**
+     * A sales executive keeps no company of its own - the company it works
+     * under is the distributor's. Sent separately so the list can show the
+     * firm without the client having to fetch every distributor to look it up.
+     */
+    let parent_company_name = ('parent' in data && data.parent) ? (data.parent.company_name || '') : '';
     let totalStock = 0, totalStockPrice = 0, walletBalance = 0, attendence = "", attendence_address = '';
     if(load_stock_wallet){
         totalStock = await getTotalStockByUser(data.id);
@@ -77,6 +81,8 @@ const getModelObject = async(data, load_stock_wallet) => {
         parents_name: data.parents_name || '',
         parents_contact_no: data.parents_contact_no || '',
         parent_user_name: parent_user_name,
+        parent_company_name: parent_company_name,
+        company_name_display: data.company_name || parent_company_name,
         total_stock: totalStock,
         total_stock_price: displayAmount(totalStockPrice),
         wallet_balance: displayAmount(walletBalance),
