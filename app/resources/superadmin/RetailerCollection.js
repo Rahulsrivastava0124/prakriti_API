@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, isArray, priceFormat, displayAmount, defaultProfileImage, formatDateTime } = require("@helpers/helper");
+const { isObject, getFileAbsulatePath, isEmpty, isArray, priceFormat, displayAmount, defaultProfileImage, formatDateTime } = require("@helpers/helper");
 const {getAdvanceAmount, isDistributor, isSalesExecutive, isAdmin} = require("@library/common");
 const db = require("@models");
 const { Op } = require("sequelize");
@@ -11,8 +10,11 @@ const RetailerCollection = async(data, req, userIds) => {
     if(isObject(data)){
         return await getModelObject(data, req, userIds);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, req, userIds));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], req, userIds));
+        }
+        return arr;
     }
 }
 
@@ -39,7 +41,9 @@ const getModelObject = async(data, req, userIds) => {
     let total_sale_due = await SaleModel.sum('due_amount', { where: conditions });
     let total_sale_paid = await SaleModel.sum('paid_amount', { where: conditions });
     let total_return = await SaleModel.sum('return_amount', { where: conditions });
+    console.log("data.id : ", data.id, " req.userId : ", req.userId);
     let advance_amount = req ? await getAdvanceAmount(data.id, req.userId) : 0;
+    console.log("advance_amount : ",advance_amount);
     return {
         id: data.id,
         name: data.name,

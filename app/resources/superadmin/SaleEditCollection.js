@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, formatDateTime, ucWords, displayAmount, priceFormat, weightFormat, isEmpty } = require("@helpers/helper");
+const { isObject, formatDateTime, ucWords, displayAmount, priceFormat, weightFormat, isEmpty } = require("@helpers/helper");
 const db = require("@models");
 const moment = require('moment');
 const { Op } = require("sequelize");
@@ -14,8 +13,11 @@ const SaleEditCollection = async(data, req) => {
     if(isObject(data)){
         return await getModelObject(data, req);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, req));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], req));
+        }
+        return arr;
     }
 }
 

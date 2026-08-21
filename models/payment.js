@@ -47,8 +47,6 @@ module.exports = (sequelize, DataTypes) => {
     cheque_no: DataTypes.STRING,
     txn_id: DataTypes.STRING,
     weight: DataTypes.STRING,
-    metal_rate: DataTypes.DECIMAL(15, 2),
-    gross_weight: DataTypes.DECIMAL(15, 4),
     status: DataTypes.STRING,
     type: DataTypes.STRING,
     payment_type: DataTypes.STRING,

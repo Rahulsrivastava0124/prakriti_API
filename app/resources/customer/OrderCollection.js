@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, isEmpty, formatDateTime, displayAmount, priceFormat, statusDisplay, getFileAbsulatePath } = require("@helpers/helper");
+const { isObject, isEmpty, formatDateTime, displayAmount, priceFormat, statusDisplay, getFileAbsulatePath } = require("@helpers/helper");
 const {OrderProductCollection} = require("@resources/customer/OrderProductCollection");
 const { getOrderStatusProgress, isRetailer } = require("@library/common");
 const moment = require('moment');
@@ -11,8 +10,11 @@ const OrderCollection = async(data, async) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i]));
+        }
+        return arr;
     }
 }
 
@@ -48,6 +50,7 @@ const getModelObject = async(data) => {
             }
         }
     }
+    console.log("data.orderFrom : ", data.orderFrom);
     let customer_name = data.orderFrom ? data.orderFrom.name : '';
     let customer_company_name = data.orderFrom ? data.orderFrom.company_name : '';
 

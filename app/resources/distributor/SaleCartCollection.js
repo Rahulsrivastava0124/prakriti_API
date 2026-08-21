@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, isEmpty, productTypeDisplay, isArray, priceFormat } = require("@helpers/helper");
+const { isObject, isEmpty, productTypeDisplay, isArray, priceFormat } = require("@helpers/helper");
 const {SaleCartMaterialCollection} = require("@resources/distributor/SaleCartMaterialCollection");
 const {calculateProductPriceCart} = require("@library/common");
 const _ = require("lodash");
@@ -8,8 +7,11 @@ const SaleCartCollection = async(data) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i]));
+        }
+        return arr;
     }
 }
 

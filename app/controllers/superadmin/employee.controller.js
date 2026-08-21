@@ -21,9 +21,6 @@ const {
   isSalesExecutive,
   isSuperAdmin,
   isAdmin,
-  emailExists,
-  normalizeEmail,
-  getMyRetailerIdsFor,
 } = require("@library/common");
 const {
   EmployeeCollection,
@@ -49,54 +46,6 @@ var bcrypt = require("bcryptjs");
  * @param req
  * @param res
  */
-/**
- * "Total Retailer" for a sales executive is the team's book: every retailer the
- * executive's parent and the executives beside it brought in - the same set the
- * SE dashboard card and the SE retailer list already count (getGroupRetailerIds
- * in @library/common). Listing it per row here means the Sales Executives page
- * shows that figure without the client having to ask per executive.
- *
- * Counted once per parent, not once per row: every executive under one parent
- * shares the same book, so a page of ten executives under one distributor costs
- * one lookup rather than ten.
- */
-const attachSeGroupRetailerCount = async (items) => {
-  const sales_executiveRoleId = getRoleId("sales_executive");
-  const parentIds = [
-    ...new Set(items.map((item) => item.parent_id).filter(Boolean)),
-  ];
-
-  const countByParent = {};
-  await Promise.all(
-    parentIds.map(async (parentId) => {
-      const groupSE = await userModel.findAll({
-        attributes: ["id"],
-        where: { parent_id: parentId, role_id: sales_executiveRoleId },
-      });
-      const ownerIds = [
-        ...new Set([parentId, ...arrayColumn(groupSE, "id")]),
-      ];
-      const retailerIds = await getMyRetailerIdsFor(ownerIds);
-      /**
-       * Count the rows, not the ids. user_to_users keeps links to retailers
-       * that no longer exist - executive 9 in production carries seven such
-       * orphans - and counting the id list would report those seven on a page
-       * that lists none of them.
-       */
-      countByParent[parentId] = retailerIds.length
-        ? await userModel.count({
-            where: { role_id: getRoleId("retailer"), id: { [Op.in]: retailerIds } },
-          })
-        : 0;
-    })
-  );
-
-  for (const item of items) {
-    item.total_retailer = countByParent[item.parent_id] || 0;
-  }
-  return items;
-};
-
 exports.index = async (req, res) => {
   let { page, limit, all, role_id } = req.query;
   let user = await userModel.findByPk(req.userId);
@@ -217,12 +166,8 @@ exports.index = async (req, res) => {
         ],
       })
       .then(async (data) => {
-        let items = await EmployeeListCollection(data);
-        if (role_id == 4) {
-          items = await attachSeGroupRetailerCount(items);
-        }
         let result = {
-          items: items,
+          items: await EmployeeListCollection(data),
           total: data.length,
         };
         res.send(formatResponse(result));
@@ -262,12 +207,8 @@ exports.index = async (req, res) => {
         ],
       })
       .then(async (data) => {
-        let items = await EmployeeListCollection(data.rows, load_stock_wallet);
-        if (role_id == 4) {
-          items = await attachSeGroupRetailerCount(items);
-        }
         let result = {
-          items: items,
+          items: await EmployeeListCollection(data.rows, load_stock_wallet),
           total: data.count,
         };
         res.send(formatResponse(result, "All users"));
@@ -299,15 +240,6 @@ exports.store = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
-  }
-
-  /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
   }
 
   //upload profile image
@@ -357,7 +289,7 @@ exports.store = async (req, res) => {
     role_id: data.role_id,
     user_name: user_name,
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     parent_id: parent_id,
     adhar: data.adhar || null,
@@ -433,15 +365,6 @@ exports.update = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
-  }
-
-  /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email, req.params.id)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
   }
 
   //upload profile image
@@ -543,7 +466,7 @@ exports.update = async (req, res) => {
     user_name: user_name,
     name: data.name,
     role_id: data.role_id,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     parent_id: parent_id,
     adhar: data.adhar || null,
@@ -665,7 +588,7 @@ exports.salaryCreate = async (req, res) => {
     gross_salary: !isEmpty(data.gross_salary) ? data.gross_salary : null,
     basic_salary: !isEmpty(data.basic_salary) ? data.basic_salary : null,
     eff_date: !isEmpty(data.eff_date)
-      ? moment(data.eff_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
+      ? moment(data.eff_date).format("YYYY-MM-DD")
       : "",
     is_epf: data.is_epf >= 0 ? data.is_epf : null,
     is_medical: data.is_medical >= 0 ? data.is_medical : null,
@@ -783,7 +706,7 @@ exports.updateSalary = async (req, res) => {
     gross_salary: !isEmpty(data.gross_salary) ? data.gross_salary : null,
     basic_salary: !isEmpty(data.basic_salary) ? data.basic_salary : null,
     eff_date: !isEmpty(data.eff_date)
-      ? moment(data.eff_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
+      ? moment(data.eff_date).format("YYYY-MM-DD")
       : "",
     is_epf: data.is_epf >= 0 ? data.is_epf : null,
     is_medical: data.is_medical >= 0 ? data.is_medical : null,

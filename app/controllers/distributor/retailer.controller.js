@@ -4,7 +4,7 @@ const { base64FileUpload, removeFile } = require('@helpers/upload');
 const { isEmpty } = require("@helpers/helper");
 const db = require("@models");
 const { Op } = require("sequelize");
-const { getRoleId, getUserColumnValue, getMyRetailerIdsForRequest } = require("@library/common");
+const { getRoleId, getUserColumnValue } = require("@library/common");
 const {RetailerCollection} = require("@resources/superadmin/RetailerCollection");
 const userModel = db.users;
 const stateModel = db.states;
@@ -19,25 +19,13 @@ var bcrypt = require("bcryptjs");
  * @param res
  */
 exports.index = async (req, res) => {
-  let { page, limit, all, my_retailer } = req.query;
+  let { page, limit, all } = req.query;
   let district_id = await getUserColumnValue(req.userId, 'district_id');
   let roleId = getRoleId('retailer');
 
-  // Build conditions based on my_retailer parameter
-  let conditions = { role_id: roleId };
-  
-  if (my_retailer == 1) {
-    // Show only retailers created by this distributor and their SEs
-    const userIds = await getMyRetailerIdsForRequest(req);
-    conditions.id = { [Op.in]: userIds || [] };
-  } else {
-    // Show all retailers in the district
-    conditions.district_id = district_id;
-  }
-
-  if(all == 1 && my_retailer != 1){
+  if(all == 1){
     userModel.findAll({ 
-      where: conditions,
+      where: { role_id: roleId, district_id: district_id },
       order:[['name', 'ASC']]
     }).then(async (data) => {
       let result = {
@@ -51,11 +39,12 @@ exports.index = async (req, res) => {
       res.status(errorCodes.default).send(formatErrorResponse(errorCodes.defaultErrorMsg));
     });
   }else{
-    const paginatorOptions = all == 1 ? {} : getPaginationOptions(page, limit);
+    const paginatorOptions = getPaginationOptions(page, limit);
     userModel.findAndCountAll({ 
-      where: conditions,
+      where: { role_id: roleId, district_id: district_id },
       order:[['id', 'DESC']],
-      ...paginatorOptions,
+      offset: paginatorOptions.offset,
+      limit: paginatorOptions.limit,
       include: [
         {
           model: districtModel,
@@ -68,10 +57,6 @@ exports.index = async (req, res) => {
         {
           model: countryModel,
           as: 'country',
-        },
-        {
-          model: userModel,
-          as: 'createdBy',
         }
       ]
     }).then(async (data) => {

@@ -2,7 +2,7 @@ const config = require("@config/auth.config");
 const db = require("@models");
 const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId, loginIdentifierWhere } = require("@library/common");
+const { getRoleId } = require("@library/common");
 const {
   generateRawToken,
   hashToken,
@@ -10,7 +10,7 @@ const {
   sendPasswordResetEmail,
   RESET_TOKEN_EXPIRES_MINUTES,
 } = require("@library/passwordReset");
-const { isEmpty, addLog } = require("@helpers/helper");
+const { isEmpty } = require("@helpers/helper");
 const { addActivityLog } = require("@library/activityLog");
 const {UserCollection} = require("@resources/retailer/UserCollection");
 const UserModel = db.users;
@@ -27,7 +27,7 @@ var bcrypt = require("bcryptjs");
 exports.signin = async (req, res) => {
   let adminRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
-    where: { ...loginIdentifierWhere(req.body.mobile),
+    where: { mobile: req.body.mobile,
       role_id: adminRoleId
     }
   });
@@ -100,13 +100,7 @@ exports.forgotPasswordSendLink = async(req, res) => {
     const user = await UserModel.findOne({ where: { email, role_id: roleId } });
 
     // Only proceed for a real user with an email, but always return the same
-    // generic response so we never reveal whether an account exists. Log the
-    // no-match case though: without it a typo'd/unregistered address is
-    // indistinguishable from a broken mail server — both answer "sent".
-    if (!user || isEmpty(user.email)) {
-      addLog(`forgot-password (retailer): no account with a registered email matches "${email}" — no mail sent`);
-    }
-
+    // generic response so we never reveal whether an account exists.
     if (user && !isEmpty(user.email)) {
       let rawToken = generateRawToken();
       let expiry = new Date(Date.now() + RESET_TOKEN_EXPIRES_MINUTES * 60 * 1000);
@@ -127,7 +121,6 @@ exports.forgotPasswordSendLink = async(req, res) => {
           accountLabel: "Prakriti",
         });
       } catch (mailErr) {
-        addLog(`forgot-password (retailer): sending to ${user.email} failed — ${mailErr}`);
         await UserModel.update(
           { reset_token: null, reset_token_expiry: null },
           { where: { id: user.id } }

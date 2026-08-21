@@ -12,7 +12,6 @@ const {
   getDateFromToWhere,
   displayAmount,
   priceFormat,
-  requiresPaymentApproval,
 } = require("@helpers/helper");
 const sequelize = db.sequelize;
 const {
@@ -102,8 +101,8 @@ exports.store = async (req, res) => {
           cheque_no: data.cheque_no || null,
           txn_id: data.txn_id || null,
           weight: data.weight || null,
-          status: !requiresPaymentApproval(data.payment_mode) ? "success" : "pending",
-          payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+          status: data.payment_mode != "cheque" ? "success" : "pending",
+          payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
           table_type: null,
           table_id: null,
           payment_belongs: req.userId,
@@ -160,14 +159,14 @@ exports.store = async (req, res) => {
             amount = 0;
           }
 
-          if (!requiresPaymentApproval(data.payment_mode)) {
+          if (data.payment_mode != "cheque") {
             if (data.table_type == "sale") {
               await SaleModel.update(
                 {
                   due_amount: due_amount,
                   paid_amount: paid_amount,
                   status: status,
-                  due_date: moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+                  due_date: moment(data.due_date).format("YYYY-MM-DD"),
                 },
                 { where: { id: item.id }, transaction: t },
               );
@@ -177,7 +176,7 @@ exports.store = async (req, res) => {
                   due_amount: due_amount,
                   paid_amount: paid_amount,
                   status: status,
-                  due_date: moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+                  due_date: moment(data.due_date).format("YYYY-MM-DD"),
                 },
                 { where: { id: item.id }, transaction: t },
               );
@@ -194,12 +193,12 @@ exports.store = async (req, res) => {
             cheque_no: data.cheque_no || null,
             txn_id: data.txn_id || null,
             weight: data.weight || null,
-            status: !requiresPaymentApproval(data.payment_mode) ? "success" : "pending",
-            payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+            status: data.payment_mode != "cheque" ? "success" : "pending",
+            payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
             table_type: data.table_type,
             table_id: item.id,
             payment_belongs: req.userId,
-            due_date: moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+            due_date: moment(data.due_date).format("YYYY-MM-DD"),
             type: type,
             purpose: type,
           });
