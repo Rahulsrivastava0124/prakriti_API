@@ -2854,12 +2854,12 @@ const getMyRetailerIds = async (userId) => {
  * show the same number the executive itself sees. Two copies of a rule this
  * shaped drift.
  */
-const getSalesExecutiveTotalRetailerCount = async (userId) => {
+const getSalesExecutiveTotalRetailerIds = async (userId) => {
   const retailerRoleId = getRoleId("retailer");
   const distributorRoleId = getRoleId("distributor");
 
   const parentId = await getUserColumnValue(userId, "parent_id");
-  if (!parentId) return 0;
+  if (!parentId) return [];
 
   /* the parent is a distributor most of the time, but an admin may own a
      sales executive directly, and then it is its own admin */
@@ -2868,20 +2868,13 @@ const getSalesExecutiveTotalRetailerCount = async (userId) => {
     parentRoleId == getRoleId("admin")
       ? parentId
       : await getUserColumnValue(parentId, "parent_id");
-  if (!adminId) return 0;
-
-  let total = await UserModel.count({
-    where: { role_id: retailerRoleId, parent_id: adminId },
-  });
+  if (!adminId) return [];
 
   const distributors = await UserModel.findAll({
     attributes: ["id"],
     where: { role_id: distributorRoleId, own: true, parent_id: adminId },
   });
   const distributorIds = arrayColumn(distributors, "id");
-  total += await UserModel.count({
-    where: { role_id: retailerRoleId, parent_id: { [Op.in]: distributorIds } },
-  });
 
   const seCondition = await getAdminSEWhereCondition(
     distributorIds.concat(adminId),
@@ -2892,15 +2885,19 @@ const getSalesExecutiveTotalRetailerCount = async (userId) => {
     attributes: ["id"],
     where: seCondition,
   });
-  total += await UserModel.count({
-    where: {
-      role_id: retailerRoleId,
-      parent_id: { [Op.in]: arrayColumn(allSE, "id") },
-    },
-  });
 
-  return total;
+  /* the admin, its own distributors and every executive in the chain - a
+     retailer hangs off exactly one of them */
+  const ownerIds = [adminId, ...distributorIds, ...arrayColumn(allSE, "id")];
+  const retailers = await UserModel.findAll({
+    attributes: ["id"],
+    where: { role_id: retailerRoleId, parent_id: { [Op.in]: ownerIds } },
+  });
+  return arrayColumn(retailers, "id");
 };
+
+const getSalesExecutiveTotalRetailerCount = async (userId) =>
+  (await getSalesExecutiveTotalRetailerIds(userId)).length;
 
 /** How many retailers this user brought in - the "My Retailer" figure. */
 const getMyRetailerCount = async (userId) => {
@@ -4627,6 +4624,7 @@ module.exports = {
   getMyRetailerIds,
   getMyRetailerCount,
   getSalesExecutiveTotalRetailerCount,
+  getSalesExecutiveTotalRetailerIds,
   getTransferSale,
   insertLoanEMI,
   updateRetailerAvgReview,
