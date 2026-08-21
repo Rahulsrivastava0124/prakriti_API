@@ -4041,21 +4041,21 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         },
       ];
 
+  let purchaseWhere = {
+    is_approved: { [Op.ne]: 2 },
+    is_assigned: false,
+    is_approval: false,
+    sale_id: { [Op.is]: null },
+    //type: { [Op.in]: ["product", "order_purchase"] },
+    type: {[Op.ne]: "material"},
+    user_id: { [Op.in]: managerIds },
+  };
+  if (isObject(params) && !isEmpty(params.supplier_id)) {
+    purchaseWhere.supplier_id = params.supplier_id;
+  }
+
   let purchases = await PurchaseModel.findAll({
-    // req_data is a longtext audit blob (~570 MB across the rows this matches)
-    // that nothing below reads. Selecting it cost ~10s per dashboard load.
-    attributes: countsOnly
-      ? ["id", "total_payable", "created_at"]
-      : { exclude: ["req_data"] },
-    where: {
-      is_approved: { [Op.ne]: 2 },
-      is_assigned: false,
-      is_approval: false,
-      sale_id: { [Op.is]: null },
-      //type: { [Op.in]: ["product", "order_purchase"] },
-      type: {[Op.ne]: "material"},
-      user_id: { [Op.in]: managerIds },
-    },
+    where: purchaseWhere,
     order: [["createdAt", "DESC"]],
     include: [
       {
@@ -4103,15 +4103,8 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
             pushItem = false;
           }
         }
-
         if (!isEmpty(params.sub_category_id)) {
           if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.supplier_id)) {
-          if (!p || p.supplier_id != params.supplier_id) {
             pushItem = false;
           }
         }
@@ -4268,28 +4261,20 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
  */
 const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
-
-  let productWhere = {};
-  if (isObject(params) && !isEmpty(params.category_id)) {
-    productWhere.category_id = params.category_id;
+  let purchaseWhere = {
+    is_approved: { [Op.ne]: 2 },
+    is_assigned: false,
+    is_approval: false,
+    //sale_id: { [Op.is]: null },
+    //type: { [Op.in]: ["product", "order_purchase"] },
+    user_id: userID,
+  };
+  if (isObject(params) && !isEmpty(params.supplier_id)) {
+    purchaseWhere.supplier_id = params.supplier_id;
   }
-  let productRequired = !isEmpty(productWhere);
-
   // fetch pruchase records
   let purchases = await PurchaseModel.findAll({
-    // see getPurchaseProducts - req_data is an unread longtext blob
-    attributes: { exclude: ["req_data"] },
-    where: {
-      is_approved: { [Op.ne]: 2 },
-      is_assigned: false,
-      is_approval: false,
-      //sale_id: { [Op.is]: null },
-      //type: { [Op.in]: ["product", "order_purchase"] },
-      user_id: userID,
-      ...(isObject(params) && !isEmpty(params.supplier_id)
-        ? { supplier_id: params.supplier_id }
-        : {}),
-    },
+    where: purchaseWhere,
     order: [["createdAt", "DESC"]],
     include: [
       {
@@ -4382,15 +4367,8 @@ const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
             pushItem = false;
           }
         }
-
         if (!isEmpty(params.sub_category_id)) {
           if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.supplier_id)) {
-          if (!p || p.supplier_id != params.supplier_id) {
             pushItem = false;
           }
         }
