@@ -1,8 +1,7 @@
-const {
-  mapConcurrent, isObject, isEmpty, displayAmount, priceFormat, weightFormat, noImage } = require("@helpers/helper");
+const { isObject, isEmpty, displayAmount, priceFormat, weightFormat, noImage } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
 const {PurityCollection} = require("@resources/superadmin/PurityCollection");
-const {calculateProductPriceCartNew, getSuperAdminId, canStockAddCart, getLiveGoldRate} = require("@library/common");
+const {calculateProductPriceCartNew, getSuperAdminId, canStockAddCart} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const stockModel = db.stocks;
@@ -14,12 +13,16 @@ const StocksMaterialCollection = async (data, user_id) => {
     if(isObject(data)){
         return await getModelObject(data, user_id);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, user_id));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], user_id));
+        }
+        return arr;
     }
 }
 
 const getModelObject = async (data, user_id) => {
+    console.log(data)
     let sub_category = null, isMaterial = true;
     let materialItem = [], materialString = [];
     let taxInfo = null, purity_name = '';
@@ -56,14 +59,6 @@ const getModelObject = async (data, user_id) => {
 
     let can_add_cart = await canStockAddCart(data.id, "material", user_id, data.certificate_no);
 
-    // The per-gram rate the price above was struck at, so the page can show
-    // what the valuation is based on rather than just the total.
-    let rate_display = '';
-    let firstMaterial = priceMaterials.materials.length ? priceMaterials.materials[0] : null;
-    if (firstMaterial && firstMaterial.unit_based_mrp) {
-        rate_display = displayAmount(firstMaterial.unit_based_mrp) + '/' + (firstMaterial.unit_name || 'GM');
-    }
-
 
     return {
         name: data.material.name,
@@ -83,7 +78,6 @@ const getModelObject = async (data, user_id) => {
         stock_material_display: materialString,
         mrp: priceMaterials.total_mrp_price,
         mrp_display: displayAmount(priceMaterials.total_mrp_price),
-        rate_display: rate_display,
         can_add_cart: can_add_cart,
         weight_display: weight_display,
         unit_display: unit_display

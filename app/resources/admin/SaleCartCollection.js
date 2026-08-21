@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, isEmpty, productTypeDisplay, isArray, priceFormat } = require("@helpers/helper");
+const { isObject, isEmpty, productTypeDisplay, isArray, priceFormat } = require("@helpers/helper");
 const {SaleCartMaterialCollection} = require("@resources/admin/SaleCartMaterialCollection");
 const {calculateProductPriceCart} = require("@library/common");
 const _ = require("lodash");
@@ -8,8 +7,11 @@ const SaleCartCollection = async(data) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i]));
+        }
+        return arr;
     }
 }
 
@@ -80,8 +82,7 @@ const getModelObject = async (data) => {
         sub_cat_making_charge: sub_category ? sub_category.making_charge : 0,
         sub_cat_making_charge_type: sub_category ? sub_category.making_charge_type : '',
         is_held: data.is_held || false,
-        hold_message: data.hold_message || '',
-        hold_at: data.hold_at || null
+        hold_message: data.hold_message || ''
     }
 }
 

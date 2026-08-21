@@ -96,8 +96,8 @@ exports.store = async (req, res) => {
     discount_type: data.discount_type,
     code: data.code,
     status: data.status,
-    start_date: moment(data.start_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
-    end_date: moment(data.end_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+    start_date: moment(data.start_date).format("YYYY-MM-DD"),
+    end_date: moment(data.end_date).format("YYYY-MM-DD"),
     banner: banner,
   };
 
@@ -183,8 +183,8 @@ exports.update = async (req, res) => {
     discount_type: data.discount_type,
     code: data.code,
     status: data.status,
-    start_date: moment(data.start_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
-    end_date: moment(data.end_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+    start_date: moment(data.start_date).format("YYYY-MM-DD"),
+    end_date: moment(data.end_date).format("YYYY-MM-DD"),
   };
 
   if (!isEmpty(data.banner)) {

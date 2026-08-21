@@ -1,8 +1,7 @@
-const {
-  mapConcurrent, isObject, isEmpty, displayAmount, priceFormat, weightFormat, noImage } = require("@helpers/helper");
+const { isObject, isEmpty, displayAmount, priceFormat, weightFormat, noImage } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
 const {PurityCollection} = require("@resources/superadmin/PurityCollection");
-const {calculateProductPriceReport, getSuperAdminId, canStockAddCart, canStockAddCartMap} = require("@library/common");
+const {calculateProductPriceReport, getSuperAdminId, canStockAddCart} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const stockModel = db.stocks;
@@ -14,14 +13,16 @@ const StocksMaterialReportCollection = async (data, user_id, roleName = null) =>
     if(isObject(data)){
         return await getModelObject(data, user_id, roleName);
     }else{
-        /* cart availability for the whole page in two queries instead of one per row */
-        const cartMap = await canStockAddCartMap(data.map(item => item.id), user_id);
-        return await mapConcurrent(data, (item, i) => getModelObject(item, user_id, roleName, cartMap));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], user_id, roleName));
+        }
+        return arr;
     }
 }
 
-const getModelObject = async (data, user_id, roleName = null, cartMap = null) => {
+const getModelObject = async (data, user_id, roleName = null) => {
+    console.log(data)
     let sub_category = null, isMaterial = true;
     let materialItem = [], materialString = [];
     let taxInfo = null, purity_name = '';
@@ -56,10 +57,7 @@ const getModelObject = async (data, user_id, roleName = null, cartMap = null) =>
         total_weight_display = weightFormat(data.total_weight) + ' gm';
     }
 
-    let cartFlags = cartMap ? cartMap.get(String(data.id)) : null;
-    let can_add_cart = cartFlags
-        ? cartFlags.material
-        : await canStockAddCart(data.id, "material", user_id, data.certificate_no);
+    let can_add_cart = await canStockAddCart(data.id, "material", user_id, data.certificate_no);
 
 
     return {

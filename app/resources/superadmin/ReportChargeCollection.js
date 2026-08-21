@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, isEmpty, displayAmount } = require("@helpers/helper");
+const { isObject, isEmpty, displayAmount } = require("@helpers/helper");
 const db = require("@models");
 const MaterialPricePurityModel = db.material_price_purities;
 const MaterialPriceModel = db.material_prices;
@@ -8,8 +7,11 @@ const ReportChargeCollection = async(data, params) => {
     if(isObject(data)){
         return await getModelObject(data, params);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, params));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], params));
+        }
+        return arr;
     }
 }
 

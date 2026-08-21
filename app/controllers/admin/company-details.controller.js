@@ -40,6 +40,7 @@ exports.update = async (req, res) => {
         const result = await base64FileUpload(data.logo, 'company');
         if (result) logoPath = result.path;
       } catch (uploadErr) {
+        console.error('Logo upload failed:', uploadErr.message);
       }
     }
 

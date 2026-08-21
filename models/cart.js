@@ -61,8 +61,6 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
     },
     hold_message: DataTypes.STRING(500),
-    // one hold action, so items held together can be kept together
-    hold_at: DataTypes.DATE,
     createdAt: {
       field: 'created_at',
       type: DataTypes.DATE,

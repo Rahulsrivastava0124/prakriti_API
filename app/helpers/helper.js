@@ -342,14 +342,17 @@ const getRawDateWhereQuery = (date_from, date_to, tablePrefix) => {
 
 const addLog = (log) => {
   log = JSON.stringify(log);
+  console.log("addLog : -------> ", log);
   try {
     if (!fs.existsSync("logs")) {
       fs.mkdirSync("logs", { recursive: true });
     }
   } catch (e) {
+    console.log("addLog mkdir error:", e && e.message ? e.message : e);
   }
   fs.appendFile("logs/request_logs.txt", log + "\n", (err) => {
     if (err) {
+      console.log(err);
     }
   });
 };
@@ -511,20 +514,6 @@ const paymentModeDisplay = (type) => {
       return "Cash";
       break;
   }
-};
-
-/**
- * Payment modes that are not settled on the spot: the money is only promised
- * until the receiving side accepts it, so the payment row is created as
- * 'pending' and the balance/due amounts move only once it is approved.
- *
- * Cash and UPI/PhonePe/GPay are realtime — they settle immediately.
- */
-const APPROVAL_PAYMENT_MODES = ["cheque", "imps_neft"];
-
-const requiresPaymentApproval = (mode) => {
-  if (isEmpty(mode)) return false;
-  return APPROVAL_PAYMENT_MODES.includes(String(mode).toLowerCase().trim());
 };
 
 const getFormatedAddress = (address) => {
@@ -750,33 +739,7 @@ function cleanInput(value) {
 }
 
 
-/**
- * Map with bounded concurrency, results in input order.
- *
- * The collections awaited one row at a time. Those awaits are independent
- * reads, so a window of them can run together: same calls, same arguments,
- * same order out - only the round trips stop stacking up. The limit stays
- * well under the connection pool (max 20) so a busy moment queues inside
- * sequelize instead of failing to acquire.
- */
-const mapConcurrent = async (items, fn, limit = 8) => {
-  const list = Array.isArray(items) ? items : [];
-  const out = new Array(list.length);
-  let next = 0;
-  const runner = async () => {
-    while (true) {
-      const i = next++;
-      if (i >= list.length) return;
-      out[i] = await fn(list[i], i);
-    }
-  };
-  const size = Math.min(limit, list.length);
-  await Promise.all(new Array(size).fill(0).map(runner));
-  return out;
-};
-
 module.exports = {
-  mapConcurrent,
   isToday,
   getItemFromMultidimensionalArray,
   getPlusMinus,
@@ -817,8 +780,6 @@ module.exports = {
   getFileAbsulatePathPDF,
   convertUnitToGram,
   paymentModeDisplay,
-  requiresPaymentApproval,
-  APPROVAL_PAYMENT_MODES,
   getFormatedAddress,
   weightFormat,
   convertPerGramPriceToPerUnit,

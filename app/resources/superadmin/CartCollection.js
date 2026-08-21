@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, isEmpty, productTypeDisplay, isArray, priceFormat } = require("@helpers/helper");
+const { isObject, isEmpty, productTypeDisplay, isArray, priceFormat } = require("@helpers/helper");
 const {CartMaterialCollection} = require("@resources/superadmin/CartMaterialCollection");
 const {calculateProductPriceCart, isAdmin, isDistributor, isSuperAdmin} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
@@ -14,8 +13,11 @@ const CartCollection = async(data, req) => {
     if(isObject(data)){
         return await getModelObject(data, req);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, req));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], req));
+        }
+        return arr;
     }
 }
 
@@ -169,8 +171,7 @@ const getModelObject = async (data, req) => {
         total_amount: total_amount,
         order_product_id: data.order_product_id ?? 0,
         is_held: data.is_held || false,
-        hold_message: data.hold_message || '',
-        hold_at: data.hold_at || null
+        hold_message: data.hold_message || ''
     }
 }
 

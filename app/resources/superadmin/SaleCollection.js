@@ -110,6 +110,7 @@ const getModelObject = (data) => {
                 let productSelected = productsCopy.splice(selectedProductIndex,1);
                 productSelected = productSelected[0]; */
                 let productSelected = products[i];
+                console.log("productSelected : ", productSelected); 
                 if(productSelected.product_name != '' && productSelected.sub_category_id != '' && productSelected.sub_category_id != null){
                     if(productSelected.sub_category_id && typeof subCatWiseProducts[productSelected.sub_category_id] === "undefined"){
                         subCatWiseProducts[productSelected.sub_category_id] = [];

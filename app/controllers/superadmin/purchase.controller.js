@@ -5,7 +5,6 @@ const {
   formatResponse,
 } = require("@utils/response.config");
 const db = require("@models");
-const { remember } = require("@library/dashboardCache");
 const { getCompanyDetails } = require("@helpers/companyDetails");
 const moment = require("moment");
 const {
@@ -23,7 +22,6 @@ const {
   encodeForStorage,
   decodeFromStorage,
   cleanInput,
-  requiresPaymentApproval,
 } = require("@helpers/helper");
 const {
   updateOrCreate,
@@ -93,7 +91,7 @@ const cartMaterialsModel = db.cart_materials;
 const _ = require("lodash");
 const { base64FileUpload } = require("../../helpers/upload");
 const fs = require("fs");
-const html_to_pdf = require("@helpers/pdf");
+const html_to_pdf = require("html-pdf-node");
 
 // Note: logging is handled globally in server.js to prevent duplicate wrappers.
 
@@ -191,9 +189,6 @@ exports.index = async (req, res) => {
 
   const paginatorOptions = getPaginationOptions(page, limit);
   PurchaseModel.findAndCountAll({
-    // req_data is an unread longtext audit blob - PurchaseListCollection never
-    // reads it, and selecting it dominated this query
-    attributes: { exclude: ["req_data"] },
     order: [["id", "DESC"]],
     offset: paginatorOptions.offset,
     limit: paginatorOptions.limit,
@@ -267,8 +262,6 @@ exports.txnLedger = async (req, res) => {
   try {
     // Fetch all purchases with their related payments
     const allPurchases = await PurchaseModel.findAll({
-    // req_data is an unread longtext audit blob, nothing below reads it
-    attributes: { exclude: ["req_data"] },
       include: [
         {
           model: PaymentModel,
@@ -471,6 +464,7 @@ exports.txnLedger = async (req, res) => {
     };
     res.send(formatResponse(result, "Purchase Ledger List"));
   } catch (err) {
+    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -526,8 +520,6 @@ exports.downloadTxnLedger = async (req, res) => {
   try {
     // Fetch all purchases with their related payments
     const allPurchases = await PurchaseModel.findAll({
-    // req_data is an unread longtext audit blob, nothing below reads it
-    attributes: { exclude: ["req_data"] },
       include: [
         {
           model: PaymentModel,
@@ -1209,13 +1201,14 @@ exports.downloadTxnLedger = async (req, res) => {
             .status(errorCodes.default)
             .send(formatErrorResponse(error.toString()));
         }
-      })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
+      })();
     } catch (error) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse(error.toString()));
     }
   } catch (err) {
+    console.error("Error:", err);
     res.status(errorCodes.default).send(formatErrorResponse(err));
   }
 };
@@ -1461,7 +1454,7 @@ exports.store = async (req, res) => {
     let status = "due",
       paid_amount = 0,
       due_amount = 0;
-    if (!requiresPaymentApproval(data.payment_mode)) {
+    if (data.payment_mode != "cheque") {
       status =
         priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
           ? "paid"
@@ -1771,7 +1764,7 @@ exports.store = async (req, res) => {
           payment_date: moment().format("YYYY-MM-DD"),
           txn_id: data.transaction_no,
           cheque_no: data.cheque_no,
-          status: requiresPaymentApproval(data.payment_mode) ? "pending" : "success",
+          status: data.payment_mode == "cheque" ? "pending" : "success",
           type: "debit",
           table_type: "purchase",
           table_id: purchase.id,
@@ -1947,8 +1940,6 @@ exports.onapprove_index = async (req, res) => {
   PurchaseModel.findAndCountAll({
     order: [["id", "DESC"]],
     offset: paginatorOptions.offset,
-  // req_data is an unread longtext audit blob, nothing below reads it
-  attributes: { exclude: ["req_data"] },
     limit: paginatorOptions.limit,
     where: conditions,
     include: [
@@ -2495,7 +2486,7 @@ exports.statuschange = async (req, res) => {
             });
             if (payment) {
               if (
-                requiresPaymentApproval(payment.payment_mode) &&
+                payment.payment_mode == "cheque" &&
                 payment.status == "pending"
               ) {
                 await paymentModel.destroy({
@@ -2842,7 +2833,7 @@ exports.statuschange = async (req, res) => {
             payment_date: moment().format("YYYY-MM-DD"),
             txn_id: purchase.transaction_no,
             cheque_no: purchase.cheque_no,
-            status: requiresPaymentApproval(purchase.payment_mode) ? "pending" : "success",
+            status: purchase.payment_mode == "cheque" ? "pending" : "success",
             type: "debit",
             table_type: "purchase",
             table_id: purchase.id,
@@ -3238,7 +3229,7 @@ exports.update = async (req, res) => {
       let status = "due",
         paid_amount = 0,
         due_amount = 0;
-      if (!requiresPaymentApproval(data.payment_mode)) {
+      if (data.payment_mode != "cheque") {
         status =
           priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
             ? "paid"
@@ -4162,72 +4153,15 @@ exports.returnProducts = async (req, res) => {
  * @param {*} req
  * @param {*} res
  */
-
-/**
- * Page the item list of a product listing.
- *
- * These endpoints built every row in memory and returned all of them whatever
- * `limit` said - 3,200 items and 1.7 MB for a 50-row table, growing with the
- * business. The summary fields (totals, per-category cards) still come from the
- * whole set, because that is what they are summarising; only `items` is paged,
- * and `total` carries the full count so the table can page through it.
- *
- * `all=1` is the table's "All" option and returns everything, as before.
- */
-const pageListItems = (result, query) => {
-  const items = Array.isArray(result.items) ? result.items : [];
-  result.total = items.length;
-  if (String(query.all) === "1") return result;
-  const page = Math.max(parseInt(query.page, 10) || 1, 1);
-  const limit = Math.max(parseInt(query.limit, 10) || 50, 1);
-  result.items = items.slice((page - 1) * limit, page * limit);
-  return result;
-};
-
-/**
- * Building this list walks every purchase product and prices it in JavaScript -
- * ~260 ms of single-threaded work that every concurrent request repeats, so at
- * 40 users it queued into 9.8 s and slowed down every other endpoint with it.
- *
- * The build is cached for a minute per user and filter combination, and the
- * write-invalidation in server.js drops it on any change. Paging happens after
- * the cache, so page 2 costs nothing extra.
- */
-const PRODUCT_LIST_TTL = 60 * 1000;
-
-const productListCacheKey = (prefix, req) => {
-  const q = req.query || {};
-  return [
-    prefix,
-    req.userId,
-    req.role,
-    q.category_id || "",
-    q.sub_category_id || "",
-    q.supplier_id || "",
-    q.sale_by || "",
-    q.type || "",
-    q.search || "",
-  ].join(":");
-};
-
 exports.purchaseProducts = async (req, res) => {
   let user = await UserModel.findByPk(req.userId);
   let superAdminRoleId = getRoleId("superadmin");
-  let purchaseProductsRes = await remember(
-    productListCacheKey("purchaseProducts", req),
-    PRODUCT_LIST_TTL,
-    () =>
-      user.role_id == superAdminRoleId
-        ? getPurchaseProducts(req.query)
-        : getPurchaseProductsUser(req, req.query)
-  );
+  let purchaseProductsRes =
+    user.role_id == superAdminRoleId
+      ? await getPurchaseProducts(req.query)
+      : await getPurchaseProductsUser(req, req.query);
 
-  res.send(
-    formatResponse(
-      pageListItems({ ...purchaseProductsRes }, req.query),
-      "all purchases product"
-    )
-  );
+  res.send(formatResponse(purchaseProductsRes, "all purchases product"));
 };
 
 const formatStockMaterials = (stockMaterials) => {
@@ -5187,7 +5121,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
-      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight) {
+      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight != null) {
         metalExists = true;
         receive_metal += parseFloat(itm.weight);
       }
@@ -5265,7 +5199,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     <td style="font-size: 12px;">${payments[i].payment_date}</td>
                     <td style="font-size: 12px;">${payments[i].payment_mode}</td>
                     <td style="font-size: 12px;">${payments[i].notes}</td>
-                    <td style="font-size: 12px;">${payments[i].amount}${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight ? " (" + payments[i].weight + (payments[i].metal_rate ? " @ " + payments[i].metal_rate + "/GM" : "") + ")" : ""}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
                 </tr>`;
     }
     html += `</table>`;
@@ -5451,6 +5385,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
+    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -5540,7 +5475,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
           .status(errorCodes.default)
           .send(formatErrorResponse(error.toString()));
       }
-    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
+    })();
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -5565,8 +5500,6 @@ exports.downloadInvoiceItemList = async (req, res) => {
   const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
-    // req_data is an unread longtext audit blob, nothing below reads it
-    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id /*, user_id: userID*/ },
     include: [
       {
@@ -6219,7 +6152,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
           .status(errorCodes.default)
           .send(formatErrorResponse(error.toString()));
       }
-    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
+    })();
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -6237,8 +6170,6 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
   let purchase = await PurchaseModel.findOne({
-    // req_data is an unread longtext audit blob, nothing below reads it
-    attributes: { exclude: ["req_data"] },
     where: { id: req.params.id /*, user_id: userID*/ },
     /* include: [
       {
@@ -7602,6 +7533,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
+    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -7690,7 +7622,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
           .status(errorCodes.default)
           .send(formatErrorResponse(error.toString()));
       }
-    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
+    })();
 
     /*const doc = new jsPDF();
     doc.html(html, {

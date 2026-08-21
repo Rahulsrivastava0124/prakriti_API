@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject } = require("@helpers/helper");
+const { isObject } = require("@helpers/helper");
 const { geStatusValue, getRoleId } = require("@library/common");
 
 
@@ -7,8 +6,11 @@ const RoleCollection = async (data) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i]));
+        }
+        return arr;
     }
 }
 

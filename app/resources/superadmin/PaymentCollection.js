@@ -1,5 +1,4 @@
 const {
-  mapConcurrent,
   isObject,
   formatDateTime,
   isEmpty,
@@ -13,8 +12,11 @@ const PaymentCollection = async (data) => {
   if (isObject(data)) {
     return await getModelObject(data);
   } else {
-    return await mapConcurrent(data, (item, i) => getModelObject(item));
-
+    let arr = [];
+    for (let i = 0; i < data.length; i++) {
+      arr.push(await getModelObject(data[i]));
+    }
+    return arr;
   }
 };
 
@@ -190,20 +192,7 @@ const getModelObject = async (data) => {
     notes: data.notes || "",
     cheque_no: data.cheque_no || "",
     txn_id: data.txn_id || "",
-    weight: data.weight ? data.weight + " GM" : "",
-    // Gross weight the quoted rate applies to (fine weight lives in `weight`).
-    gross_weight: data.gross_weight ? data.gross_weight + " GM" : "",
-    // The rate actually quoted at payment time. Deriving it from amount/weight
-    // gives the 24K rate, not the purity rate the operator saw, so prefer the
-    // stored value and only derive for rows written before it was captured.
-    metal_rate:
-      data.payment_mode != "metal"
-        ? ""
-        : !isEmpty(data.metal_rate)
-          ? displayAmount(data.metal_rate)
-          : parseFloat(data.weight)
-            ? displayAmount(parseFloat(data.amount) / parseFloat(data.weight))
-            : "",
+    weight: data.weight + " GM" || "",
     payment_date: formatDateTime(data.payment_date, 8),
     payment_to: data.user ? data.user.name : "",
     purpose: purpose,

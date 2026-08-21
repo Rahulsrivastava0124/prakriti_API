@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, isEmpty, getFileAbsulatePath, isArray, productTypeDisplay, displayAmount, priceFormat } = require("@helpers/helper");
+const { isObject, isEmpty, getFileAbsulatePath, isArray, productTypeDisplay, displayAmount, priceFormat } = require("@helpers/helper");
 const {ProductSizeCollection} = require("@resources/customer/ProductSizeCollection");
 const {ProductMaterialCollection} = require("@resources/customer/ProductMaterialCollection");
 //const {StocksCollection} = require("@resources/customer/StocksCollection");
@@ -10,8 +9,11 @@ const ProductCollection = async (data) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i]));
+        }
+        return arr;
     }
 }
 
@@ -35,6 +37,7 @@ const getModelObject = async (data) => {
     let sub_making_charge = data.sub_category ? data.sub_category.making_charge : '';
     for(let i = 0; i < data.stocks.length; i++){
         let thisStock = data.stocks[i];
+        //console.log(thisStock.stockMaterials);
         let size_id = thisStock.size_id;
         let size_name = thisStock.size ? thisStock.size.name : '';
         let priceMaterials = await calculateProductPriceByPurity(thisStock.stockMaterials, sub_making_charge, sub_making_charge_type, data.type == "material" ? true : false);
