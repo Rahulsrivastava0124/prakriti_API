@@ -130,6 +130,16 @@ exports.index = async (req, res) => {
     let avl_stockUser_ids = [];
 
     let total_avl_stockUser_ids = [];
+
+    /* "My Retailer" is what this user brought in, the same rule the retailer
+       list applies for my_retailer=1. Computed for every role: it used to be
+       set only inside the distributor and sales executive branches, so an
+       admin's card and the superadmin's always read zero. */
+    let myRetailerIds = await getMyRetailerIds(req.userId);
+    myRetailer = await UserModel.count({
+      where: { role_id: retailerRoleId, id: { [Op.in]: myRetailerIds } },
+    });
+
     if (isSuperAdmin(req)) {
       //totalAdmin = await UserModel.count({where: {role_id: adminRoleId}});
       //totalDistributor = await UserModel.count({where: {role_id: distributorRoleId}});
@@ -365,8 +375,11 @@ exports.index = async (req, res) => {
       totalAvlTransferStockPrice = superAdminTotalTransferStockPrice =
         transferStockData.totalPrice;
 
+      /* the superadmin's retailer list is unscoped, so its Total Retailer is
+         every retailer. It used to count by avl_User_ids, a stock-holder list
+         no retailer's parent_id appears in, so the card read zero. */
       totalRetailer = await UserModel.count({
-        where: { role_id: retailerRoleId, parent_id: { [Op.in]: avl_User_ids } },
+        where: { role_id: retailerRoleId },
       });
 
       //retailer due
@@ -652,10 +665,6 @@ exports.index = async (req, res) => {
         where: { role_id: retailerRoleId, district_id: district_id },
         //where: { role_id: retailerRoleId }
       });
-      let myRetailerIds = await getMyRetailerIds(req.userId);
-      myRetailer = await UserModel.count({
-        where: { role_id: retailerRoleId, id: { [Op.in]: myRetailerIds } },
-      });
 
       /* total SE (admin-distributer) */
       let parentIds = [];
@@ -752,10 +761,6 @@ exports.index = async (req, res) => {
 
       totalStock = await getTotalStockByUser(userID);
       totalStockPrice = await getTotalStockPriceByUser(null, userID);
-      let myRetailerIds = await getMyRetailerIds(req.userId);
-      myRetailer = await UserModel.count({
-        where: { role_id: retailerRoleId, id: { [Op.in]: myRetailerIds } },
-      });
 
       //total retailer due
       let whereObj = {

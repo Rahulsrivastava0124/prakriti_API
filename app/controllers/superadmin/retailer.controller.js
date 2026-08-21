@@ -28,6 +28,7 @@ const {
   isDistributor,
   isSalesExecutive,
   getMyRetailerIds,
+  getSalesExecutiveTotalRetailerIds,
   updateRetailerAvgReview,
   getAdminDistributorIds,
   getAdminSEWhereCondition,
@@ -362,19 +363,14 @@ exports.store = async (req, res) => {
   userModel
     .create(postData)
     .then(async (result) => {
-      if (isSalesExecutive(req)) {
-        await UserToUserModel.create({
-          user_id: req.userId,
-          to_user_id: result.id,
-          to_role_id: roleId,
-        });
-      } else if (isDistributor(req)) {
-        await UserToUserModel.create({
-          user_id: req.userId,
-          to_user_id: result.id,
-          to_role_id: roleId,
-        });
-      }
+      /* whoever adds a retailer owns it - this link is what "My Retailer"
+         counts. Only executives and distributors used to get one, so a
+         retailer an admin or the superadmin added belonged to nobody. */
+      await UserToUserModel.create({
+        user_id: req.userId,
+        to_user_id: result.id,
+        to_role_id: roleId,
+      });
 
       /**
        * Create default address
@@ -765,6 +761,12 @@ exports.reviewUpdate = async (req, res) => {
 };
 
 const getCommonCondition = async (req, my_retailer, userIds) => {
+  /* "My Retailer" means the same thing for every role: the ones this user
+     brought in. The superadmin and the admin used to ignore the flag, so their
+     My Retailer page listed the whole scope instead of their own. */
+  if (my_retailer == 1 && (isSuperAdmin(req) || isAdmin(req))) {
+    return { id: { [Op.in]: userIds || [] } };
+  }
   if (isSuperAdmin(req)) {
     return {};
   } else if (isAdmin(req)) {
@@ -776,8 +778,13 @@ const getCommonCondition = async (req, my_retailer, userIds) => {
         userIds = !userIds ? await getMyRetailerIds(req.userId) : userIds;
         return { id: { [Op.in]: userIds } };
       } else {
-        let state_id = await getUserColumnValue(req.userId, "state_id");
-        return { state_id: state_id };
+        /* Total Retailer is the book of the admin chain this executive sits
+           in, which is what its dashboard card counts. The old state scope
+           showed every retailer in the state, including other admins' - so an
+           executive whose card read 0 was still listing 18 strangers. */
+        return {
+          id: { [Op.in]: await getSalesExecutiveTotalRetailerIds(req.userId) },
+        };
       }
       /*if(my_retailer == 'all'){
         return {[Op.or]: [{parent_id: req.userId}, {parent_id: {[Op.eq]: null}, district_id: district_id}]};
