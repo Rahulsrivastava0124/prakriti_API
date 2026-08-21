@@ -30,7 +30,6 @@ const {
   getMyRetailerIds,
   getMyRetailerIdsForRequest,
   getGroupRetailerIds,
-  getOwnRetailerIds,
   updateRetailerAvgReview,
   getAdminDistributorIds,
   getAdminSEWhereCondition,
@@ -88,9 +87,6 @@ exports.index = async (req, res) => {
   let { page, limit, all, my_retailer, search, date_from, date_to } = req.query;
   if (all == 1 && my_retailer != 1) {
     let conditions = await getCommonCondition(req);
-    // The whole list is the team's book; is_my_retailer marks the ones the
-    // caller brought in, so a picker can tell its own apart from the team's.
-    let ownIds = await getOwnRetailerIds(req);
     userModel
       .findAll({
         where: { role_id: roleId, ...conditions },
@@ -98,7 +94,7 @@ exports.index = async (req, res) => {
       })
       .then(async (data) => {
         let result = {
-          items: await RetailerCollection(data, req, ownIds),
+          items: await RetailerCollection(data, req),
           total: data.length,
         };
 
@@ -821,9 +817,8 @@ const getCommonCondition = async (req, my_retailer, userIds) => {
         userIds = !userIds ? await getMyRetailerIds(req.userId) : userIds;
         return { id: { [Op.in]: userIds } };
       } else {
-        /* Total Retailer is the team's book, same rule as a sales executive:
-           the parent's sales executives and the ones this distributor created. */
-        return { id: { [Op.in]: await getGroupRetailerIds(req) } };
+        let district_id = await getUserColumnValue(req.userId, "district_id");
+        return { district_id: district_id };
       }
       /*if(my_retailer == 'all'){
         return {[Op.or]: [{parent_id: req.userId}, {parent_id: {[Op.eq]: null}, district_id: district_id}]};

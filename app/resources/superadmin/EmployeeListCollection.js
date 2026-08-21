@@ -1,32 +1,18 @@
 const {
   mapConcurrent, isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount, ucWords } = require("@helpers/helper");
-const { getTotalStockPriceByUser, getTotalStockByUser, getWalletBalance, getTodayAttendence, getLoginLogoutAddress, getRoleId, getMyRetailerIds, getMyRetailerIdsFor, getSalesExecutiveGroupOwnerIds } = require("@library/common");
+const { getTotalStockPriceByUser, getTotalStockByUser, getWalletBalance, getTodayAttendence, getLoginLogoutAddress } = require("@library/common");
 
 
 const EmployeeListCollection = async(data, load_stock_wallet) => {
-    // Every sales executive under one distributor shares the same group book, so
-    // count it once per distributor instead of once per row.
-    const groupTotals = new Map();
     if(isObject(data)){
-        return await getModelObject(data, load_stock_wallet, groupTotals);
+        return await getModelObject(data, load_stock_wallet);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, load_stock_wallet, groupTotals));
+        return await mapConcurrent(data, (item, i) => getModelObject(item, load_stock_wallet));
 
     }
 }
 
-/** retailers of this executive's whole team - shared, so cached per parent */
-const getGroupRetailerCount = (user, cache) => {
-    const key = user.parent_id || `self:${user.id}`;
-    if(!cache.has(key)){
-        cache.set(key, getSalesExecutiveGroupOwnerIds(user.id)
-            .then((ownerIds) => getMyRetailerIdsFor(ownerIds))
-            .then((ids) => ids.length));
-    }
-    return cache.get(key);
-}
-
-const getModelObject = async(data, load_stock_wallet, groupTotals) => {
+const getModelObject = async(data, load_stock_wallet) => {
     let documents = [];
     if(isArray(data.documents)){
         for(let i = 0; i < data.documents.length; i++){
@@ -45,15 +31,6 @@ const getModelObject = async(data, load_stock_wallet, groupTotals) => {
     }
     attendence = await getTodayAttendence(data);
     attendence_address = await getLoginLogoutAddress(data.id);
-
-    // Own = the retailers this executive brought in; Total = the team's book.
-    let ownRetailer = 0, totalRetailer = 0;
-    if(data.role_id == getRoleId("sales_executive")){
-        [ownRetailer, totalRetailer] = await Promise.all([
-            getMyRetailerIds(data.id).then((ids) => ids.length),
-            getGroupRetailerCount(data, groupTotals)
-        ]);
-    }
 
     return {
         id: data.id,
@@ -98,8 +75,6 @@ const getModelObject = async(data, load_stock_wallet, groupTotals) => {
         parents_name: data.parents_name || '',
         parents_contact_no: data.parents_contact_no || '',
         parent_user_name: parent_user_name,
-        own_retailer: ownRetailer,
-        total_retailer: totalRetailer,
         total_stock: totalStock,
         total_stock_price: displayAmount(totalStockPrice),
         wallet_balance: displayAmount(walletBalance),
