@@ -3042,6 +3042,21 @@ const getMyRetailerIds = async (userId) => {
  * ones belonging to its distributors and sales executives. Shared by the
  * retailer list and the dashboard card so the two cannot disagree.
  */
+/**
+ * The owners whose retailers make up one sales executive's group book: its
+ * parent, itself, and every sales executive beside it. Taken by id rather than
+ * by request so the executive list can ask about somebody else.
+ */
+const getSalesExecutiveGroupOwnerIds = async (userId) => {
+  const parentId = await getUserColumnValue(userId, "parent_id");
+  if (!parentId) return [userId];
+  const siblings = await UserModel.findAll({
+    attributes: ["id"],
+    where: { parent_id: parentId, role_id: getRoleId("sales_executive") },
+  });
+  return [...new Set([userId, parentId, ...arrayColumn(siblings, "id")])];
+};
+
 const getMyRetailerOwnerIds = async (req) => {
   /**
    * Sales executives under one parent work the same book: a retailer added by
@@ -3050,13 +3065,29 @@ const getMyRetailerOwnerIds = async (req) => {
    * reports to it, itself included.
    */
   if (isSalesExecutive(req)) {
+    return getSalesExecutiveGroupOwnerIds(req.userId);
+  }
+
+  /**
+   * A distributor works the same book as the sales executives around it: the
+   * ones its parent runs, plus any it created itself. Nothing else reaches a
+   * distributor, so the district scope this used to fall back to showed it
+   * strangers' retailers and none of its own team's.
+   */
+  if (isDistributor(req)) {
     const parentId = await getUserColumnValue(req.userId, "parent_id");
-    if (!parentId) return [req.userId];
-    const siblings = await UserModel.findAll({
+    const se = await UserModel.findAll({
       attributes: ["id"],
-      where: { parent_id: parentId, role_id: getRoleId("sales_executive") },
+      where: {
+        role_id: getRoleId("sales_executive"),
+        [Op.or]: [
+          ...(parentId ? [{ parent_id: parentId }] : []),
+          { parent_id: req.userId },
+          { created_by: req.userId },
+        ],
+      },
     });
-    return [...new Set([req.userId, parentId, ...arrayColumn(siblings, "id")])];
+    return [...new Set([req.userId, ...arrayColumn(se, "id")])];
   }
 
   if (!isAdmin(req)) return [req.userId];
@@ -4955,6 +4986,7 @@ module.exports = {
   getProductSizeMaterials,
   getTotalStockByUser,
   getMyRetailerIds,
+  getSalesExecutiveGroupOwnerIds,
   getMyRetailerOwnerIds,
   getMyRetailerIdsFor,
   getMyRetailerIdsForRequest,
