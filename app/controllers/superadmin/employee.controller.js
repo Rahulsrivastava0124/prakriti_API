@@ -23,6 +23,7 @@ const {
   isAdmin,
   emailExists,
   normalizeEmail,
+  getMyRetailerIdsFor,
 } = require("@library/common");
 const {
   EmployeeCollection,
@@ -48,6 +49,54 @@ var bcrypt = require("bcryptjs");
  * @param req
  * @param res
  */
+/**
+ * "Total Retailer" for a sales executive is the team's book: every retailer the
+ * executive's parent and the executives beside it brought in - the same set the
+ * SE dashboard card and the SE retailer list already count (getGroupRetailerIds
+ * in @library/common). Listing it per row here means the Sales Executives page
+ * shows that figure without the client having to ask per executive.
+ *
+ * Counted once per parent, not once per row: every executive under one parent
+ * shares the same book, so a page of ten executives under one distributor costs
+ * one lookup rather than ten.
+ */
+const attachSeGroupRetailerCount = async (items) => {
+  const sales_executiveRoleId = getRoleId("sales_executive");
+  const parentIds = [
+    ...new Set(items.map((item) => item.parent_id).filter(Boolean)),
+  ];
+
+  const countByParent = {};
+  await Promise.all(
+    parentIds.map(async (parentId) => {
+      const groupSE = await userModel.findAll({
+        attributes: ["id"],
+        where: { parent_id: parentId, role_id: sales_executiveRoleId },
+      });
+      const ownerIds = [
+        ...new Set([parentId, ...arrayColumn(groupSE, "id")]),
+      ];
+      const retailerIds = await getMyRetailerIdsFor(ownerIds);
+      /**
+       * Count the rows, not the ids. user_to_users keeps links to retailers
+       * that no longer exist - executive 9 in production carries seven such
+       * orphans - and counting the id list would report those seven on a page
+       * that lists none of them.
+       */
+      countByParent[parentId] = retailerIds.length
+        ? await userModel.count({
+            where: { role_id: getRoleId("retailer"), id: { [Op.in]: retailerIds } },
+          })
+        : 0;
+    })
+  );
+
+  for (const item of items) {
+    item.total_retailer = countByParent[item.parent_id] || 0;
+  }
+  return items;
+};
+
 exports.index = async (req, res) => {
   let { page, limit, all, role_id } = req.query;
   let user = await userModel.findByPk(req.userId);
@@ -168,8 +217,12 @@ exports.index = async (req, res) => {
         ],
       })
       .then(async (data) => {
+        let items = await EmployeeListCollection(data);
+        if (role_id == 4) {
+          items = await attachSeGroupRetailerCount(items);
+        }
         let result = {
-          items: await EmployeeListCollection(data),
+          items: items,
           total: data.length,
         };
         res.send(formatResponse(result));
@@ -209,8 +262,12 @@ exports.index = async (req, res) => {
         ],
       })
       .then(async (data) => {
+        let items = await EmployeeListCollection(data.rows, load_stock_wallet);
+        if (role_id == 4) {
+          items = await attachSeGroupRetailerCount(items);
+        }
         let result = {
-          items: await EmployeeListCollection(data.rows, load_stock_wallet),
+          items: items,
           total: data.count,
         };
         res.send(formatResponse(result, "All users"));
