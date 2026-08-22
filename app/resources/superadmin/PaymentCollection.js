@@ -177,26 +177,55 @@ const getModelObject = async (data) => {
    * `credit` follows the same rule on the wallet screen, where it is the column
    * the money would land in.
    */
-  const isAwaitingSettlement = data.status == "pending" && !hasAcceptedChild;
+  /*
+   * Accepted and Declined are the only final states. Until a payment reaches
+   * one of them the money column stays empty and the figure is shown beside the
+   * payment mode instead, so a row can never read as settled before it is.
+   *
+   * This tests the label rather than `data.status`, deliberately: a "Processed"
+   * row is still `status = 'pending'` underneath, so keying off the raw status
+   * let it print its amount as though it had settled.
+   */
+  const isFinalStatus =
+    action_status === "Accepted" || action_status === "Declined";
 
-  let amount_display = isAwaitingSettlement ? "" : displayAmount(data.amount);
+  let amount_display = isFinalStatus ? displayAmount(data.amount) : "";
 
-  if (isAwaitingSettlement) {
-    display_mode +=
-      '<p style="margin:0;font-size:12px;color:#e6a700;">' +
+  /*
+   * `payment_mode_display` is for the payment tables on the invoice screens,
+   * which carry their own Cheque # and Transaction # columns - so it stays the
+   * bare mode plus, while pending, the amount: "Cheque (Rs.500.00)".
+   *
+   * `display_mode` is the richer variant for the wallet screen and the purchase
+   * view, which have no such columns and need the cheque no / txn id inline.
+   * The amount goes into its first paragraph so it sits beside the mode there
+   * too rather than dropping to a line of its own.
+   */
+  // Built from the bare mode, NOT the `payment_mode` above - that one already
+  // carries " ( CHQ0010 )" / " ( txn id )", which these screens show in their
+  // own columns and must not see twice.
+  let payment_mode_display = paymentModeDisplay(data.payment_mode);
+  if (!isFinalStatus) {
+    // Rendered as HTML by the invoice payment tables so the figure carries the
+    // same yellow chip as everywhere else; plain text would leave it black.
+    payment_mode_display +=
+      '<span style="display:inline-block;margin-left:6px;padding:1px 8px;' +
+      "border-radius:10px;background:#ffd54f;color:#3d2f00;font-size:12px;" +
+      'font-weight:600;white-space:nowrap;">' +
       displayAmount(data.amount) +
-      "</p>";
+      "</span>";
+    // first </p> closes the mode paragraph
+    // A yellow chip, not yellow text: at any shade still readable as yellow,
+    // plain text fails contrast on a white row (#ffd54f is 1.6:1). Dark text
+    // on the same yellow is 9.3:1.
+    display_mode = display_mode.replace(
+      "</p>",
+      '<span style="display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;background:#ffd54f;color:#3d2f00;font-size:12px;font-weight:600;white-space:nowrap;">' + displayAmount(data.amount) + "</span></p>",
+    );
   }
 
-  let credit_amount = displayAmount(data.amount);
-  if (
-    data.status == "pending" &&
-    data.can_accept &&
-    !isSenderViewingReceiverRow &&
-    !hasAcceptedChild
-  ) {
-    credit_amount = 0;
-  }
+  // The wallet screen's Credit column follows the same rule as Amount above.
+  let credit_amount = isFinalStatus ? displayAmount(data.amount) : "";
 
   return {
     id: data.id,
@@ -204,6 +233,7 @@ const getModelObject = async (data) => {
     // The raw figure, for callers that need it regardless of settlement state.
     amount_value: displayAmount(data.amount),
     payment_mode: paymentModeDisplay(data.payment_mode),
+    payment_mode_display: payment_mode_display,
     notes: data.notes || "",
     cheque_no: data.cheque_no || "",
     txn_id: data.txn_id || "",
