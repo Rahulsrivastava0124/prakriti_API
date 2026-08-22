@@ -3,7 +3,7 @@ const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/resp
 const db = require("@models");
 const moment = require('moment');
 const { isEmpty, getDateFromToWhere, priceFormat, formatDateTime, weightFormat, addLog, convertUnitToGram, ucWords, encodeForStorage, decodeFromStorage, cleanInput } = require("@helpers/helper");
-const { updateOrCreate, removeMaterialFromStock, getWalletBalance, getWorkingUserID, isSuperAdmin, updateWalletRemainingBalance, updateAdvanceAmount, getSuperAdminId, sendNotification, isManager } = require("@library/common");
+const { updateOrCreate, removeMaterialFromStock, getWalletBalance, hasWalletFunds, getWorkingUserID, isSuperAdmin, updateWalletRemainingBalance, updateAdvanceAmount, getSuperAdminId, sendNotification, isManager } = require("@library/common");
 const { getPaginationOptions } = require('@helpers/paginator')
 const { ReturnSaleCollection } = require("@resources/superadmin/ReturnSaleCollection");
 const { ReturnSaleListCollection } = require("@resources/superadmin/ReturnSaleListCollection");
@@ -219,8 +219,7 @@ exports.updateStatus = async (req, res) => {
       if (data.status == 'accepted' || data.status == 'declined') {
         if (data.status == 'accepted' && req_data.payment_type == "return") {
           let return_amount_from_wallet = 'return_amount_from_wallet' in req_data ? parseFloat(req_data.return_amount_from_wallet) : 0;
-          let walletBalance = await getWalletBalance(userID, req_data.return_payment_mode);
-          if (return_amount_from_wallet > 0 && walletBalance < return_amount_from_wallet) {
+          if (!(await hasWalletFunds(userID, req_data.return_payment_mode, return_amount_from_wallet))) {
             return res.status(errorCodes.default).send(formatErrorResponse("Insufficient wallet balance."));
           }
         }

@@ -514,16 +514,52 @@ const paymentModeDisplay = (type) => {
 };
 
 /**
- * Payment modes that are not settled on the spot: the money is only promised
- * until the receiving side accepts it, so the payment row is created as
- * 'pending' and the balance/due amounts move only once it is approved.
+ * Payment modes that are not settled on the spot when paying an invoice: the
+ * money is only promised until the receiving side accepts it, so the payment
+ * row is created as 'pending' and the balance/due amounts move only once it is
+ * approved.
  *
- * Cash and UPI/PhonePe/GPay are realtime — they settle immediately.
+ * Cash and UPI/PhonePe/GPay are realtime - they settle immediately.
  */
 const APPROVAL_PAYMENT_MODES = ["cheque", "imps_neft"];
 
-const requiresPaymentApproval = (mode) => {
+/**
+ * Payment types raised from the wallet screen rather than against an invoice.
+ *
+ * These move money between two wallets, so the receiving side has to confirm it
+ * arrived whatever the mode - a cash hand-over or a UPI transfer is no more
+ * certain than a cheque until the other party says they got it. Everything here
+ * therefore waits for accept/decline on every mode.
+ *
+ * NOTE: `payment_type` is overloaded in this codebase. On the sale and purchase
+ * RETURN endpoints the same field name carries the refund disposition
+ * ("advance" | "return"), which has nothing to do with this list - do not route
+ * those through requiresPaymentApproval().
+ */
+const APPROVAL_PAYMENT_TYPES = ["send_money", "advance", "payment"];
+
+/**
+ * Does this payment need the receiver to accept it before the money moves?
+ *
+ * @param {string} mode        payment_mode: cash | online | cheque | imps_neft | metal
+ * @param {string} [paymentType] request-level payment_type, when the payment was
+ *   raised from the wallet screen (send_money | advance | payment). Omit for
+ *   payments made against an invoice.
+ *
+ * Metal is deliberately absent from both lists: it settles on the spot in every
+ * context, unchanged from before.
+ */
+const requiresPaymentApproval = (mode, paymentType) => {
   if (isEmpty(mode)) return false;
+  if (String(mode).toLowerCase().trim() === "metal") return false;
+
+  if (
+    !isEmpty(paymentType) &&
+    APPROVAL_PAYMENT_TYPES.includes(String(paymentType).toLowerCase().trim())
+  ) {
+    return true;
+  }
+
   return APPROVAL_PAYMENT_MODES.includes(String(mode).toLowerCase().trim());
 };
 

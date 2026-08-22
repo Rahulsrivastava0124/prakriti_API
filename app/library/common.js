@@ -1868,6 +1868,39 @@ const getUserColumnValue = async (id, column) => {
   return user ? user[column] : null;
 };
 
+/**
+ * Can this wallet cover the amount about to leave it?
+ *
+ * Every wallet debit has to ask this, and before this helper existed each site
+ * asked it slightly differently - some checked `amount > 0` first and some did
+ * not, some passed `payment_mode` and some `return_payment_mode`, and two had
+ * been commented out entirely, which is how wallets ended up negative.
+ *
+ * Returns true when the debit may proceed. Callers keep their own response:
+ *
+ *   if (!(await hasWalletFunds(userID, data.payment_mode, amount))) {
+ *     return res.status(errorCodes.default)
+ *               .send(formatErrorResponse("Insufficient wallet balance."));
+ *   }
+ *
+ * Nothing to debit (zero or negative) always passes - refusing those would
+ * block ordinary zero-value saves. Metal always passes: the gold wallet is
+ * tracked separately and is deliberately out of scope here.
+ *
+ * `paymentType` is only needed for the pools that are not the ordinary wallet
+ * (expenses ask for "expense"); leave it out otherwise.
+ */
+const hasWalletFunds = async (userId, paymentMode, amount, paymentType) => {
+  const needed = priceFormat(parseFloat(amount) || 0);
+  if (needed <= 0) return true;
+  if (String(paymentMode || "").toLowerCase().trim() === "metal") return true;
+
+  const balance = priceFormat(
+    await getWalletBalance(userId, paymentMode, paymentType),
+  );
+  return balance >= needed;
+};
+
 const getWalletBalance = async (
   userId,
   payment_mode,
@@ -4903,6 +4936,7 @@ module.exports = {
   getLiveGoldRate,
   getUserColumnValue,
   getWalletBalance,
+  hasWalletFunds,
   emailExists,
   normalizeEmail,
   loginIdentifierWhere,

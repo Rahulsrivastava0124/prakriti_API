@@ -29,6 +29,7 @@ const {
   updateOrCreate,
   removeMaterialFromStock,
   getWalletBalance,
+  hasWalletFunds,
   getWorkingUserID,
   isSuperAdmin,
   isAdmin,
@@ -1384,8 +1385,7 @@ exports.store = async (req, res) => {
   }
 
   if (priceFormat(data.paid_amount) > 0) {
-    let wallet_balance = await getWalletBalance(userID, data.payment_mode);
-    if (priceFormat(data.paid_amount) > wallet_balance) {
+    if (!(await hasWalletFunds(userID, data.payment_mode, data.paid_amount))) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse("Insufficient wallet balance."));
@@ -3609,12 +3609,25 @@ exports.returnProducts = async (req, res) => {
       .send(formatErrorResponse("Purchase not found"));
   }
 
+  /*
+   * Refunding a purchase return pays money out of this wallet, so it has to be
+   * covered first. This check was commented out, which is one way a wallet
+   * could go negative.
+   *
+   * It also read `data.payment_mode`, which the return form never sends - the
+   * refund mode arrives as `return_payment_mode`, the same field the sale
+   * return and returnSale controllers already use.
+   */
   if (isEmpty(purchase.sale_id) && data.payment_type == "return") {
-    // let return_amount_from_wallet = data.return_amount_from_wallet ? parseFloat(data.return_amount_from_wallet) : 0;
-    // let walletBalance = await getWalletBalance(userID, data.payment_mode);
-    // if (walletBalance < priceFormat(return_amount_from_wallet)) {
-    //   return res.status(errorCodes.default).send(formatErrorResponse("Insufficient wallet balance."));
-    // }
+    let return_amount_from_wallet = data.return_amount_from_wallet
+      ? parseFloat(data.return_amount_from_wallet)
+      : 0;
+    let refundMode = data.return_payment_mode || data.payment_mode;
+    if (!(await hasWalletFunds(userID, refundMode, return_amount_from_wallet))) {
+      return res
+        .status(errorCodes.default)
+        .send(formatErrorResponse("Insufficient wallet balance."));
+    }
   }
 
   let stock_con = userID; //isSuperAdmin(req) ? {[Op.is]: null} : userID;
