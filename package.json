@@ -38,6 +38,7 @@
     "lodash": "^4.17.20",
     "module-alias": "^2.2.2",
     "moment": "^2.29.4",
+    "mongoose": "^5.13.14",
     "mongoose-aggregate-paginate-v2": "^1.0.6",
     "mongoose-findorcreate": "^3.0.0",
     "mongoose-paginate-v2": "^1.7.0",
