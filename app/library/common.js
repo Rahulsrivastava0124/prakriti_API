@@ -605,7 +605,8 @@ const getLiveGoldRate = async () => {
       const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
       clearTimeout(timer);
       const body = await res.json();
-      const pg = body && body.per_gram ? body.per_gram : {};
+      // Support both "per_gram" and "base_per_gram" response formats
+      const pg = body && (body.per_gram || body.base_per_gram) ? (body.per_gram || body.base_per_gram) : {};
       const rate = parseFloat(pg["24K"] || 0);
       if (rate > 0) {
         goldRateCache = {

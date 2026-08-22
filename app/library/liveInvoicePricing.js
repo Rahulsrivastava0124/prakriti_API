@@ -201,27 +201,37 @@ const repriceSaleAtLiveGold = (sale, liveRates) => {
     });
 
     totals.materials.forEach((m) => {
-      m.ref.rate = m.rate;
-      m.ref.amount = m.amount;
-      m.ref.discount_amount = m.discountAmount;
-      m.ref.per_gram_price = round2(
+      // Use setDataValue for Sequelize models, or direct assignment for plain objects
+      const setVal = (obj, key, val) => {
+        if (obj.setDataValue) obj.setDataValue(key, val);
+        else obj[key] = val;
+      };
+      setVal(m.ref, 'rate', m.rate);
+      setVal(m.ref, 'amount', m.amount);
+      setVal(m.ref, 'discount_amount', m.discountAmount);
+      setVal(m.ref, 'per_gram_price', round2(
         m.weight > 0 ? m.amount / round3(num(m.ref.total_gram) || m.weight) : 0,
-      );
+      ));
     });
 
-    product.sub_price = totals.subPrice;
-    product.making_charge_discount_amount = totals.makingChargeDiscountAmount;
-    product.total_discount = totals.totalDiscount;
-    product.tax = totals.tax;
-    product.total = totals.total;
+    // Use setDataValue for Sequelize models, or direct assignment for plain objects
+    const setProduct = (key, val) => {
+      if (product.setDataValue) product.setDataValue(key, val);
+      else product[key] = val;
+    };
+    setProduct('sub_price', totals.subPrice);
+    setProduct('making_charge_discount_amount', totals.makingChargeDiscountAmount);
+    setProduct('total_discount', totals.totalDiscount);
+    setProduct('tax', totals.tax);
+    setProduct('total', totals.total);
 
     /* Keep the product's own split consistent with how it was stored. */
     if (num(product.cgst_tax) > 0 || num(product.sgst_tax) > 0) {
-      product.cgst_tax = round2(totals.tax / 2);
-      product.sgst_tax = round2(totals.tax / 2);
-      product.igst_tax = 0;
+      setProduct('cgst_tax', round2(totals.tax / 2));
+      setProduct('sgst_tax', round2(totals.tax / 2));
+      setProduct('igst_tax', 0);
     } else {
-      product.igst_tax = totals.tax;
+      setProduct('igst_tax', totals.tax);
     }
 
     saleTaxable += totals.taxable;
@@ -237,20 +247,25 @@ const repriceSaleAtLiveGold = (sale, liveRates) => {
      by the metal rate, so it rides along untouched. */
   const billAmount = round2(saleTaxable + saleTax - num(sale.discount));
 
-  sale.taxable_amount = saleTaxable;
-  sale.product_discount = saleDiscount;
+  // Use setDataValue for Sequelize models, or direct assignment for plain objects
+  const setSale = (key, val) => {
+    if (sale.setDataValue) sale.setDataValue(key, val);
+    else sale[key] = val;
+  };
+  setSale('taxable_amount', saleTaxable);
+  setSale('product_discount', saleDiscount);
   if (num(sale.cgst_tax) > 0 || num(sale.sgst_tax) > 0) {
-    sale.cgst_tax = round2(saleTax / 2);
-    sale.sgst_tax = round2(saleTax / 2);
-    sale.igst_tax = 0;
+    setSale('cgst_tax', round2(saleTax / 2));
+    setSale('sgst_tax', round2(saleTax / 2));
+    setSale('igst_tax', 0);
   } else {
-    sale.igst_tax = saleTax;
+    setSale('igst_tax', saleTax);
   }
-  sale.bill_amount = billAmount;
-  sale.total_payable = billAmount;
-  sale.total_amount = billAmount;
+  setSale('bill_amount', billAmount);
+  setSale('total_payable', billAmount);
+  setSale('total_amount', billAmount);
   /* What is already paid does not change; only what is still owed does. */
-  sale.due_amount = round2(Math.max(0, billAmount - num(sale.paid_amount)));
+  setSale('due_amount', round2(Math.max(0, billAmount - num(sale.paid_amount))));
 
   return { changes, taxable: saleTaxable, tax: saleTax, total: billAmount };
 };
