@@ -19,7 +19,6 @@ const getPaginationOptions = (page, size) => {
     limit: size,
   };
 };
-*/
 
 /**
  * Return data with pagination data
