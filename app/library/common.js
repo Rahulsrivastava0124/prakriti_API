@@ -555,13 +555,13 @@ const getCustomRoleIds = async () => {
 };
 
 /**
- * Live per-karat spot per gram. Read by the admin dashboard summary and
- * nowhere else - it is displayed there, never priced against. Every quoted
- * price, on the storefront and on sales and invoices alike, comes from
- * material_price_purities, so a moving spot rate cannot change what a
- * shopper or an invoice was told. Cached so a caller does not fire one HTTP
- * call per row, and so a slow or down feed cannot stall a page - callers
- * fall back when this returns 0.
+ * Live per-karat spot per gram, from the same feed the sale pay modal quotes.
+ * Read by the admin dashboard and by sale/invoice repricing (Current Invoice
+ * feature) - customer facing product, stock and cart prices come from
+ * material_price_purities, so a moving spot rate never changes what a shopper
+ * is quoted mid-session. Cached so a caller does not fire one HTTP call per
+ * row, and so a slow or down feed cannot stall a page - callers fall back
+ * when this returns 0.
  */
 // Feed endpoint comes from GOLD_RATE_URL in .env and nowhere else - with no
 // value set there is no feed, and every caller falls back to the configured
@@ -605,7 +605,8 @@ const getLiveGoldRate = async () => {
       const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
       clearTimeout(timer);
       const body = await res.json();
-      const pg = body && body.per_gram ? body.per_gram : {};
+      // Support both "per_gram" and "base_per_gram" response formats
+      const pg = body && (body.per_gram || body.base_per_gram) ? (body.per_gram || body.base_per_gram) : {};
       const rate = parseFloat(pg["24K"] || 0);
       if (rate > 0) {
         goldRateCache = {
