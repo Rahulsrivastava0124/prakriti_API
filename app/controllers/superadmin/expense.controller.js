@@ -18,6 +18,7 @@ const {
   updateWalletRemainingBalance,
   haveLeave,
   getWalletBalance,
+  hasWalletFunds,
   isDistributor,
   getUserColumnValue,
   sendNotification,
@@ -139,15 +140,13 @@ exports.store = async (req, res) => {
   let userID = await getWorkingUserID(req);
 
   if (!isSuperAdmin(req) && !isDistributor(req)) {
-    let wallet_balance = await getWalletBalance(userID, null, "expense");
-    if (parseFloat(data.amount) > wallet_balance) {
+    if (!(await hasWalletFunds(userID, null, data.amount, "expense"))) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse("Insufficient wallet balance."));
     }
   } else {
-    let wallet_balance = await getWalletBalance(userID, data.payment_mode);
-    if (parseFloat(data.amount) > wallet_balance) {
+    if (!(await hasWalletFunds(userID, data.payment_mode, data.amount))) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse("Insufficient wallet balance."));
@@ -311,9 +310,9 @@ exports.update = async (req, res) => {
   let userID = await getWorkingUserID(req);
 
   if (!isSuperAdmin(req) && !isDistributor(req)) {
-    let wallet_balance = await getWalletBalance(userID, null, "expense");
+    // Editing an expense only needs the *increase* covered, not the whole amount.
     let moreAmt = parseFloat(data.amount) - parseFloat(expense.amount);
-    if (moreAmt > 0 && moreAmt > wallet_balance) {
+    if (!(await hasWalletFunds(userID, null, moreAmt, "expense"))) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse("Insufficient wallet balance."));
