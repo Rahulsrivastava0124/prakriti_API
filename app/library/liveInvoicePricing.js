@@ -430,6 +430,4 @@ if (require.main === module) {
   assert.strictEqual(live.tax, 63.71, "sale tax");
   assert.strictEqual(sale2.total_payable, 2187.39, "sale total payable");
   assert.strictEqual(sale2.due_amount, 2187.39, "due follows the new total");
-
-  console.log("liveInvoicePricing self-check passed");
 }
