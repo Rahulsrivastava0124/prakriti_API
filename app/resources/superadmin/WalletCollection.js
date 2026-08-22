@@ -81,7 +81,13 @@ const getModelObject = async (data, index = null, p_mode = null) => {
     !data.parent_id &&
     (data.status == "pending" || data.status == "failed")
   ) {
-    action_status = "Processed";
+    /*
+     * A declined request is finished and refused, not merely "acted on" - this
+     * branch used to label it "Processed" (green) alongside the pending rows it
+     * was written for, so a decline read as though it had gone through. Only a
+     * still-pending row that has been superseded is Processed.
+     */
+    action_status = data.status == "failed" ? "Declined" : "Processed";
     if (data.payment_mode == "cheque") {
       if (!isEmpty(data.ref_no)) {
         display_mode +=
