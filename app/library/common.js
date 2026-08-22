@@ -807,7 +807,7 @@ const calculateProductPrice = async (
         if (isMaterial && parseInt(materials[i].quantity) > 0) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
-          total_gram = convertUnitToGram(unit_name, 1);
+          total_gram = convertUnitToGram(unit_name, perWeight);
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -1007,7 +1007,7 @@ const calculateProductPriceCartNew = async (
         if (isMaterial && parseInt(materials[i].quantity) > 0) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
-          total_gram = convertUnitToGram(unit_name, 1);
+          total_gram = convertUnitToGram(unit_name, perWeight);
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
