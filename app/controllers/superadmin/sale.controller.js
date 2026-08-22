@@ -48,18 +48,9 @@ const {
   getOwnUserSaleProducts,
   getUserColumnValue,
   avlStockUserIdsNew,
-  getLiveGoldRate,
 } = require("@library/common");
 const { getPaginationOptions } = require("@helpers/paginator");
 const { byTxnDateDesc } = require("@helpers/ledgerOrder");
-const { repriceSaleAtLiveGold } = require("@library/liveInvoicePricing");
-
-/* The "Current Invoice" button posts current=1; accepted on the query string or
-   in the body so either style of call works. */
-const isCurrentRateInvoice = (req) => {
-  const flag = req.query?.current ?? req.body?.current;
-  return flag === true || flag === 1 || flag === "1" || flag === "true";
-};
 const { SaleCollection } = require("@resources/superadmin/SaleCollection");
 const {
   SaleListCollection,
@@ -2672,33 +2663,7 @@ exports.view = async (req, res) => {
       .send(formatErrorResponse("Sale not found"));
   }
 
-  /* The sale view page asks for current=1 so it always shows the metal at
-     today's rate. Opt-in rather than automatic: this same endpoint prefills the
-     sale form when a sale on approval is turned into a sale, and repricing there
-     would bake live rates into a brand new sale. Nothing is persisted either
-     way — the instance is only reshaped for this response. */
-  let liveGold = null;
-  if (isCurrentRateInvoice(req)) {
-    const liveRates = await getLiveGoldRate();
-    const repricing = repriceSaleAtLiveGold(sale, liveRates);
-    /* The page has to be able to say which rate it is showing, and to stay
-       quiet when the feed gave us nothing (rate 0) rather than print a zero. */
-    liveGold = {
-      applied: repricing.changes.length > 0,
-      rate_24k: liveRates.rate || 0,
-      rate_22k: liveRates.rate22 || 0,
-      rate_18k: liveRates.rate18 || 0,
-      display: liveRates.display || "",
-      changes: repricing.changes,
-    };
-  }
-
-  res.send(
-    formatResponse(
-      { ...SaleCollection(sale), live_gold: liveGold },
-      "Sale details"
-    )
-  );
+  res.send(formatResponse(SaleCollection(sale), "Sale details"));
 };
 
 /**
@@ -6746,35 +6711,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
       .send(formatErrorResponse("Sale not found"));
   }
 
-  /* "Current Invoice": the same jewellery re-costed at today's gold rate. The
-     plain Invoice button keeps printing the rates frozen at sale time; this
-     branch reprices the loaded instance IN MEMORY ONLY — never saved — so the
-     template below renders the live figures instead. */
-  const atCurrentRate = isCurrentRateInvoice(req);
-  let liveRepricing = null;
-  if (atCurrentRate) {
-    const liveRates = await getLiveGoldRate();
-    liveRepricing = repriceSaleAtLiveGold(sale, liveRates);
-    liveRepricing.rate_display = liveRates.display || "";
-    liveRepricing.rates = liveRates;
-  }
-
-  /**
-   * A current invoice prints the rate it was costed at, otherwise the reader
-   * cannot tell it apart from the historical one. Stays silent when the feed
-   * gave nothing, rather than printing a zero rate.
-   */
-  const liveGoldLine =
-    atCurrentRate && liveRepricing && liveRepricing.changes.length
-      ? `<li><span style="font-weight: 400; font-size: 12px; margin: 0;">Gold Rate (today) - </span>` +
-        `<span style="font-weight: 600; font-size: 12px; margin: 0;">` +
-        [
-          liveRepricing.rates && liveRepricing.rates.rate22 ? `22K ${displayAmount(liveRepricing.rates.rate22)}/g` : "",
-          liveRepricing.rates && liveRepricing.rates.rate18 ? `18K ${displayAmount(liveRepricing.rates.rate18)}/g` : "",
-        ].filter(Boolean).join(" · ") +
-        `</span></li>`
-      : "";
-
   let saleData = SaleCollection(sale);
 
   let payments = await PaymentModel.findAll({
@@ -7044,7 +6980,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                                               600; font-size:
                                                               12px; margin:
                                                               0;">${saleData.invoice_number}</span></li>
-                                                      ${liveGoldLine}
                                                   </ul>
                                                   <ul style="margin: 0;
                                                       padding: 0;margin-left:52px; list-style:
@@ -7680,9 +7615,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   `;
 
   try {
-    /* Separate file, so a current-rate copy can never overwrite the real invoice
-       sitting at <invoice>_info.pdf. */
-    const file_suffix = atCurrentRate ? "_info_current.pdf" : "_info.pdf";
+    const file_suffix = "_info.pdf";
     let file_path =
       "public/invoices/" + saleData.invoice_number + file_suffix;
     const options = { format: "A4" };
@@ -7709,8 +7642,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
             sale,
             saleData,
             payments,
-            at_current_rate: atCurrentRate,
-            live_repricing: liveRepricing,
           },
           "Invoice pdf",
         ),
