@@ -32,6 +32,8 @@ const {
   updateRetailerAvgReview,
   getAdminDistributorIds,
   getAdminSEWhereCondition,
+  emailExists,
+  normalizeEmail,
 } = require("@library/common");
 const {
   RetailerCollection,
@@ -284,6 +286,15 @@ exports.store = async (req, res) => {
       .send(formatErrorResponse("This mobile is already exists."));
   }
 
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
+  }
+
   //upload profile image
   let profile_image = null;
   let result = await base64FileUpload(data.profile_image, "users");
@@ -328,7 +339,7 @@ exports.store = async (req, res) => {
     created_by: req.userId,
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -431,6 +442,15 @@ exports.update = async (req, res) => {
       .send(formatErrorResponse("This mobile is already exists."));
   }
 
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email, req.params.id)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
+  }
+
   //upload profile image
   let profile_image = admin.profile_image;
   if (!isEmpty(data.profile_image) || data.remove_profile_image) {
@@ -526,7 +546,7 @@ exports.update = async (req, res) => {
   let postData = {
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,

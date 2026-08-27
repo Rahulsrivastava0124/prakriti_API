@@ -24,6 +24,8 @@ const {
   isDistributor,
   isSalesExecutive,
   getUserColumnValue,
+  emailExists,
+  normalizeEmail,
 } = require("@library/common");
 const { AdminCollection } = require("@resources/superadmin/AdminCollection");
 const userModel = db.users;
@@ -187,6 +189,15 @@ exports.store = async (req, res) => {
   }
 
   /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
+  }
+
+  /**
    * check unique own admin based on state
    */
   const existOwnAdmin = await userModel.findOne({
@@ -246,7 +257,7 @@ exports.store = async (req, res) => {
     role_id: adminRoleId,
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -322,6 +333,15 @@ exports.update = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
+  }
+
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email, req.params.id)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
   }
 
   /**
@@ -437,7 +457,7 @@ exports.update = async (req, res) => {
   let postData = {
     name: data.name,
     user_name: user_name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
