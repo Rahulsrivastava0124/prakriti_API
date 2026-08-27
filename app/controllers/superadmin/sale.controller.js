@@ -44,7 +44,6 @@ const {
   getDistributorAdmin,
   isAdmin,
   getWalletBalance,
-  hasWalletFunds,
   getOwnUserSaleProducts,
   getUserColumnValue,
   avlStockUserIdsNew,
@@ -1210,22 +1209,12 @@ exports.store = async (req, res) => {
   }
 
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
-  /*
-   * A sale settled entirely out of the buyer's advance still moves real money,
-   * so the advance has to cover it. Commented out until now, which let the
-   * balance run negative.
-   */
-  if (data.advance_amount > 0 && data.due_amount == 0) {
-    if (!(await hasWalletFunds(userID, data.payment_mode, data.total_payable))) {
-      return res
-        .status(errorCodes.default)
-        .send(
-          formatErrorResponse(
-            "Insufficient wallet balance for adjust sale amount from advance.",
-          ),
-        );
-    }
-  }
+  // if (data.advance_amount > 0 && data.due_amount == 0) {
+  //   let walletBalance = await getWalletBalance(userID, data.payment_mode);
+  //   if (walletBalance < priceFormat(data.total_payable)) {
+  //     return res.status(errorCodes.default).send(formatErrorResponse("Insufficient wallet balance for adjust sale amount from advance."));
+  //   }
+  // }
 
   try {
     //const trans = await sequelize.transaction(async (t) => {
@@ -1753,14 +1742,7 @@ exports.store = async (req, res) => {
           payment_date: moment().format("YYYY-MM-DD"),
           txn_id: data.transaction_no,
           cheque_no: data.cheque_no,
-          /*
-           * Both halves of the pair have to wait together. This was hardcoded
-           * "success" while the credit above honoured the approval rule, so a
-           * cheque or RTGS sale debited the buyer immediately and left the
-           * seller's credit pending - the money left one wallet and arrived in
-           * none, which is one way a buyer's balance went negative.
-           */
-          status: requiresPaymentApproval(data.payment_mode) ? "pending" : "success",
+          status: "success",
           type: "debit",
           table_type: "purchase",
           table_id: purchase ? purchase.id : sale.id,
@@ -2156,10 +2138,13 @@ exports.statuschange = async (req, res) => {
           paidAmnt = priceFormat(paidAmnt - parseFloat(payment.amount));
         }
       }
-      if (!(await hasWalletFunds(userID, return_payment_mode, paidAmnt))) {
-        return res
-          .status(errorCodes.default)
-          .send(formatErrorResponse("Insufficient wallet balance."));
+      if (paidAmnt > 0) {
+        let walletBalance = await getWalletBalance(userID, return_payment_mode);
+        if (walletBalance < paidAmnt) {
+          return res
+            .status(errorCodes.default)
+            .send(formatErrorResponse("Insufficient wallet balance."));
+        }
       }
     }
 
@@ -2680,9 +2665,7 @@ exports.view = async (req, res) => {
   let liveGold = null;
   if (isCurrentRateInvoice(req)) {
     const liveRates = await getLiveGoldRate();
-    console.log("[Sale View] Live rates:", liveRates);
     const repricing = repriceSaleAtLiveGold(sale, liveRates);
-    console.log("[Sale View] Repricing changes:", repricing.changes);
     /* The page has to be able to say which rate it is showing, and to stay
        quiet when the feed gave us nothing (rate 0) rather than print a zero. */
     liveGold = {
@@ -2842,12 +2825,13 @@ exports.returnSale = async (req, res) => {
     (!from_retailer_customer ||
       (from_retailer_customer && return_status == "completed"))
   ) {
+    let walletBalance = await getWalletBalance(
+      userID,
+      data.return_payment_mode,
+    );
     if (
-      !(await hasWalletFunds(
-        userID,
-        data.return_payment_mode,
-        return_amount_from_wallet,
-      ))
+      return_amount_from_wallet > 0 &&
+      walletBalance < return_amount_from_wallet
     ) {
       return res
         .status(errorCodes.default)
@@ -3571,12 +3555,13 @@ exports.returnSaleNew = async (req, res) => {
       (from_retailer_customer && return_status == "completed"))
   ) {
     /* not retailer customer or retailer customer and charges not applied */
+    let walletBalance = await getWalletBalance(
+      userID,
+      data.return_payment_mode,
+    );
     if (
-      !(await hasWalletFunds(
-        userID,
-        data.return_payment_mode,
-        return_amount_from_wallet,
-      ))
+      return_amount_from_wallet > 0 &&
+      walletBalance < return_amount_from_wallet
     ) {
       return res
         .status(errorCodes.default)
@@ -6779,9 +6764,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   let liveRepricing = null;
   if (atCurrentRate) {
     const liveRates = await getLiveGoldRate();
-    console.log("[Current Invoice] Live rates:", liveRates);
     liveRepricing = repriceSaleAtLiveGold(sale, liveRates);
-    console.log("[Current Invoice] Repricing changes:", liveRepricing.changes);
     liveRepricing.rate_display = liveRates.display || "";
     liveRepricing.rates = liveRates;
   }
@@ -6923,12 +6906,9 @@ exports.downloadInvoiceInfo = async (req, res) => {
                             <td>
                               <table cellspacing="0" cellpadding="0" border="0"
                                   align="center" width="100%">
-                                  <tr><td style="position: relative;">
                                   <h1 style="font-size: 14px; text-align:
                                       center; margin-bottom: 5px; font-weight:
                                       300;">SALE${saleData.is_approved == "3" ? " ON APPROVAL" : ""} TAX INVOICE</h1>
-                                  ${atCurrentRate ? `<span style="position: absolute; top: 0; right: 10px; background: #e53935; color: #fff; padding: 4px 12px; font-size: 11px; font-weight: 600; border-radius: 3px;">CURRENT RATE</span>` : ""}
-                                  </td></tr>
                               </table>
                               <table cellspacing="0" cellpadding="0" border="0"
                                   align="center" width="100%">
