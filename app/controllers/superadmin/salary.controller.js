@@ -59,7 +59,7 @@ const SaleModel = db.sales;
 const dbSequelize = db.sequelize;
 const _ = require("lodash");
 const moment = require("moment");
-const { generatePdf } = require("@helpers/pdf");
+const puppeteer = require("puppeteer");
 const fs = require("fs");
 const { priceFormat, displayAmount } = require("../../helpers/helper");
 
@@ -1382,12 +1382,31 @@ exports.download = async (req, res) => {
     );
     let file_path = "public/salaries/" + file_name + ".pdf";
 
-    const pdfBuffer = await generatePdf(
-      { content: html },
-      { format: "A4", margin: { top: "0px", right: "0px", bottom: "10mm", left: "0px" }, printBackground: true }
-    );
-    fs.mkdirSync("public/salaries", { recursive: true });
-    fs.writeFileSync(file_path, pdfBuffer);
+    // Create a browser instance
+    const browser = await puppeteer.launch({
+      executablePath: "/usr/bin/chromium-browser",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    // Create a new page
+    const page = await browser.newPage();
+
+    //Get HTML content from HTML file
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+
+    // To reflect CSS used for screens instead of print
+    await page.emulateMediaType("screen");
+
+    // Downlaod the PDF
+    const pdf = await page.pdf({
+      path: file_path,
+      margin: { top: "0px", right: "0px", bottom: "10mm", left: "0px" },
+      printBackground: true,
+      format: "A4",
+    });
+
+    // Close the browser instance
+    await browser.close();
 
     res.send(
       formatResponse(

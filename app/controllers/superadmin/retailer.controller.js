@@ -28,13 +28,10 @@ const {
   isDistributor,
   isSalesExecutive,
   getMyRetailerIds,
-  getMyRetailerIdsForRequest,
-  getGroupRetailerIds,
+  getSalesExecutiveTotalRetailerIds,
   updateRetailerAvgReview,
   getAdminDistributorIds,
   getAdminSEWhereCondition,
-  emailExists,
-  normalizeEmail,
 } = require("@library/common");
 const {
   RetailerCollection,
@@ -111,7 +108,8 @@ exports.index = async (req, res) => {
           .send(formatErrorResponse(errorCodes.defaultErrorMsg));
       });
   } else {
-    let userIds = await getMyRetailerIdsForRequest(req);
+    let userIds = await getMyRetailerIds(req.userId);
+    userIds = [...new Set(userIds)];
     let conditions = await getCommonCondition(req, my_retailer, userIds);
     if (!isEmpty(search)) {
       search = search.trim();
@@ -194,9 +192,6 @@ exports.index = async (req, res) => {
           }
         }
         let userWhere = { role_id: roleId };
-        if (isAdmin(req) && my_retailer == 1) {
-          userWhere.id = { [Op.in]: userIds };
-        }
         if (isSalesExecutive(req)) {
           if (my_retailer == 1) {
             userWhere.id = { [Op.in]: userIds };
@@ -289,15 +284,6 @@ exports.store = async (req, res) => {
       .send(formatErrorResponse("This mobile is already exists."));
   }
 
-  /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
-  }
-
   //upload profile image
   let profile_image = null;
   let result = await base64FileUpload(data.profile_image, "users");
@@ -342,7 +328,7 @@ exports.store = async (req, res) => {
     created_by: req.userId,
     user_name: user_name,
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -377,14 +363,14 @@ exports.store = async (req, res) => {
   userModel
     .create(postData)
     .then(async (result) => {
-      // the creator owns the retailer, which is what "My Retailer" lists
-      if (isSalesExecutive(req) || isDistributor(req) || isAdmin(req)) {
-        await UserToUserModel.create({
-          user_id: req.userId,
-          to_user_id: result.id,
-          to_role_id: roleId,
-        });
-      }
+      /* whoever adds a retailer owns it - this link is what "My Retailer"
+         counts. Only executives and distributors used to get one, so a
+         retailer an admin or the superadmin added belonged to nobody. */
+      await UserToUserModel.create({
+        user_id: req.userId,
+        to_user_id: result.id,
+        to_role_id: roleId,
+      });
 
       /**
        * Create default address
@@ -443,15 +429,6 @@ exports.update = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
-  }
-
-  /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email, req.params.id)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
   }
 
   //upload profile image
@@ -549,7 +526,7 @@ exports.update = async (req, res) => {
   let postData = {
     user_name: user_name,
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -784,28 +761,30 @@ exports.reviewUpdate = async (req, res) => {
 };
 
 const getCommonCondition = async (req, my_retailer, userIds) => {
+  /* "My Retailer" means the same thing for every role: the ones this user
+     brought in. The superadmin and the admin used to ignore the flag, so their
+     My Retailer page listed the whole scope instead of their own. */
+  if (my_retailer == 1 && (isSuperAdmin(req) || isAdmin(req))) {
+    return { id: { [Op.in]: userIds || [] } };
+  }
   if (isSuperAdmin(req)) {
-    // my_retailer means the same thing for every role: linked to me
-    return my_retailer == 1 ? { id: { [Op.in]: userIds || [] } } : {};
+    return {};
   } else if (isAdmin(req)) {
-    if (my_retailer == 1) {
-      return { id: { [Op.in]: userIds || [] } };
-    }
     let state_id = await getUserColumnValue(req.userId, "state_id");
     return { state_id: state_id };
   } else {
     if (isSalesExecutive(req)) {
       if (my_retailer == 1) {
-        // only what this sales executive created
-        return { id: { [Op.in]: userIds || [] } };
+        userIds = !userIds ? await getMyRetailerIds(req.userId) : userIds;
+        return { id: { [Op.in]: userIds } };
       } else {
-        /**
-         * Total Retailer is the team's book: every retailer belonging to this
-         * sales executive's parent and to the sales executives beside it. The
-         * old state scope showed strangers' retailers as if they were the
-         * team's, and missed any team retailer registered in another state.
-         */
-        return { id: { [Op.in]: await getGroupRetailerIds(req) } };
+        /* Total Retailer is the book of the admin chain this executive sits
+           in, which is what its dashboard card counts. The old state scope
+           showed every retailer in the state, including other admins' - so an
+           executive whose card read 0 was still listing 18 strangers. */
+        return {
+          id: { [Op.in]: await getSalesExecutiveTotalRetailerIds(req.userId) },
+        };
       }
       /*if(my_retailer == 'all'){
         return {[Op.or]: [{parent_id: req.userId}, {parent_id: {[Op.eq]: null}, district_id: district_id}]};
