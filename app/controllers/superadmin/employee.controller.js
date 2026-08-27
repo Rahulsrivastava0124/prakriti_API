@@ -21,8 +21,6 @@ const {
   isSalesExecutive,
   isSuperAdmin,
   isAdmin,
-  emailExists,
-  normalizeEmail,
 } = require("@library/common");
 const {
   EmployeeCollection,
@@ -244,15 +242,6 @@ exports.store = async (req, res) => {
       .send(formatErrorResponse("This mobile is already exists."));
   }
 
-  /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
-  }
-
   //upload profile image
   let profile_image = null;
   let result = await base64FileUpload(data.profile_image, "users");
@@ -300,7 +289,7 @@ exports.store = async (req, res) => {
     role_id: data.role_id,
     user_name: user_name,
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     parent_id: parent_id,
     adhar: data.adhar || null,
@@ -376,15 +365,6 @@ exports.update = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
-  }
-
-  /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email, req.params.id)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
   }
 
   //upload profile image
@@ -486,7 +466,7 @@ exports.update = async (req, res) => {
     user_name: user_name,
     name: data.name,
     role_id: data.role_id,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     parent_id: parent_id,
     adhar: data.adhar || null,
