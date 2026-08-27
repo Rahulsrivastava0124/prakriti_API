@@ -20,7 +20,6 @@ const {
 } = require("@resources/superadmin/PaymentCollection");
 const {
   getWalletBalance,
-  hasWalletFunds,
   getSuperAdminId,
   isSuperAdmin,
   isAdmin,
@@ -122,7 +121,11 @@ exports.store = async (req, res) => {
       if ("payment_type" in data) {
         if (data.payment_type == "send_money") {
           //check have money in wallet
-          if (!(await hasWalletFunds(currentUserID, data.payment_mode, amount))) {
+          let walletBalance = await getWalletBalance(
+            currentUserID,
+            data.payment_mode,
+          );
+          if (amount > 0 && walletBalance < amount) {
             return res
               .status(errorCodes.default)
               .send(formatErrorResponse("Insufficient wallet balance."));
@@ -147,7 +150,7 @@ exports.store = async (req, res) => {
             txn_id: data.txn_id || null,
             weight: data.effective_weight || null,
             status:
-              !requiresPaymentApproval(data.payment_mode)
+              data.payment_mode != "cheque" && data.payment_mode != "cash"
                 ? "success"
                 : "pending",
             payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
@@ -197,7 +200,7 @@ exports.store = async (req, res) => {
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" && data.payment_mode != "cash"
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -244,7 +247,8 @@ exports.store = async (req, res) => {
 
               compactLog("AMOUNT:", amount, "DUE:", due_amount, "PAID:", paid_amount, "STATUS:", status, "PAYMENT:", payment_amount);
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" &&
+                data.payment_mode != "cash"
               ) {
                 await SaleModel.update(
                   {
@@ -305,7 +309,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -341,7 +345,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -390,7 +394,8 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" &&
+                data.payment_mode != "cash"
               ) {
                 await PurchaseModel.update(
                   {
@@ -426,7 +431,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
@@ -496,7 +501,7 @@ exports.store = async (req, res) => {
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" && data.payment_mode != "cash"
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -549,7 +554,7 @@ exports.store = async (req, res) => {
               });
             }
             let paymentStatus =
-              isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode)
+              isPaymentToSuperAdmin || data.payment_mode == "cheque"
                 ? "pending"
                 : "success";
             let purpose = "",
@@ -628,7 +633,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -675,7 +680,8 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" &&
+                data.payment_mode != "cash"
               ) {
                 await SaleModel.update(
                   {
@@ -736,7 +742,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -772,7 +778,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -837,8 +843,8 @@ exports.store = async (req, res) => {
               compactLog("======STATUS=====", status);
               compactLog("======PAYMENT AMOUNT=====", payment_amount);
               //return false;
-              //if ((!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode)) || data.payment_mode == "metal") {
-              if (!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode)) {
+              //if ((!isPaymentToSuperAdmin && data.payment_mode != "cheque") || data.payment_mode == "metal") {
+              if (!isPaymentToSuperAdmin && data.payment_mode != "cheque") {
                 await PurchaseModel.update(
                   {
                     due_amount: due_amount,
@@ -870,7 +876,7 @@ exports.store = async (req, res) => {
                 isAdmin(user.role_id) &&
                 item.sale_id;
 
-              if (isAdminSupplier && !requiresPaymentApproval(data.payment_mode)) {
+              if (isAdminSupplier && data.payment_mode != "cheque") {
                 await SaleModel.update(
                   {
                     due_amount: due_amount,
@@ -885,7 +891,7 @@ exports.store = async (req, res) => {
               }
 
               let paymentStatus =
-                isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode)
+                isPaymentToSuperAdmin || data.payment_mode == "cheque"
                   ? "pending"
                   : "success";
 
@@ -1037,7 +1043,7 @@ exports.store = async (req, res) => {
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" && data.payment_mode != "cash"
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1089,7 +1095,7 @@ exports.store = async (req, res) => {
               });
             }
             let paymentStatus =
-              isPaymentToAdmin || requiresPaymentApproval(data.payment_mode)
+              isPaymentToAdmin || data.payment_mode == "cheque"
                 ? "pending"
                 : "success";
             let purpose = "";
@@ -1167,7 +1173,7 @@ exports.store = async (req, res) => {
                 amount = 0;
               }
 
-              if (!isPaymentToAdmin && !requiresPaymentApproval(data.payment_mode)) {
+              if (!isPaymentToAdmin && data.payment_mode != "cheque") {
                 await PurchaseModel.update(
                   {
                     due_amount: due_amount,
@@ -1191,7 +1197,7 @@ exports.store = async (req, res) => {
               }
 
               let paymentStatus =
-                isPaymentToAdmin || requiresPaymentApproval(data.payment_mode)
+                isPaymentToAdmin || data.payment_mode == "cheque"
                   ? "pending"
                   : "success";
 
@@ -1281,7 +1287,8 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" &&
+                data.payment_mode != "cash"
               ) {
                 await SaleModel.update(
                   {
@@ -1341,7 +1348,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1376,7 +1383,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1467,7 +1474,7 @@ exports.store = async (req, res) => {
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" && data.payment_mode != "cash"
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1497,7 +1504,7 @@ exports.store = async (req, res) => {
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" && data.payment_mode != "cash"
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
@@ -1545,7 +1552,8 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                data.payment_mode != "cheque" &&
+                data.payment_mode != "cash"
               ) {
                 await SaleModel.update(
                   {
@@ -1605,7 +1613,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1640,7 +1648,7 @@ exports.store = async (req, res) => {
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  data.payment_mode != "cheque" && data.payment_mode != "cash"
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1884,7 +1892,8 @@ exports.updateStatus = async (req, res) => {
               if (childPayment) {
                 // do not modify sender-side payment rows here; only update purchase records when appropriate
                 if (
-                  !requiresPaymentApproval(childPayment.payment_mode)
+                  childPayment.payment_mode != "cheque" &&
+                  childPayment.payment_mode != "cash"
                 ) {
                   const updateObj2 = { due_amount, paid_amount, status };
                   if (payment.due_date)

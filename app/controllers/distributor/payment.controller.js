@@ -2,8 +2,7 @@ const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/resp
 const { getPaginationOptions } = require('@helpers/paginator');
 const db = require("@models");
 const moment = require('moment');
-const { isEmpty, getDateFromToWhere, displayAmount, priceFormat, requiresPaymentApproval } = require("@helpers/helper");
-const { getWorkingUserID, hasWalletFunds } = require("@library/common");
+const { isEmpty, getDateFromToWhere, displayAmount, priceFormat } = require("@helpers/helper");
 const sequelize = db.sequelize;
 const {PaymentCollection} = require("@resources/superadmin/PaymentCollection");
 const PaymentModel = db.payments;
@@ -57,21 +56,6 @@ exports.index = async (req, res) => {
 exports.store = async (req, res) => {
   let data = req.body;
 
-  /*
-   * This path used to create every payment as `status: "success"` with no
-   * balance check at all, so a distributor could settle a cheque or RTGS
-   * invoice instantly and overdraw the wallet. It now follows the same rule as
-   * every other invoice payment: cash and UPI settle on the spot, cheque and
-   * RTGS wait to be accepted, and the wallet has to cover the amount either
-   * way.
-   */
-  let payerID = await getWorkingUserID(req);
-  if (!(await hasWalletFunds(payerID, data.payment_mode, data.amount))) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("Insufficient wallet balance."));
-  }
-
   try {
     
     const trans = await sequelize.transaction(async (t) => {
@@ -116,7 +100,7 @@ exports.store = async (req, res) => {
           cheque_no: data.cheque_no || null,
           txn_id: data.txn_id || null,
           status: "success",
-          payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+          payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
           table_type: data.table_type,
           table_id: item.id
         }, { transaction: t });
