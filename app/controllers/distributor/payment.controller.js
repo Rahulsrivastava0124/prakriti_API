@@ -103,7 +103,7 @@ exports.store = async (req, res) => {
             due_amount: due_amount,
             paid_amount: paid_amount,
             status: status,
-            due_date: moment(data.due_date).format("YYYY-MM-DD")
+            due_date: moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
           },{where: {id: item.id}, transaction: t});
         }
 
@@ -115,7 +115,7 @@ exports.store = async (req, res) => {
           notes: data.notes || null,
           cheque_no: data.cheque_no || null,
           txn_id: data.txn_id || null,
-          status: "success",
+          status: requiresPaymentApproval(data.payment_mode) ? "pending" : "success",
           payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
           table_type: data.table_type,
           table_id: item.id

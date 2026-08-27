@@ -1,31 +1,18 @@
-const { isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount, ucWords } = require("@helpers/helper");
-const { getTotalStockPriceByUser, getTotalStockByUser, getWalletBalance, getTodayAttendence, getLoginLogoutAddress, getRoleId, getMyRetailerCount, getSalesExecutiveTotalRetailerCount } = require("@library/common");
+const {
+  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, isArray, displayAmount, ucWords } = require("@helpers/helper");
+const { getTotalStockPriceByUser, getTotalStockByUser, getWalletBalance, getTodayAttendence, getLoginLogoutAddress } = require("@library/common");
 
 
 const EmployeeListCollection = async(data, load_stock_wallet) => {
-    /* Total Retailer is a figure of the admin chain, so every sales executive
-       under one parent shares it - resolve it once per parent, not once per row */
-    const totalRetailerByParent = new Map();
     if(isObject(data)){
-        return await getModelObject(data, load_stock_wallet, totalRetailerByParent);
+        return await getModelObject(data, load_stock_wallet);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], load_stock_wallet, totalRetailerByParent));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, load_stock_wallet));
+
     }
 }
 
-const getTotalRetailer = (data, cache) => {
-    const key = data.parent_id || `self:${data.id}`;
-    if(!cache.has(key)){
-        cache.set(key, getSalesExecutiveTotalRetailerCount(data.id));
-    }
-    return cache.get(key);
-}
-
-const getModelObject = async(data, load_stock_wallet, totalRetailerByParent) => {
+const getModelObject = async(data, load_stock_wallet) => {
     let documents = [];
     if(isArray(data.documents)){
         for(let i = 0; i < data.documents.length; i++){
@@ -44,14 +31,6 @@ const getModelObject = async(data, load_stock_wallet, totalRetailerByParent) => 
     }
     attendence = await getTodayAttendence(data);
     attendence_address = await getLoginLogoutAddress(data.id);
-
-    /* Own Retailer is what this executive brought in, Total Retailer is the
-       admin chain's whole book - the pair the executive's own dashboard shows */
-    let ownRetailer = 0, totalRetailer = 0;
-    if(data.role_id == getRoleId("sales_executive")){
-        ownRetailer = await getMyRetailerCount(data.id);
-        totalRetailer = await getTotalRetailer(data, totalRetailerByParent);
-    }
 
     return {
         id: data.id,
@@ -96,8 +75,6 @@ const getModelObject = async(data, load_stock_wallet, totalRetailerByParent) => 
         parents_name: data.parents_name || '',
         parents_contact_no: data.parents_contact_no || '',
         parent_user_name: parent_user_name,
-        own_retailer: ownRetailer,
-        total_retailer: totalRetailer,
         total_stock: totalStock,
         total_stock_price: displayAmount(totalStockPrice),
         wallet_balance: displayAmount(walletBalance),

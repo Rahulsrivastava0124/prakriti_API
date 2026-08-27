@@ -22,7 +22,7 @@ module.exports = (app, express, io) => {
     router.post("/auth/reset-password", [], authController.resetPassword);
 
     //dashboard
-    router.get("/dashboard", [], dashboardController.index);
+    router.get("/dashboard", [authJwt.verifyToken], dashboardController.index);
 
     //signup
     router.post("/signup", signup, signupController.signup);

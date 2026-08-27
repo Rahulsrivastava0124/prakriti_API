@@ -1,4 +1,5 @@
 const {
+  mapConcurrent,
   isObject,
   getFileAbsulatePath,
   isEmpty,
@@ -21,11 +22,8 @@ const AdminCollection = async (data, saleByUserId = null) => {
   if (isObject(data)) {
     return await getModelObject(data, saleByUserId);
   } else {
-    let arr = [];
-    for (let i = 0; i < data.length; i++) {
-      arr.push(await getModelObject(data[i], saleByUserId));
-    }
-    return arr;
+    return await mapConcurrent(data, (item, i) => getModelObject(item, saleByUserId));
+
   }
 };
 

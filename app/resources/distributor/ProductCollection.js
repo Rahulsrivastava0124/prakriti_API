@@ -1,4 +1,5 @@
-const { isObject, getFileAbsulatePath, isEmpty, productTypeDisplay, displayAmount, priceFormat, isArray } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, productTypeDisplay, displayAmount, priceFormat, isArray } = require("@helpers/helper");
 const {calculateProductPriceCart} = require("@library/common");
 const {StockMaterialCollection} = require("@resources/distributor/StockMaterialCollection");
 const _ = require("lodash");
@@ -7,11 +8,8 @@ const ProductCollection = async(data) => {
     if(isObject(data)){
         return await getModelObject(data);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i]));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item));
+
     }
 }
 

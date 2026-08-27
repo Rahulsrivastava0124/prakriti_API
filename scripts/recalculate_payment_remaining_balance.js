@@ -43,20 +43,16 @@ const main = async () => {
   });
 
   if (!summary.total) {
-    console.log("No payments found.");
     return;
   }
 
   for (const result of summary.results) {
-    console.log(JSON.stringify(result));
   }
 
-  console.log(JSON.stringify(summary));
 };
 
 main()
   .catch((error) => {
-    console.error(error.message || error);
     process.exitCode = 1;
   })
   .finally(async () => {

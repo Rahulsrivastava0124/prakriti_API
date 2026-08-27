@@ -13,6 +13,7 @@ const {
   getDateFromToWhere,
   displayAmount,
   priceFormat,
+  requiresPaymentApproval,
 } = require("@helpers/helper");
 const sequelize = db.sequelize;
 const {
@@ -146,14 +147,16 @@ exports.store = async (req, res) => {
             cheque_no: data.cheque_no || null,
             txn_id: data.txn_id || null,
             weight: data.effective_weight || null,
+            metal_rate: data.metal_rate || null,
+            gross_weight: data.weight || null,
             status:
-              !requiresPaymentApproval(data.payment_mode)
+              !requiresPaymentApproval(data.payment_mode, data.payment_type)
                 ? "success"
                 : "pending",
-            payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
+            payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
             payment_belongs: currentUserID,
             due_date: data.due_date
-              ? moment(data.due_date).format("YYYY-MM-DD")
+              ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
               : null,
             type: data.table_type == "purchase" ? "debit" : "credit",
             purpose:
@@ -196,8 +199,10 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -205,7 +210,7 @@ exports.store = async (req, res) => {
               ),
               payment_belongs: data.user_id,
               due_date: data.due_date
-                ? moment(data.due_date).format("YYYY-MM-DD")
+                ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                 : null,
               type: "debit",
               purpose: "superadmin advance",
@@ -244,7 +249,7 @@ exports.store = async (req, res) => {
 
               compactLog("AMOUNT:", amount, "DUE:", due_amount, "PAID:", paid_amount, "STATUS:", status, "PAYMENT:", payment_amount);
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -252,7 +257,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.id }, transaction: t },
@@ -265,7 +270,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { sale_id: item.id }, transaction: t },
@@ -304,8 +309,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -315,7 +322,7 @@ exports.store = async (req, res) => {
                 table_id: item.id,
                 payment_belongs: currentUserID,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "credit",
                 purpose: "sale",
@@ -340,8 +347,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -351,7 +360,7 @@ exports.store = async (req, res) => {
                 table_id: purchase ? purchase.id : null,
                 payment_belongs: data.user_id,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "sale",
@@ -390,7 +399,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await PurchaseModel.update(
                   {
@@ -398,7 +407,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.id }, transaction: t },
@@ -425,16 +434,18 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
-                payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
+                payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
                 table_type: data.table_type,
                 table_id: item.id,
                 payment_belongs: currentUserID,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "purchase",
@@ -468,6 +479,8 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status: "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
@@ -495,8 +508,10 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -534,13 +549,15 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status: "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
                 ),
                 payment_belongs: data.user_id,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "credit",
                 purpose: "admin advance",
@@ -549,7 +566,7 @@ exports.store = async (req, res) => {
               });
             }
             let paymentStatus =
-              isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode)
+              isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode, data.payment_type)
                 ? "pending"
                 : "success";
             let purpose = "",
@@ -579,13 +596,15 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status: paymentStatus,
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
               ),
               payment_belongs: currentUserID,
               due_date: data.due_date
-                ? moment(data.due_date).format("YYYY-MM-DD")
+                ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                 : null,
               type: type,
               purpose: purpose,
@@ -627,8 +646,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -636,7 +657,7 @@ exports.store = async (req, res) => {
                 ),
                 payment_belongs: data.user_id,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "admin advance",
@@ -675,7 +696,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -683,7 +704,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.id }, transaction: t },
@@ -696,7 +717,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { sale_id: item.id }, transaction: t },
@@ -735,8 +756,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -746,7 +769,7 @@ exports.store = async (req, res) => {
                 table_id: item.id,
                 payment_belongs: currentUserID,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "credit",
                 purpose: "sale",
@@ -771,8 +794,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -782,7 +807,7 @@ exports.store = async (req, res) => {
                 table_id: purchase ? purchase.id : null,
                 payment_belongs: data.user_id,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "sale",
@@ -807,7 +832,7 @@ exports.store = async (req, res) => {
               isPaymentToSuperAdmin = true;
             }
             compactLog(
-              data.due_date ? moment(data.due_date).format("YYYY-MM-DD") : null,
+              data.due_date ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD") : null,
             );
             for (let i = 0; i < tableData.length; i++) {
               let item = tableData[i];
@@ -837,15 +862,15 @@ exports.store = async (req, res) => {
               compactLog("======STATUS=====", status);
               compactLog("======PAYMENT AMOUNT=====", payment_amount);
               //return false;
-              //if ((!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode)) || data.payment_mode == "metal") {
-              if (!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode)) {
+              //if ((!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode, data.payment_type)) || data.payment_mode == "metal") {
+              if (!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode, data.payment_type)) {
                 await PurchaseModel.update(
                   {
                     due_amount: due_amount,
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.id }, transaction: t },
@@ -870,14 +895,14 @@ exports.store = async (req, res) => {
                 isAdmin(user.role_id) &&
                 item.sale_id;
 
-              if (isAdminSupplier && !requiresPaymentApproval(data.payment_mode)) {
+              if (isAdminSupplier && !requiresPaymentApproval(data.payment_mode, data.payment_type)) {
                 await SaleModel.update(
                   {
                     due_amount: due_amount,
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.sale_id }, transaction: t },
@@ -885,7 +910,7 @@ exports.store = async (req, res) => {
               }
 
               let paymentStatus =
-                isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode)
+                isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "pending"
                   : "success";
 
@@ -903,6 +928,8 @@ exports.store = async (req, res) => {
                   cheque_no: data.cheque_no || null,
                   txn_id: data.txn_id || null,
                   weight: data.effective_weight || null,
+                  metal_rate: data.metal_rate || null,
+                  gross_weight: data.weight || null,
                   status: "pending",
                   payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                     "YYYY-MM-DD",
@@ -911,7 +938,7 @@ exports.store = async (req, res) => {
                   table_id: item.sale_id,
                   payment_belongs: data.user_id,
                   due_date: data.due_date
-                    ? moment(data.due_date).format("YYYY-MM-DD")
+                    ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                     : null,
                   type: "credit",
                   purpose: "sale",
@@ -931,6 +958,8 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status: paymentStatus,
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
@@ -939,7 +968,7 @@ exports.store = async (req, res) => {
                 table_id: item.id,
                 payment_belongs: currentUserID,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "purchase",
@@ -965,6 +994,8 @@ exports.store = async (req, res) => {
                   cheque_no: data.cheque_no || null,
                   txn_id: data.txn_id || null,
                   weight: data.effective_weight || null,
+                  metal_rate: data.metal_rate || null,
+                  gross_weight: data.weight || null,
                   status: paymentStatus,
                   payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                     "YYYY-MM-DD",
@@ -973,7 +1004,7 @@ exports.store = async (req, res) => {
                   table_id: item.sale_id,
                   payment_belongs: data.user_id,
                   due_date: data.due_date
-                    ? moment(data.due_date).format("YYYY-MM-DD")
+                    ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                     : null,
                   type: "credit",
                   purpose: "sale",
@@ -1010,6 +1041,8 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status: "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
@@ -1036,8 +1069,10 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1074,13 +1109,15 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status: "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
                 ),
                 payment_belongs: data.user_id,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "credit",
                 purpose: "distributor advance",
@@ -1089,7 +1126,7 @@ exports.store = async (req, res) => {
               });
             }
             let paymentStatus =
-              isPaymentToAdmin || requiresPaymentApproval(data.payment_mode)
+              isPaymentToAdmin || requiresPaymentApproval(data.payment_mode, data.payment_type)
                 ? "pending"
                 : "success";
             let purpose = "";
@@ -1111,13 +1148,15 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status: paymentStatus,
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
               ),
               payment_belongs: currentUserID,
               due_date: data.due_date
-                ? moment(data.due_date).format("YYYY-MM-DD")
+                ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                 : null,
               type: isPaymentToAdmin ? "debit" : "credit",
               purpose: purpose,
@@ -1167,14 +1206,14 @@ exports.store = async (req, res) => {
                 amount = 0;
               }
 
-              if (!isPaymentToAdmin && !requiresPaymentApproval(data.payment_mode)) {
+              if (!isPaymentToAdmin && !requiresPaymentApproval(data.payment_mode, data.payment_type)) {
                 await PurchaseModel.update(
                   {
                     due_amount: due_amount,
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.id }, transaction: t },
@@ -1191,7 +1230,7 @@ exports.store = async (req, res) => {
               }
 
               let paymentStatus =
-                isPaymentToAdmin || requiresPaymentApproval(data.payment_mode)
+                isPaymentToAdmin || requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "pending"
                   : "success";
 
@@ -1207,6 +1246,8 @@ exports.store = async (req, res) => {
                   cheque_no: data.cheque_no || null,
                   txn_id: data.txn_id || null,
                   weight: data.effective_weight || null,
+                  metal_rate: data.metal_rate || null,
+                  gross_weight: data.weight || null,
                   status: "pending",
                   payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                     "YYYY-MM-DD",
@@ -1215,7 +1256,7 @@ exports.store = async (req, res) => {
                   table_id: item.sale_id,
                   payment_belongs: data.user_id,
                   due_date: data.due_date
-                    ? moment(data.due_date).format("YYYY-MM-DD")
+                    ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                     : null,
                   type: "credit",
                   purpose: "sale",
@@ -1234,6 +1275,8 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status: paymentStatus,
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
@@ -1242,7 +1285,7 @@ exports.store = async (req, res) => {
                 table_id: item.id,
                 payment_belongs: currentUserID,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "purchase",
@@ -1281,7 +1324,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -1289,7 +1332,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.id }, transaction: t },
@@ -1302,7 +1345,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { sale_id: item.id }, transaction: t },
@@ -1340,8 +1383,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1351,7 +1396,7 @@ exports.store = async (req, res) => {
                 table_id: item.id,
                 payment_belongs: currentUserID,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "credit",
                 purpose: "sale",
@@ -1375,8 +1420,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1386,7 +1433,7 @@ exports.store = async (req, res) => {
                 table_id: purchase.id,
                 payment_belongs: data.user_id,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "sale",
@@ -1425,6 +1472,8 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status: "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
@@ -1466,8 +1515,10 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1496,11 +1547,13 @@ exports.store = async (req, res) => {
               cheque_no: data.cheque_no || null,
               txn_id: data.txn_id || null,
               weight: data.effective_weight || null,
+              metal_rate: data.metal_rate || null,
+              gross_weight: data.weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "success"
                   : "pending",
-              payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
+              payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
               payment_belongs: currentUserID,
               due_date: null,
               type: "credit",
@@ -1545,7 +1598,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -1553,7 +1606,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { id: item.id }, transaction: t },
@@ -1566,7 +1619,7 @@ exports.store = async (req, res) => {
                     paid_amount: paid_amount,
                     status: status,
                     due_date: data.due_date
-                      ? moment(data.due_date).format("YYYY-MM-DD")
+                      ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                       : null,
                   },
                   { where: { sale_id: item.id }, transaction: t },
@@ -1604,8 +1657,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1615,7 +1670,7 @@ exports.store = async (req, res) => {
                 table_id: item.id,
                 payment_belongs: currentUserID,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "credit",
                 purpose: "sale",
@@ -1639,8 +1694,10 @@ exports.store = async (req, res) => {
                 cheque_no: data.cheque_no || null,
                 txn_id: data.txn_id || null,
                 weight: data.effective_weight || null,
+                metal_rate: data.metal_rate || null,
+                gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1650,7 +1707,7 @@ exports.store = async (req, res) => {
                 table_id: purchase ? purchase.id : null,
                 payment_belongs: data.user_id,
                 due_date: data.due_date
-                  ? moment(data.due_date).format("YYYY-MM-DD")
+                  ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                   : null,
                 type: "debit",
                 purpose: "sale",
@@ -1884,7 +1941,7 @@ exports.updateStatus = async (req, res) => {
               if (childPayment) {
                 // do not modify sender-side payment rows here; only update purchase records when appropriate
                 if (
-                  !requiresPaymentApproval(childPayment.payment_mode)
+                  !requiresPaymentApproval(childPayment.payment_mode, childPayment.table_type)
                 ) {
                   const updateObj2 = { due_amount, paid_amount, status };
                   if (payment.due_date)

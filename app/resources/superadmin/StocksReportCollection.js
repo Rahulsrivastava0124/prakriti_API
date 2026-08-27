@@ -1,6 +1,7 @@
-const { isObject, isEmpty, displayAmount, priceFormat, weightFormat } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, isEmpty, displayAmount, priceFormat, weightFormat } = require("@helpers/helper");
 const {StockProductCollection} = require("@resources/superadmin/StockProductCollection");
-const {calculateProductPriceReport, calculateProductPriceCart, getSuperAdminId, canStockAddCart} = require("@library/common");
+const {calculateProductPriceReport, calculateProductPriceCart, getSuperAdminId, canStockAddCart, canStockAddCartMap} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
 const db = require("@models");
 const {getFileAbsulatePath} = require("../../helpers/helper");
@@ -13,16 +14,16 @@ const StocksReportCollection = async (data, user_id, roleName = null) => {
     if(isObject(data)){
         return await getModelObject(data, user_id, roleName);
     }else{
-        let arr = []; 
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], user_id, roleName));
-        }
-        return arr;
+        /* every row prices the same few material + purity pairs, so they share
+           one lookup for the length of this response */
+        const priceCache = new Map();
+        /* cart availability for the whole page in two queries instead of one per row */
+        const cartMap = await canStockAddCartMap(data.map(item => item.id), user_id);
+        return await mapConcurrent(data, (item, i) => getModelObject(item, user_id, roleName, priceCache, cartMap));
     }
 }
 
-const getModelObject = async (data, user_id, roleName = null) => {
-    //console.log("STOCK COLLECTION-----data get modal object ",JSON.stringify(data));
+const getModelObject = async (data, user_id, roleName = null, priceCache = null, cartMap = null) => {
     let materialItem = [], materialString = [];
     let taxInfo = null;
     if('tax' in data.product && data.product.tax){
@@ -51,7 +52,7 @@ const getModelObject = async (data, user_id, roleName = null) => {
         priceRole = "retailer";
     }
 
-    let priceMaterials = await calculateProductPriceCart(data.stockMaterials, data.product.sub_category, isMaterialStock, priceRole, null, true);
+    let priceMaterials = await calculateProductPriceCart(data.stockMaterials, data.product.sub_category, isMaterialStock, priceRole, null, true, priceCache);
 
     // net material price + net (discounted) making charge = sale page "Price" (pre-tax)
     let netMaterialPrice = priceMaterials.price;
@@ -73,7 +74,6 @@ const getModelObject = async (data, user_id, roleName = null) => {
     let weight_display = [], unit_display = [], purity_display = [];
     for(let item of data.stockMaterials){
         //let str = item.material.name + ' <span style="padding-right: 18px; float: right;">' + weightFormat(item.weight) +(item.unit ? (' '+item.unit.name) : '') + '</span>';
-        console.log("item : ", item);
         let str = item.material.name;
         materialItem.push({
             material_id: item.material_id,
@@ -111,10 +111,12 @@ const getModelObject = async (data, user_id, roleName = null) => {
         total_weight_display = weightFormat(data.total_weight) + ' gm';
     }
     
-    let can_add_cart = await canStockAddCart(data.id, data.product.type, user_id, data.certificate_no);
+    let cartFlags = cartMap ? cartMap.get(String(data.id)) : null;
+    let can_add_cart = cartFlags
+        ? (data.product.type == "material" ? cartFlags.material : cartFlags.other)
+        : await canStockAddCart(data.id, data.product.type, user_id, data.certificate_no);
     let stock_user_name = data.user ? (data.user.company_name ? data.user.company_name : data.user.name) : '';
     
-    //console.log(productDetails);
 
     return {
         ...productDetails,
