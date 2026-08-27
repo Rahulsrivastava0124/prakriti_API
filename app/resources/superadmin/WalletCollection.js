@@ -83,7 +83,13 @@ const getModelObject = async (data, index = null, p_mode = null) => {
     !data.parent_id &&
     (data.status == "pending" || data.status == "failed")
   ) {
-    action_status = "Processed";
+    /*
+     * A declined request is finished and refused, not merely "acted on" - this
+     * branch used to label it "Processed" (green) alongside the pending rows it
+     * was written for, so a decline read as though it had gone through. Only a
+     * still-pending row that has been superseded is Processed.
+     */
+    action_status = data.status == "failed" ? "Declined" : "Processed";
     if (data.payment_mode == "cheque") {
       if (!isEmpty(data.ref_no)) {
         display_mode +=
@@ -140,13 +146,23 @@ const getModelObject = async (data, index = null, p_mode = null) => {
   if (index == 0 && p_mode == "advance") {
     remaining_balance = await getWalletBalance(data.payment_belongs, "Advance");
   } else remaining_balance = data.remaining_balance || 0;
-  // Show "To be processed" only for actionable pending rows.
-  if (data.status == "pending" && data.can_accept) {
-    credit_amount = 0;
-    display_mode +=
-      '<p style="margin:0;font-size:12px;color:#ff9800;">To be processed: ' +
-      displayAmount(data.amount) +
-      "</p>";
+  /*
+   * Accepted and Declined are the only final states. Until a row reaches one of
+   * them its Debit/Credit column stays empty and the figure sits beside the
+   * payment mode instead - the same rule the invoice payment tables follow, so
+   * a transfer never reads as settled on one screen and pending on another.
+   */
+  const isFinalStatus =
+    action_status === "Accepted" || action_status === "Declined";
+
+  if (!isFinalStatus) {
+    debit_amount = "";
+    credit_amount = "";
+    // Yellow chip rather than yellow text - see PaymentCollection for why.
+    display_mode = display_mode.replace(
+      "</p>",
+      '<span style="display:inline-block;margin-left:6px;padding:1px 8px;border-radius:10px;background:#ffd54f;color:#3d2f00;font-size:12px;font-weight:600;white-space:nowrap;">' + displayAmount(data.amount) + "</span></p>",
+    );
   }
 
   // Ensure action buttons are only enabled for truly pending rows that can be accepted.
