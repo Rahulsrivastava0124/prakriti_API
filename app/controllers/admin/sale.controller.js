@@ -1,4 +1,5 @@
 const config = require("@config/auth.config");
+const html_to_pdf = require("@helpers/pdf");
 const {
   errorCodes,
   formatErrorResponse,
@@ -144,7 +145,7 @@ exports.store = async (req, res) => {
       order_id: data.order_id || null,
       sale_by: req.userId,
       invoice_number: invoice_number,
-      invoice_date: moment(data.invoice_date).format("YYYY-MM-DD"),
+      invoice_date: moment(data.invoice_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
       notes: data.notes,
       payment_mode: data.payment_mode,
       transaction_no: data.transaction_no,
@@ -160,8 +161,8 @@ exports.store = async (req, res) => {
       taxable_amount: priceFormat(data.taxable_amount),
       total_payable: priceFormat(data.total_payable),
       due_amount: priceFormat(data.due_amount),
-      due_date: moment(data.due_date).format("YYYY-MM-DD"),
-      settlement_date: moment(data.settlement_date).format("YYYY-MM-DD"),
+      due_date: moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+      settlement_date: moment(data.settlement_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
     };
     let sale = await SaleModel.create(saleObj);
 
@@ -1804,7 +1805,6 @@ exports.downloadInvoice = async (req, res) => {
       );
     })
     .catch((error) => {
-      console.error(error);
     });
 };
 
@@ -2672,7 +2672,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
-      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight != null) {
+      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight) {
         metalExists = true;
         receive_metal += parseFloat(itm.weight);
       }
@@ -2747,7 +2747,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     <td style="font-size: 12px;">${payments[i].payment_date}</td>
                     <td style="font-size: 12px;">${payments[i].payment_mode}</td>
                     <td style="font-size: 12px;">${payments[i].notes}</td>
-                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
+                    <td style="font-size: 12px;">${payments[i].amount}${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight ? " (" + payments[i].weight + (payments[i].metal_rate ? " @ " + payments[i].metal_rate + "/GM" : "") + ")" : ""}</td>
                 </tr>`;
     }
     html += `</table>`;
@@ -2842,7 +2842,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -4153,7 +4153,6 @@ exports.downloadInvoiceItems = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
-    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -4230,7 +4229,7 @@ exports.downloadInvoiceItems = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })();
+    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
 
     /*const doc = new jsPDF();
     doc.html(html, {

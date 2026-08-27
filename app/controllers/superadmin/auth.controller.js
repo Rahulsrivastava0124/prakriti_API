@@ -2,7 +2,7 @@ const config = require("@config/auth.config");
 const db = require("@models");
 const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId, sendEmail } = require("@library/common");
+const { getRoleId, sendEmail, loginIdentifierWhere } = require("@library/common");
 const {
   generateRawToken,
   hashToken,
@@ -10,7 +10,7 @@ const {
   sendPasswordResetEmail,
   RESET_TOKEN_EXPIRES_MINUTES,
 } = require("@library/passwordReset");
-const { isEmpty } = require("@helpers/helper");
+const { isEmpty, addLog } = require("@helpers/helper");
 const { addActivityLog } = require("@library/activityLog");
 const {UserCollection} = require("@resources/superadmin/UserCollection");
 const UserModel = db.users;
@@ -30,7 +30,7 @@ exports.signin = async (req, res) => {
   
   let adminRoleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
-    where: { mobile: req.body.mobile,
+    where: { ...loginIdentifierWhere(req.body.mobile),
       role_id: adminRoleId
     }
   });
@@ -98,7 +98,7 @@ exports.forgotPasswordSendOtp = async(req, res) => {
   let roleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: roleId
     }
   });
@@ -133,7 +133,7 @@ exports.forgotPasswordVerifyOtp = async(req, res) => {
   let roleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: roleId,
       reset_otp: req.body.otp || ''
     }
@@ -157,7 +157,7 @@ exports.forgotPassword = async(req, res) => {
   let roleId = getRoleId('superadmin');
   const user = await UserModel.findOne({
     where: { 
-      mobile: req.body.user_name,
+      ...loginIdentifierWhere(req.body.user_name),
       role_id: roleId,
       reset_otp: req.body.otp || ''
     }
@@ -200,7 +200,13 @@ exports.forgotPasswordSendLink = async(req, res) => {
     const user = await UserModel.findOne({ where: { email, role_id: roleId } });
 
     // Only proceed for a real user with an email, but always return the same
-    // generic response so we never reveal whether an account exists.
+    // generic response so we never reveal whether an account exists. Log the
+    // no-match case though: without it a typo'd/unregistered address is
+    // indistinguishable from a broken mail server — both answer "sent".
+    if (!user || isEmpty(user.email)) {
+      addLog(`forgot-password (superadmin): no account with a registered email matches "${email}" — no mail sent`);
+    }
+
     if (user && !isEmpty(user.email)) {
       let rawToken = generateRawToken();
       let expiry = new Date(Date.now() + RESET_TOKEN_EXPIRES_MINUTES * 60 * 1000);
@@ -220,6 +226,7 @@ exports.forgotPasswordSendLink = async(req, res) => {
           expiresMinutes: RESET_TOKEN_EXPIRES_MINUTES,
         });
       } catch (mailErr) {
+        addLog(`forgot-password (superadmin): sending to ${user.email} failed — ${mailErr}`);
         // Roll back the token so a failed send doesn't leave a dangling token.
         await UserModel.update(
           { reset_token: null, reset_token_expiry: null },

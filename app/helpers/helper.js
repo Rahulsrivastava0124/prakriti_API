@@ -342,17 +342,14 @@ const getRawDateWhereQuery = (date_from, date_to, tablePrefix) => {
 
 const addLog = (log) => {
   log = JSON.stringify(log);
-  console.log("addLog : -------> ", log);
   try {
     if (!fs.existsSync("logs")) {
       fs.mkdirSync("logs", { recursive: true });
     }
   } catch (e) {
-    console.log("addLog mkdir error:", e && e.message ? e.message : e);
   }
   fs.appendFile("logs/request_logs.txt", log + "\n", (err) => {
     if (err) {
-      console.log(err);
     }
   });
 };
@@ -517,16 +514,52 @@ const paymentModeDisplay = (type) => {
 };
 
 /**
- * Payment modes that are not settled on the spot: the money is only promised
- * until the receiving side accepts it, so the payment row is created as
- * 'pending' and the balance/due amounts move only once it is approved.
+ * Payment modes that are not settled on the spot when paying an invoice: the
+ * money is only promised until the receiving side accepts it, so the payment
+ * row is created as 'pending' and the balance/due amounts move only once it is
+ * approved.
  *
- * Cash and UPI/PhonePe/GPay are realtime — they settle immediately.
+ * Cash and UPI/PhonePe/GPay are realtime - they settle immediately.
  */
 const APPROVAL_PAYMENT_MODES = ["cheque", "imps_neft"];
 
-const requiresPaymentApproval = (mode) => {
+/**
+ * Payment types raised from the wallet screen rather than against an invoice.
+ *
+ * These move money between two wallets, so the receiving side has to confirm it
+ * arrived whatever the mode - a cash hand-over or a UPI transfer is no more
+ * certain than a cheque until the other party says they got it. Everything here
+ * therefore waits for accept/decline on every mode.
+ *
+ * NOTE: `payment_type` is overloaded in this codebase. On the sale and purchase
+ * RETURN endpoints the same field name carries the refund disposition
+ * ("advance" | "return"), which has nothing to do with this list - do not route
+ * those through requiresPaymentApproval().
+ */
+const APPROVAL_PAYMENT_TYPES = ["send_money", "advance", "payment"];
+
+/**
+ * Does this payment need the receiver to accept it before the money moves?
+ *
+ * @param {string} mode        payment_mode: cash | online | cheque | imps_neft | metal
+ * @param {string} [paymentType] request-level payment_type, when the payment was
+ *   raised from the wallet screen (send_money | advance | payment). Omit for
+ *   payments made against an invoice.
+ *
+ * Metal is deliberately absent from both lists: it settles on the spot in every
+ * context, unchanged from before.
+ */
+const requiresPaymentApproval = (mode, paymentType) => {
   if (isEmpty(mode)) return false;
+  if (String(mode).toLowerCase().trim() === "metal") return false;
+
+  if (
+    !isEmpty(paymentType) &&
+    APPROVAL_PAYMENT_TYPES.includes(String(paymentType).toLowerCase().trim())
+  ) {
+    return true;
+  }
+
   return APPROVAL_PAYMENT_MODES.includes(String(mode).toLowerCase().trim());
 };
 
@@ -753,7 +786,33 @@ function cleanInput(value) {
 }
 
 
+/**
+ * Map with bounded concurrency, results in input order.
+ *
+ * The collections awaited one row at a time. Those awaits are independent
+ * reads, so a window of them can run together: same calls, same arguments,
+ * same order out - only the round trips stop stacking up. The limit stays
+ * well under the connection pool (max 20) so a busy moment queues inside
+ * sequelize instead of failing to acquire.
+ */
+const mapConcurrent = async (items, fn, limit = 8) => {
+  const list = Array.isArray(items) ? items : [];
+  const out = new Array(list.length);
+  let next = 0;
+  const runner = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= list.length) return;
+      out[i] = await fn(list[i], i);
+    }
+  };
+  const size = Math.min(limit, list.length);
+  await Promise.all(new Array(size).fill(0).map(runner));
+  return out;
+};
+
 module.exports = {
+  mapConcurrent,
   isToday,
   getItemFromMultidimensionalArray,
   getPlusMinus,
@@ -794,6 +853,8 @@ module.exports = {
   getFileAbsulatePathPDF,
   convertUnitToGram,
   paymentModeDisplay,
+  requiresPaymentApproval,
+  APPROVAL_PAYMENT_MODES,
   getFormatedAddress,
   weightFormat,
   convertPerGramPriceToPerUnit,

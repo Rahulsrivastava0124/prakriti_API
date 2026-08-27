@@ -1,4 +1,5 @@
-const { isObject, isEmpty, getFileAbsulatePath, isArray, arrayColumn, productTypeDisplay, priceFormat, displayAmount, weightFormat } = require("@helpers/helper");
+const {
+  mapConcurrent, isObject, isEmpty, getFileAbsulatePath, isArray, arrayColumn, productTypeDisplay, priceFormat, displayAmount, weightFormat } = require("@helpers/helper");
 const {ProductSizeCollection} = require("@resources/superadmin/ProductSizeCollection");
 const {ProductMaterialCollection} = require("@resources/superadmin/ProductMaterialCollection");
 const {ProductCertificateCollection} = require("@resources/superadmin/ProductCertificateCollection");
@@ -11,14 +12,15 @@ const UnitModel = db.units;
 const _ = require("lodash");
 
 const ProductCollection = async(data, params) => {
+    // Shared for the whole batch so every product/material/purity combo that
+    // repeats (materials are reused across many products) hits the DB once,
+    // not once per product - see PurityCollection and calculateProductPriceCart.
+    params = { ...(isObject(params) ? params : {}), priceCache: new Map() };
     if(isObject(data)){
         return await getModelObject(data, params);
     }else{
-        let arr = [];
-        for(let i = 0; i < data.length; i++){
-            arr.push(await getModelObject(data[i], params));
-        }
-        return arr;
+        return await mapConcurrent(data, (item, i) => getModelObject(item, params));
+
     }
 }
 
@@ -48,9 +50,7 @@ const getModelObject = async(data, params) => {
     let smaterials = gmaterials.concat(ngmaterials);
     materials = smaterials */
     if(data.id == '3'){
-        console.log("materials: ",materials);
         for(let i = 0; i < data.materials.length; i++){
-            console.log("product_material: ",data.materials[i].product_materials);
         }
     }
     let certificates = data.certificates ? ProductCertificateCollection(data.certificates) : [];
@@ -159,7 +159,7 @@ const getModelObject = async(data, params) => {
                 quantity: data.type != "material" ? item.materials[i].quantity : 1,
             })
         }
-        let priceMaterials = await calculateProductPriceCart(materials_for_price, data.sub_category, data.type == "material", 'admin');
+        let priceMaterials = await calculateProductPriceCart(materials_for_price, data.sub_category, data.type == "material", 'admin', undefined, undefined, params.priceCache);
         total_mrp_price = priceMaterials.total_mrp_price;
         if(data.type == "material"){
             total_weight = materials_for_price.length ? weightFormat(materials_for_price[0].weight) : 0;

@@ -205,7 +205,6 @@ exports.index = async (req, res) => {
     res.send(formatResponse(result, 'Products list'));
   })
   .catch(err => {
-    console.error('product.find error:', err && err.message ? err.message : err);
     res.status(errorCodes.default).send(formatErrorResponse(errorCodes.defaultErrorMsg));
   });
 

@@ -1,4 +1,5 @@
 const {
+  mapConcurrent,
   isObject,
   formatDateTime,
   ucWords,
@@ -13,18 +14,11 @@ const SaleListCollection = async (data, userId) => {
   if (isObject(data)) {
     return await getModelObject(data);
   } else {
-    let arr = [];
-    for (let i = 0; i < data.length; i++) {
-      arr.push(await getModelObject(data[i], userId));
-    }
-
-
-    return await arr;
+    return await mapConcurrent(data, (item, i) => getModelObject(item, userId));
   }
 };
 
 const getModelObject = async (data, userId) => {
-//   console.log(" in the getModelObject data", data);
 
   let approve_status = "Pending";
   if (data.is_approved == 1) {

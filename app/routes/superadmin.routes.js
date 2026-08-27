@@ -158,6 +158,23 @@ module.exports = (app, express, io) => {
     [authJwt.verifyToken, authJwt.isSuperAdmin],
     dashboardController.index,
   );
+  // Section endpoints - each computes only its own tiles, so the cheap ones are
+  // not held behind the stock valuation. /dashboard still returns all three.
+  router.get(
+    "/dashboard/summary",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    dashboardController.summary,
+  );
+  router.get(
+    "/dashboard/stock",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    dashboardController.stock,
+  );
+  router.get(
+    "/dashboard/charts",
+    [authJwt.verifyToken, authJwt.isSuperAdmin],
+    dashboardController.charts,
+  );
   router.get(
     "/next-user-name",
     [authJwt.verifyToken, authJwt.isSuperAdmin],

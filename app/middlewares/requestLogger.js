@@ -34,7 +34,6 @@ const demoLogger = (req, res, next) => {
 
   // fs.appendFile("logs/request_logs.txt", logToFile + "\n", err => {
   //   if (err) {
-  //     console.log(err);
   //   }
   // });
 

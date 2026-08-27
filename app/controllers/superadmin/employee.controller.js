@@ -21,6 +21,8 @@ const {
   isSalesExecutive,
   isSuperAdmin,
   isAdmin,
+  emailExists,
+  normalizeEmail,
 } = require("@library/common");
 const {
   EmployeeCollection,
@@ -242,6 +244,15 @@ exports.store = async (req, res) => {
       .send(formatErrorResponse("This mobile is already exists."));
   }
 
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
+  }
+
   //upload profile image
   let profile_image = null;
   let result = await base64FileUpload(data.profile_image, "users");
@@ -289,7 +300,7 @@ exports.store = async (req, res) => {
     role_id: data.role_id,
     user_name: user_name,
     name: data.name,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     parent_id: parent_id,
     adhar: data.adhar || null,
@@ -365,6 +376,15 @@ exports.update = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
+  }
+
+  /**
+   * check if email is exist or not
+   */
+  if (await emailExists(data.email, req.params.id)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("This email is already exists."));
   }
 
   //upload profile image
@@ -466,7 +486,7 @@ exports.update = async (req, res) => {
     user_name: user_name,
     name: data.name,
     role_id: data.role_id,
-    email: data.email,
+    email: normalizeEmail(data.email),
     mobile: data.mobile,
     parent_id: parent_id,
     adhar: data.adhar || null,
@@ -588,7 +608,7 @@ exports.salaryCreate = async (req, res) => {
     gross_salary: !isEmpty(data.gross_salary) ? data.gross_salary : null,
     basic_salary: !isEmpty(data.basic_salary) ? data.basic_salary : null,
     eff_date: !isEmpty(data.eff_date)
-      ? moment(data.eff_date).format("YYYY-MM-DD")
+      ? moment(data.eff_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
       : "",
     is_epf: data.is_epf >= 0 ? data.is_epf : null,
     is_medical: data.is_medical >= 0 ? data.is_medical : null,
@@ -706,7 +726,7 @@ exports.updateSalary = async (req, res) => {
     gross_salary: !isEmpty(data.gross_salary) ? data.gross_salary : null,
     basic_salary: !isEmpty(data.basic_salary) ? data.basic_salary : null,
     eff_date: !isEmpty(data.eff_date)
-      ? moment(data.eff_date).format("YYYY-MM-DD")
+      ? moment(data.eff_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
       : "",
     is_epf: data.is_epf >= 0 ? data.is_epf : null,
     is_medical: data.is_medical >= 0 ? data.is_medical : null,
