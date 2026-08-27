@@ -27,8 +27,6 @@ const {
   isDistributor,
   isSalesExecutive,
   avlStockUserIdsNew,
-  emailExists,
-  normalizeEmail,
 } = require("@library/common");
 const {
   DistributorCollection,
@@ -223,15 +221,6 @@ exports.store = async (req, res) => {
   }
 
   /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
-  }
-
-  /**
    * check unique distributor based on district
    */
   const existOwnDistributer = await userModel.findOne({
@@ -295,7 +284,7 @@ exports.store = async (req, res) => {
     parent_id: req.userId,
     user_name: user_name,
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
@@ -375,15 +364,6 @@ exports.update = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("This mobile is already exists."));
-  }
-
-  /**
-   * check if email is exist or not
-   */
-  if (await emailExists(data.email, req.params.id)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
   }
 
   /**
@@ -504,7 +484,7 @@ exports.update = async (req, res) => {
   let postData = {
     user_name: user_name,
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email,
     mobile: data.mobile,
     adhar: data.adhar || null,
     pan: data.pan || null,
