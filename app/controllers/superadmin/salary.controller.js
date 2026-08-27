@@ -25,6 +25,7 @@ const {
   getCustomRoleIds,
   getTotalAbsent,
   getWalletBalance,
+  hasWalletFunds,
 } = require("@library/common");
 const { filter, map } = require("lodash");
 const {
@@ -347,8 +348,7 @@ exports.pay = async (req, res) => {
     : 0;
   let amount = parseFloat(data.amount);
 
-  let walletBalance = await getWalletBalance(userID, data.payment_mode);
-  if (walletBalance < amount) {
+  if (!(await hasWalletFunds(userID, data.payment_mode, amount))) {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("Insufficient wallet balance."));

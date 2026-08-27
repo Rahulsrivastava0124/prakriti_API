@@ -516,6 +516,20 @@ const paymentModeDisplay = (type) => {
   }
 };
 
+/**
+ * Payment modes that are not settled on the spot: the money is only promised
+ * until the receiving side accepts it, so the payment row is created as
+ * 'pending' and the balance/due amounts move only once it is approved.
+ *
+ * Cash and UPI/PhonePe/GPay are realtime — they settle immediately.
+ */
+const APPROVAL_PAYMENT_MODES = ["cheque", "imps_neft"];
+
+const requiresPaymentApproval = (mode) => {
+  if (isEmpty(mode)) return false;
+  return APPROVAL_PAYMENT_MODES.includes(String(mode).toLowerCase().trim());
+};
+
 const getFormatedAddress = (address) => {
   if (isEmpty(address)) return "";
   let arr = [];

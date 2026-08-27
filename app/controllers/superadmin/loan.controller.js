@@ -4,7 +4,7 @@ const db = require("@models");
 const moment = require('moment');
 const { base64FileUpload, base64VideoFileUpload, removeFile, filterFilesFromRemove } = require('@helpers/upload');
 const { isEmpty, isArray, priceFormat, getLoanEMI } = require("@helpers/helper");
-const { updateOrCreate, insertLoanEMI, getWorkingUserID, updateWalletRemainingBalance, getWalletBalance, getRoleId } = require("@library/common");
+const { updateOrCreate, insertLoanEMI, getWorkingUserID, updateWalletRemainingBalance, getWalletBalance, hasWalletFunds, getRoleId } = require("@library/common");
 const { getPaginationOptions } = require('@helpers/paginator')
 const { LoanCollection } = require("@resources/superadmin/LoanCollection");
 const { LoanListCollection } = require("@resources/superadmin/LoanListCollection");
@@ -225,8 +225,7 @@ exports.payment = async (req, res) => {
 
   //check is wallet have ballance or not
   let userID = await getWorkingUserID(req);
-  let walletBalance = await getWalletBalance(userID, data.payment_mode);
-  if (amount > 0 && walletBalance < amount) {
+  if (!(await hasWalletFunds(userID, data.payment_mode, amount))) {
     return res.status(errorCodes.default).send(formatErrorResponse("Insufficient wallet balance."));
   }
 

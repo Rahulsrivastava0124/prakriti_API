@@ -23,6 +23,7 @@ const {
   updateOrCreate,
   removeMaterialFromStock,
   getWalletBalance,
+  hasWalletFunds,
   getSuperAdminId,
   getWorkingUserID,
 } = require("@library/common");
@@ -181,8 +182,7 @@ exports.store = async (req, res) => {
   }
 
   if (priceFormat(data.paid_amount) > 0) {
-    let wallet_balance = await getWalletBalance(req.userId, data.payment_mode);
-    if (priceFormat(data.paid_amount) > wallet_balance) {
+    if (!(await hasWalletFunds(req.userId, data.payment_mode, data.paid_amount))) {
       return res
         .status(errorCodes.default)
         .send(formatErrorResponse("Insufficient wallet balance."));

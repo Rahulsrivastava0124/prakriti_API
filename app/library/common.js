@@ -557,6 +557,160 @@ const getCustomRoleIds = async () => {
   return arrayColumn(roles, "id");
 };
 
+/**
+ * Live 24K spot per gram, from the same feed the sale pay modal quotes.
+ * Cached so a stock listing does not fire one HTTP call per row, and so a
+ * slow or down feed cannot stall a page - callers fall back to the configured
+ * per-gram price when this returns 0.
+ */
+const GOLD_RATE_URL = "https://n8n.prakriti.one/webhook/gold-rate-india";
+const GOLD_RATE_TTL = 10 * 60 * 1000;
+// Cache stores per-karat rates directly from the API.
+let goldRateCache = { rate: 0, rate22: 0, rate18: 0, display: "", at: 0 };
+
+/**
+ * A failed lookup is remembered too, and concurrent callers share one request.
+ *
+ * applyLiveGoldPrice() calls this once per priced material row. Only a
+ * *successful* fetch was cached, so with the feed down every row started its
+ * own request and waited the full 5 s abort - the admin dashboard's stock
+ * section sat idle for minutes, doing no queries and no work, and never
+ * answered. The failure window is short so a feed that comes back is picked up
+ * quickly; a healthy feed behaves exactly as before.
+ */
+const GOLD_RATE_FAIL_TTL = 60 * 1000;
+let goldRateFailedAt = 0;
+let goldRateInFlight = null;
+
+const getLiveGoldRate = async () => {
+  if (goldRateCache.rate && Date.now() - goldRateCache.at < GOLD_RATE_TTL) {
+    return goldRateCache;
+  }
+  if (goldRateFailedAt && Date.now() - goldRateFailedAt < GOLD_RATE_FAIL_TTL) {
+    return goldRateCache;
+  }
+  if (goldRateInFlight) return goldRateInFlight;
+
+  goldRateInFlight = (async () => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
+      clearTimeout(timer);
+      const body = await res.json();
+      const pg = body && body.per_gram ? body.per_gram : {};
+      const rate = parseFloat(pg["24K"] || 0);
+      if (rate > 0) {
+        goldRateCache = {
+          rate:    rate,
+          rate22:  parseFloat(pg["22K"] || 0),
+          rate18:  parseFloat(pg["18K"] || 0),
+          display: body.display || "",
+          at:      Date.now(),
+        };
+        goldRateFailedAt = 0;
+      } else {
+        goldRateFailedAt = Date.now();
+      }
+    } catch (e) {
+      goldRateFailedAt = Date.now();
+      addLog({ getLiveGoldRate: e.message });
+    } finally {
+      goldRateInFlight = null;
+    }
+    return goldRateCache;
+  })();
+
+  return goldRateInFlight;
+};
+
+const isGoldMaterial = (material) =>
+  !!material && /gold/i.test(material.name || "");
+
+/**
+ * Returns a plain copy of materialPrice with per_gram_price overridden by the
+ * live karat rate that matches the item's purity.
+ *
+ * The live API already returns per-karat spot prices (24K=₹14422, 22K=₹13220,
+ * 18K=₹10816). These ARE the market prices for that karat. Applying purity%
+ * on top would double-discount. We map the stored purity value to the nearest
+ * standard karat and use its rate directly:
+ *   purity ≥ 95 % → 24K rate
+ *   purity ≥ 85 % → 22K rate
+ *   purity  < 85 % → 18K rate
+ */
+const applyLiveGoldPrice = async (materialPrice, item) => {
+  if (!isGoldMaterial(item.material)) return materialPrice;
+  const purityValue = parseFloat(item.purity ? item.purity.value : NaN);
+  if (!(purityValue > 0)) return materialPrice;
+  const liveData = await getLiveGoldRate();
+  let liveRate;
+  if (purityValue >= 95) {
+    liveRate = liveData.rate;    // 24K
+  } else if (purityValue >= 85) {
+    liveRate = liveData.rate22;  // 22K
+  } else {
+    liveRate = liveData.rate18;  // 18K
+  }
+  if (!(liveRate > 0)) return materialPrice;
+  const plain = materialPrice.get
+    ? materialPrice.get({ plain: true })
+    : Object.assign({}, materialPrice);
+  plain.per_gram_price = priceFormat(liveRate);
+  return plain;
+};
+
+/**
+ * material_price_purities joined to material_prices, keyed "materialId:purityId".
+ *
+ * These are reference data (~200 rows) that changed on admin price edits only, yet
+ * they were re-joined against every stock_material row on every pricing pass -
+ * turning 8,655 stock_material rows into 25,920 through the join fan-out. Loading
+ * them once here lets the callers drop that branch of the include tree entirely.
+ *
+ * Call resetMaterialPriceCache() from any write path that edits material prices.
+ */
+let _mppCache = null;
+let _mppCacheAt = 0;
+let _mppLoading = null;
+// Belt and braces: resetMaterialPriceCache() is the precise invalidation, but a TTL
+// means a missed call costs at most 60s of staleness rather than lasting until the
+// next restart. Same window the dashboard response cache already uses.
+const _MPP_TTL = 60 * 1000;
+
+const getMaterialPriceMap = async () => {
+  if (_mppCache && Date.now() - _mppCacheAt < _MPP_TTL) return _mppCache;
+  if (_mppLoading) return _mppLoading;           // share one load across concurrent callers
+  _mppLoading = dbSequelize
+    .query(
+      `SELECT mp.material_id, mpp.*
+         FROM material_price_purities mpp
+         JOIN material_prices mp ON mp.id = mpp.material_price_id
+        WHERE mpp.deleted_at IS NULL AND mp.deleted_at IS NULL`,
+      { type: QueryTypes.SELECT }
+    )
+    .then((rows) => {
+      const map = new Map();
+      // (material_id, purity_id) is unique across this table - verified against the
+      // data - so last-write-wins here matches the .pop() the eager path used.
+      rows.forEach((r) => map.set(`${r.material_id}:${r.purity_id}`, r));
+      _mppCache = map;
+      _mppCacheAt = Date.now();
+      _mppLoading = null;
+      return map;
+    })
+    .catch((e) => {
+      _mppLoading = null;
+      throw e;
+    });
+  return _mppLoading;
+};
+
+const resetMaterialPriceCache = () => {
+  _mppCache = null;
+  _mppCacheAt = 0;
+};
+
 const calculateProductPrice = async (
   materials,
   sub_category,
@@ -637,8 +791,7 @@ const calculateProductPrice = async (
     //if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
     if (materialPricePurity) {
       //let materialPrice = materialPriceObj.materialPricePurities[0];
-      //console.log("materials[i].material.material_price.materialPricePurities : ", materials[i].material.material_price.materialPricePurities);
-      let materialPrice = materialPricePurity;
+      let materialPrice = await applyLiveGoldPrice(materialPricePurity, materials[i]);
       //mrp = parseFloat(materialPrice.per_gram_price);
       //mrp = parseFloat(materialPrice[price_type]);
       mrp = parseFloat(materialPrice.per_gram_price);
@@ -654,7 +807,6 @@ const calculateProductPrice = async (
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
-          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -851,7 +1003,6 @@ const calculateProductPriceCartNew = async (
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
-          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -1719,6 +1870,39 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
 const getUserColumnValue = async (id, column) => {
   let user = await UserModel.findOne({ where: { id: id } });
   return user ? user[column] : null;
+};
+
+/**
+ * Can this wallet cover the amount about to leave it?
+ *
+ * Every wallet debit has to ask this, and before this helper existed each site
+ * asked it slightly differently - some checked `amount > 0` first and some did
+ * not, some passed `payment_mode` and some `return_payment_mode`, and two had
+ * been commented out entirely, which is how wallets ended up negative.
+ *
+ * Returns true when the debit may proceed. Callers keep their own response:
+ *
+ *   if (!(await hasWalletFunds(userID, data.payment_mode, amount))) {
+ *     return res.status(errorCodes.default)
+ *               .send(formatErrorResponse("Insufficient wallet balance."));
+ *   }
+ *
+ * Nothing to debit (zero or negative) always passes - refusing those would
+ * block ordinary zero-value saves. Metal always passes: the gold wallet is
+ * tracked separately and is deliberately out of scope here.
+ *
+ * `paymentType` is only needed for the pools that are not the ordinary wallet
+ * (expenses ask for "expense"); leave it out otherwise.
+ */
+const hasWalletFunds = async (userId, paymentMode, amount, paymentType) => {
+  const needed = priceFormat(parseFloat(amount) || 0);
+  if (needed <= 0) return true;
+  if (String(paymentMode || "").toLowerCase().trim() === "metal") return true;
+
+  const balance = priceFormat(
+    await getWalletBalance(userId, paymentMode, paymentType),
+  );
+  return balance >= needed;
 };
 
 const getWalletBalance = async (
@@ -4603,6 +4787,9 @@ module.exports = {
   getTotalStockPriceByUser,
   getUserColumnValue,
   getWalletBalance,
+  emailExists,
+  normalizeEmail,
+  loginIdentifierWhere,
   getNextUserName,
   getWorkingUserID,
   isSuperAdmin,

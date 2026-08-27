@@ -101,8 +101,8 @@ exports.store = async (req, res) => {
           cheque_no: data.cheque_no || null,
           txn_id: data.txn_id || null,
           weight: data.weight || null,
-          status: data.payment_mode != "cheque" ? "success" : "pending",
-          payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
+          status: !requiresPaymentApproval(data.payment_mode) ? "success" : "pending",
+          payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
           table_type: null,
           table_id: null,
           payment_belongs: req.userId,
@@ -159,7 +159,7 @@ exports.store = async (req, res) => {
             amount = 0;
           }
 
-          if (data.payment_mode != "cheque") {
+          if (!requiresPaymentApproval(data.payment_mode)) {
             if (data.table_type == "sale") {
               await SaleModel.update(
                 {
@@ -193,8 +193,8 @@ exports.store = async (req, res) => {
             cheque_no: data.cheque_no || null,
             txn_id: data.txn_id || null,
             weight: data.weight || null,
-            status: data.payment_mode != "cheque" ? "success" : "pending",
-            payment_date: moment(data.payment_date).format("YYYY-MM-DD"),
+            status: !requiresPaymentApproval(data.payment_mode) ? "success" : "pending",
+            payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
             table_type: data.table_type,
             table_id: item.id,
             payment_belongs: req.userId,

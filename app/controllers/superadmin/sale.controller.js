@@ -42,6 +42,7 @@ const {
   getDistributorAdmin,
   isAdmin,
   getWalletBalance,
+  hasWalletFunds,
   getOwnUserSaleProducts,
   getUserColumnValue,
   avlStockUserIdsNew,
@@ -1271,12 +1272,22 @@ exports.store = async (req, res) => {
   }
 
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
-  // if (data.advance_amount > 0 && data.due_amount == 0) {
-  //   let walletBalance = await getWalletBalance(userID, data.payment_mode);
-  //   if (walletBalance < priceFormat(data.total_payable)) {
-  //     return res.status(errorCodes.default).send(formatErrorResponse("Insufficient wallet balance for adjust sale amount from advance."));
-  //   }
-  // }
+  /*
+   * A sale settled entirely out of the buyer's advance still moves real money,
+   * so the advance has to cover it. Commented out until now, which let the
+   * balance run negative.
+   */
+  if (data.advance_amount > 0 && data.due_amount == 0) {
+    if (!(await hasWalletFunds(userID, data.payment_mode, data.total_payable))) {
+      return res
+        .status(errorCodes.default)
+        .send(
+          formatErrorResponse(
+            "Insufficient wallet balance for adjust sale amount from advance.",
+          ),
+        );
+    }
+  }
 
   try {
     //const trans = await sequelize.transaction(async (t) => {
@@ -1804,7 +1815,14 @@ exports.store = async (req, res) => {
           payment_date: moment().format("YYYY-MM-DD"),
           txn_id: data.transaction_no,
           cheque_no: data.cheque_no,
-          status: "success",
+          /*
+           * Both halves of the pair have to wait together. This was hardcoded
+           * "success" while the credit above honoured the approval rule, so a
+           * cheque or RTGS sale debited the buyer immediately and left the
+           * seller's credit pending - the money left one wallet and arrived in
+           * none, which is one way a buyer's balance went negative.
+           */
+          status: requiresPaymentApproval(data.payment_mode) ? "pending" : "success",
           type: "debit",
           table_type: "purchase",
           table_id: purchase ? purchase.id : sale.id,
@@ -2200,13 +2218,10 @@ exports.statuschange = async (req, res) => {
           paidAmnt = priceFormat(paidAmnt - parseFloat(payment.amount));
         }
       }
-      if (paidAmnt > 0) {
-        let walletBalance = await getWalletBalance(userID, return_payment_mode);
-        if (walletBalance < paidAmnt) {
-          return res
-            .status(errorCodes.default)
-            .send(formatErrorResponse("Insufficient wallet balance."));
-        }
+      if (!(await hasWalletFunds(userID, return_payment_mode, paidAmnt))) {
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse("Insufficient wallet balance."));
       }
     }
 
@@ -2715,7 +2730,34 @@ exports.view = async (req, res) => {
       .status(errorCodes.default)
       .send(formatErrorResponse("Sale not found"));
   }
-  res.send(formatResponse(SaleCollection(sale), "Sale details"));
+
+  /* The sale view page asks for current=1 so it always shows the metal at
+     today's rate. Opt-in rather than automatic: this same endpoint prefills the
+     sale form when a sale on approval is turned into a sale, and repricing there
+     would bake live rates into a brand new sale. Nothing is persisted either
+     way — the instance is only reshaped for this response. */
+  let liveGold = null;
+  if (isCurrentRateInvoice(req)) {
+    const liveRates = await getLiveGoldRate();
+    const repricing = repriceSaleAtLiveGold(sale, liveRates);
+    /* The page has to be able to say which rate it is showing, and to stay
+       quiet when the feed gave us nothing (rate 0) rather than print a zero. */
+    liveGold = {
+      applied: repricing.changes.length > 0,
+      rate_24k: liveRates.rate || 0,
+      rate_22k: liveRates.rate22 || 0,
+      rate_18k: liveRates.rate18 || 0,
+      display: liveRates.display || "",
+      changes: repricing.changes,
+    };
+  }
+
+  res.send(
+    formatResponse(
+      { ...SaleCollection(sale), live_gold: liveGold },
+      "Sale details"
+    )
+  );
 };
 
 /**
@@ -2857,13 +2899,12 @@ exports.returnSale = async (req, res) => {
     (!from_retailer_customer ||
       (from_retailer_customer && return_status == "completed"))
   ) {
-    let walletBalance = await getWalletBalance(
-      userID,
-      data.return_payment_mode,
-    );
     if (
-      return_amount_from_wallet > 0 &&
-      walletBalance < return_amount_from_wallet
+      !(await hasWalletFunds(
+        userID,
+        data.return_payment_mode,
+        return_amount_from_wallet,
+      ))
     ) {
       return res
         .status(errorCodes.default)
@@ -3587,13 +3628,12 @@ exports.returnSaleNew = async (req, res) => {
       (from_retailer_customer && return_status == "completed"))
   ) {
     /* not retailer customer or retailer customer and charges not applied */
-    let walletBalance = await getWalletBalance(
-      userID,
-      data.return_payment_mode,
-    );
     if (
-      return_amount_from_wallet > 0 &&
-      walletBalance < return_amount_from_wallet
+      !(await hasWalletFunds(
+        userID,
+        data.return_payment_mode,
+        return_amount_from_wallet,
+      ))
     ) {
       return res
         .status(errorCodes.default)
@@ -6730,6 +6770,35 @@ exports.downloadInvoiceInfo = async (req, res) => {
       .send(formatErrorResponse("Sale not found"));
   }
 
+  /* "Current Invoice": the same jewellery re-costed at today's gold rate. The
+     plain Invoice button keeps printing the rates frozen at sale time; this
+     branch reprices the loaded instance IN MEMORY ONLY — never saved — so the
+     template below renders the live figures instead. */
+  const atCurrentRate = isCurrentRateInvoice(req);
+  let liveRepricing = null;
+  if (atCurrentRate) {
+    const liveRates = await getLiveGoldRate();
+    liveRepricing = repriceSaleAtLiveGold(sale, liveRates);
+    liveRepricing.rate_display = liveRates.display || "";
+    liveRepricing.rates = liveRates;
+  }
+
+  /**
+   * A current invoice prints the rate it was costed at, otherwise the reader
+   * cannot tell it apart from the historical one. Stays silent when the feed
+   * gave nothing, rather than printing a zero rate.
+   */
+  const liveGoldLine =
+    atCurrentRate && liveRepricing && liveRepricing.changes.length
+      ? `<li><span style="font-weight: 400; font-size: 12px; margin: 0;">Gold Rate (today) - </span>` +
+        `<span style="font-weight: 600; font-size: 12px; margin: 0;">` +
+        [
+          liveRepricing.rates && liveRepricing.rates.rate22 ? `22K ${displayAmount(liveRepricing.rates.rate22)}/g` : "",
+          liveRepricing.rates && liveRepricing.rates.rate18 ? `18K ${displayAmount(liveRepricing.rates.rate18)}/g` : "",
+        ].filter(Boolean).join(" · ") +
+        `</span></li>`
+      : "";
+
   let saleData = SaleCollection(sale);
 
   let payments = await PaymentModel.findAll({
@@ -6867,9 +6936,12 @@ exports.downloadInvoiceInfo = async (req, res) => {
                             <td>
                               <table cellspacing="0" cellpadding="0" border="0"
                                   align="center" width="100%">
+                                  <tr><td style="position: relative;">
                                   <h1 style="font-size: 14px; text-align:
                                       center; margin-bottom: 5px; font-weight:
                                       300;">SALE${saleData.is_approved == "3" ? " ON APPROVAL" : ""} TAX INVOICE</h1>
+                                  ${atCurrentRate ? `<span style="position: absolute; top: 0; right: 10px; background: #e53935; color: #fff; padding: 4px 12px; font-size: 11px; font-weight: 600; border-radius: 3px;">CURRENT RATE</span>` : ""}
+                                  </td></tr>
                               </table>
                               <table cellspacing="0" cellpadding="0" border="0"
                                   align="center" width="100%">
