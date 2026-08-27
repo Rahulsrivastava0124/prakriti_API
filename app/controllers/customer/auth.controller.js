@@ -2,7 +2,7 @@ const config = require("@config/auth.config");
 const db = require("@models");
 const { Op } = require("sequelize");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId, updateCartByCookieID, sendEmail, loginIdentifierWhere } = require("@library/common");
+const { getRoleId, updateCartByCookieID, sendEmail } = require("@library/common");
 const {
   generateRawToken,
   hashToken,
@@ -30,7 +30,7 @@ exports.signin = async (req, res) => {
   let sales_executiveRoleId = getRoleId('sales_executive');
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
-    where: { ...loginIdentifierWhere(req.body.mobile),
+    where: { mobile: req.body.mobile,
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     },
     include: [
@@ -104,7 +104,7 @@ exports.logout = async(req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      ...loginIdentifierWhere(req.body.user_name),
+      mobile: req.body.user_name,
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     }
   });
@@ -141,7 +141,7 @@ exports.forgotPasswordVerifyOtp = async(req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      ...loginIdentifierWhere(req.body.user_name),
+      mobile: req.body.user_name,
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]},
       reset_otp: req.body.otp || ''
     }
@@ -167,7 +167,7 @@ exports.forgotPassword = async(req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      ...loginIdentifierWhere(req.body.user_name),
+      mobile: req.body.user_name,
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]},
       reset_otp: req.body.otp || ''
     }
@@ -215,7 +215,7 @@ exports.existingUser = async (req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      ...loginIdentifierWhere(req.body.mobile),
+      mobile: req.body.mobile,
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     }
   });
@@ -233,7 +233,7 @@ exports.sendpassword = async (req, res) => {
   let retailerRoleId = getRoleId('retailer');
   const user = await UserModel.findOne({
     where: { 
-      ...loginIdentifierWhere(req.body.mobile),
+      mobile: req.body.mobile,
       role_id: {[Op.in]: [customerRoleId, sales_executiveRoleId, retailerRoleId]}
     }
   });
