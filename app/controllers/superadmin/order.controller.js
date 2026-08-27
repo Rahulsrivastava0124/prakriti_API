@@ -11,7 +11,7 @@ const { getOrderCartData } = require("@library/orderCart");
 const moment = require('moment');
 const _ = require("lodash");
 const orderModel = db.orders;
-const { isEmpty, statusDisplay, getDateFromToWhere, convertUnitToGram, arrayColumn, priceFormat, requiresPaymentApproval } = require("@helpers/helper");
+const { isEmpty, statusDisplay, getDateFromToWhere, convertUnitToGram, arrayColumn, priceFormat } = require("@helpers/helper");
 const cartModel = db.carts;
 const { getRoleId, getWorkingUserID, getStockUserID, canStockAddCart, sendNotification, updateWalletRemainingBalance, updateAdvanceAmount, getUserColumnValue } = require("@library/common");
 const cartMaterialsModel = db.cart_materials;
@@ -282,7 +282,7 @@ exports.updateOrderStatus = async (req, res) => {
     if (order) {
       let role_id = await getUserColumnValue(order.user_id, 'role_id')
       let paid_amount = order.paid_amount ? parseFloat(order.paid_amount) : 0;
-      if (!requiresPaymentApproval(data.payment_mode)) {
+      if (data.payment_mode != "cheque") {
         paid_amount += parseFloat(data.advance_amount);
       }
       obj.paid_amount = paid_amount;
@@ -297,7 +297,7 @@ exports.updateOrderStatus = async (req, res) => {
         remaining_balance: 0,
         notes: data.notes || null,
         cheque_no: data.cheque_no || null,
-        status: (!requiresPaymentApproval(data.payment_mode)) ? "success" : "pending",
+        status: (data.payment_mode != "cheque") ? "success" : "pending",
         payment_date: moment().format("YYYY-MM-DD"),
         payment_belongs: req.userId,
         due_date: null,
@@ -307,7 +307,7 @@ exports.updateOrderStatus = async (req, res) => {
         is_advance: true
       });
 
-      if (!requiresPaymentApproval(data.payment_mode)) {
+      if (data.payment_mode != "cheque") {
         await updateWalletRemainingBalance(payment.payment_belongs, payment.id);
 
         await updateAdvanceAmount(payment.user_id, payment.payment_belongs, payment.amount, true);

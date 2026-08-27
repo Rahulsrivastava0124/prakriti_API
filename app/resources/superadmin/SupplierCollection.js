@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, getFileAbsulatePath, isEmpty, displayAmount, priceFormat, isArray } = require("@helpers/helper");
+const { isObject, getFileAbsulatePath, isEmpty, displayAmount, priceFormat, isArray } = require("@helpers/helper");
 const {getAdvanceAmount, getDistributorAdmin} = require("@library/common");
 const db = require("@models");
 const { Op } = require("sequelize");
@@ -10,8 +9,11 @@ const SupplierCollection = async(data, currentUserID, can_edit_delete) => {
     if(isObject(data)){
         return await getModelObject(data, currentUserID, can_edit_delete);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, currentUserID, can_edit_delete));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], currentUserID, can_edit_delete));
+        }
+        return arr;
     }
 }
 

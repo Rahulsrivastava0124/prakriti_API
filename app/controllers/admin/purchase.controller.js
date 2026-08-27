@@ -1,5 +1,4 @@
 const config = require("@config/auth.config");
-const html_to_pdf = require("@helpers/pdf");
 const {
   errorCodes,
   formatErrorResponse,
@@ -19,7 +18,6 @@ const {
   encodeForStorage,
   decodeFromStorage,
   cleanInput,
-  requiresPaymentApproval,
 } = require("@helpers/helper");
 const {
   updateOrCreate,
@@ -200,7 +198,7 @@ exports.store = async (req, res) => {
       let status = "due",
         paid_amount = 0,
         due_amount = 0;
-      if (!requiresPaymentApproval(data.payment_mode)) {
+      if (data.payment_mode != "cheque") {
         status =
           priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
             ? "paid"
@@ -982,7 +980,7 @@ exports.update = async (req, res) => {
         invoice_date:
           formatDateTime(purchase.invoice_date, 9) == data.invoice_date
             ? moment(purchase.invoice_date).format("YYYY-MM-DD")
-            : moment(data.invoice_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+            : moment(data.invoice_date).format("YYYY-MM-DD"),
         notes: data.notes,
         payment_mode: data.payment_mode,
         transaction_no: data.transaction_no,
@@ -996,7 +994,7 @@ exports.update = async (req, res) => {
         due_date:
           formatDateTime(purchase.due_date, 9) == data.due_date
             ? moment(purchase.due_date).format("YYYY-MM-DD")
-            : moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
+            : moment(data.due_date).format("YYYY-MM-DD"),
       };
       await PurchaseModel.update(purchaseObj, {
         where: { id: purchase.id },
@@ -1388,7 +1386,7 @@ exports.returnProducts = async (req, res) => {
           total_amount: data.return_amount,
           accepted_at: moment().format("YYYY-MM-DD"),
           return_date: data.return_date
-            ? moment(data.return_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
+            ? moment(data.return_date).format("YYYY-MM-DD")
             : moment().format("YYYY-MM-DD"),
         },
         { transaction: t },
@@ -2553,7 +2551,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let receive_metal = 0;
     let metalExists = true;
     payments.map((itm) => {
-      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight) {
+      if (itm.payment_mode.toLowerCase() == "metal" && itm.weight != null) {
         metalExists = true;
         receive_metal += parseFloat(itm.weight);
       }
@@ -2631,7 +2629,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                     <td style="font-size: 12px;">${payments[i].payment_date}</td>
                     <td style="font-size: 12px;">${payments[i].payment_mode}</td>
                     <td style="font-size: 12px;">${payments[i].notes}</td>
-                    <td style="font-size: 12px;">${payments[i].amount}${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight ? " (" + payments[i].weight + (payments[i].metal_rate ? " @ " + payments[i].metal_rate + "/GM" : "") + ")" : ""}</td>
+                    <td style="font-size: 12px;">${payments[i].payment_mode.toLowerCase() == "metal" && payments[i].weight != null ? payments[i].weight : payments[i].amount}</td>
                 </tr>`;
     }
     html += `</table>`;
@@ -2817,6 +2815,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
+    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -2894,7 +2893,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
+    })();
   } catch (error) {
     return res
       .status(errorCodes.default)
@@ -4355,6 +4354,7 @@ exports.downloadInvoiceItems = async (req, res) => {
   })
   .catch((error) => {
     addLog("pdf error: " + error.toString());
+    console.error(error);
   });*/
 
   /* -------------- commented by Soumalya Nandy ------------ */
@@ -4431,7 +4431,7 @@ exports.downloadInvoiceItems = async (req, res) => {
           "Invoice pdf",
         ),
       );
-    })().catch(err => res.status(500).send(formatErrorResponse(err.toString())));
+    })();
 
     /*const doc = new jsPDF();
     doc.html(html, {

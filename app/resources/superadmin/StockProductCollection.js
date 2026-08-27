@@ -31,6 +31,7 @@ const getModelObject = (data) => {
     let certificates = ProductCertificateCollection(data.certificates);
     let certificateNames = arrayColumn(certificates, 'name');
 
+    // console.log("---StockCollactionProduct",data);
 
     return {
         product_id: data.id,

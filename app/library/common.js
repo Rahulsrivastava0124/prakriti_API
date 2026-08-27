@@ -260,6 +260,7 @@ const sendSMS = (mobiles, type, params) => {
       flow_id: flow_id,
       recipients: recipients,
     };
+    //console.log(postData);
     clientServerOptions = {
       uri: "http://api.msg91.com/api/v5/flow/",
       body: JSON.stringify(postData),
@@ -282,6 +283,8 @@ const sendSMS = (mobiles, type, params) => {
   });
 
   /*request(clientServerOptions, function (error, response) {
+        console.log('error', error);
+        console.log('response', response);
         return;
     });*/
 };
@@ -555,19 +558,12 @@ const getCustomRoleIds = async () => {
 };
 
 /**
- * Live per-karat spot per gram, from the same feed the sale pay modal quotes.
- * Read by the admin dashboard and by sale/invoice repricing (Current Invoice
- * feature) - customer facing product, stock and cart prices come from
- * material_price_purities, so a moving spot rate never changes what a shopper
- * is quoted mid-session. Cached so a caller does not fire one HTTP call per
- * row, and so a slow or down feed cannot stall a page - callers fall back
- * when this returns 0.
+ * Live 24K spot per gram, from the same feed the sale pay modal quotes.
+ * Cached so a stock listing does not fire one HTTP call per row, and so a
+ * slow or down feed cannot stall a page - callers fall back to the configured
+ * per-gram price when this returns 0.
  */
-// Feed endpoint comes from GOLD_RATE_URL in .env and nowhere else - with no
-// value set there is no feed, and every caller falls back to the configured
-// price. Whatever it points at must answer with the same shape the parser
-// below expects: { per_gram: { "24K": n, "22K": n, "18K": n }, display }.
-const GOLD_RATE_URL = process.env.GOLD_RATE_URL;
+const GOLD_RATE_URL = "https://n8n.prakriti.one/webhook/gold-rate-india";
 const GOLD_RATE_TTL = 10 * 60 * 1000;
 // Cache stores per-karat rates directly from the API.
 let goldRateCache = { rate: 0, rate22: 0, rate18: 0, display: "", at: 0 };
@@ -575,21 +571,18 @@ let goldRateCache = { rate: 0, rate22: 0, rate18: 0, display: "", at: 0 };
 /**
  * A failed lookup is remembered too, and concurrent callers share one request.
  *
- * Callers hit this once per priced row. Only a *successful* fetch was cached,
- * so with the feed down every row started its own request and waited the full
- * 5 s abort - the admin dashboard's stock section sat idle for minutes, doing
- * no queries and no work, and never answered. The failure window is short so a
- * feed that comes back is picked up quickly; a healthy feed behaves exactly as
- * before.
+ * applyLiveGoldPrice() calls this once per priced material row. Only a
+ * *successful* fetch was cached, so with the feed down every row started its
+ * own request and waited the full 5 s abort - the admin dashboard's stock
+ * section sat idle for minutes, doing no queries and no work, and never
+ * answered. The failure window is short so a feed that comes back is picked up
+ * quickly; a healthy feed behaves exactly as before.
  */
 const GOLD_RATE_FAIL_TTL = 60 * 1000;
 let goldRateFailedAt = 0;
 let goldRateInFlight = null;
 
 const getLiveGoldRate = async () => {
-  // No endpoint configured: hand back the zeroed cache so callers take their
-  // configured-price path rather than fetching undefined.
-  if (!GOLD_RATE_URL) return goldRateCache;
   if (goldRateCache.rate && Date.now() - goldRateCache.at < GOLD_RATE_TTL) {
     return goldRateCache;
   }
@@ -605,8 +598,7 @@ const getLiveGoldRate = async () => {
       const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
       clearTimeout(timer);
       const body = await res.json();
-      // Support both "per_gram" and "base_per_gram" response formats
-      const pg = body && (body.per_gram || body.base_per_gram) ? (body.per_gram || body.base_per_gram) : {};
+      const pg = body && body.per_gram ? body.per_gram : {};
       const rate = parseFloat(pg["24K"] || 0);
       if (rate > 0) {
         goldRateCache = {
@@ -630,6 +622,42 @@ const getLiveGoldRate = async () => {
   })();
 
   return goldRateInFlight;
+};
+
+const isGoldMaterial = (material) =>
+  !!material && /gold/i.test(material.name || "");
+
+/**
+ * Returns a plain copy of materialPrice with per_gram_price overridden by the
+ * live karat rate that matches the item's purity.
+ *
+ * The live API already returns per-karat spot prices (24K=₹14422, 22K=₹13220,
+ * 18K=₹10816). These ARE the market prices for that karat. Applying purity%
+ * on top would double-discount. We map the stored purity value to the nearest
+ * standard karat and use its rate directly:
+ *   purity ≥ 95 % → 24K rate
+ *   purity ≥ 85 % → 22K rate
+ *   purity  < 85 % → 18K rate
+ */
+const applyLiveGoldPrice = async (materialPrice, item) => {
+  if (!isGoldMaterial(item.material)) return materialPrice;
+  const purityValue = parseFloat(item.purity ? item.purity.value : NaN);
+  if (!(purityValue > 0)) return materialPrice;
+  const liveData = await getLiveGoldRate();
+  let liveRate;
+  if (purityValue >= 95) {
+    liveRate = liveData.rate;    // 24K
+  } else if (purityValue >= 85) {
+    liveRate = liveData.rate22;  // 22K
+  } else {
+    liveRate = liveData.rate18;  // 18K
+  }
+  if (!(liveRate > 0)) return materialPrice;
+  const plain = materialPrice.get
+    ? materialPrice.get({ plain: true })
+    : Object.assign({}, materialPrice);
+  plain.per_gram_price = priceFormat(liveRate);
+  return plain;
 };
 
 /**
@@ -722,6 +750,7 @@ const calculateProductPrice = async (
     total_mrp_price = 0,
     total_sale_price = 0;
 
+  //console.log("materials : ", materials);
 
   for (let i = 0; i < materials.length; i++) {
     /* let materialPriceObj = await MaterialPriceModel.findOne({
@@ -735,6 +764,7 @@ const calculateProductPrice = async (
         },
       ],
     }); */
+    //console.log("materialPriceObj : ", materialPriceObj);
     let price = 0,
       mrp = 0,
       unit_based_mrp = 0,
@@ -745,6 +775,9 @@ const calculateProductPrice = async (
         "unit" in materials[i] && materials[i].unit
           ? materials[i].unit.name
           : "";
+    //console.log("materials[i].material : ", materials[i].material);
+    //console.log("materials[i].material.material_price.materialPricePurities : ", materials[i].material.material_price.materialPricePurities);
+    //console.log(materials[i].material.material_price.materialPricePurities.filter((mpp) => mpp.purity_id == materials[i].purity_id).pop());
     let materialPricePurity =
       materials[i].material &&
       materials[i].material.material_price &&
@@ -754,17 +787,11 @@ const calculateProductPrice = async (
             .filter((mpp) => mpp.purity_id == materials[i].purity_id)
             .pop()
         : null;
-    // Callers that skip the material_price -> materialPricePurities include (to avoid
-    // its join fan-out) resolve the same row from the cached reference map instead.
-    if (!materialPricePurity && materials[i].material_id && materials[i].purity_id) {
-      const map = await getMaterialPriceMap();
-      materialPricePurity =
-        map.get(`${materials[i].material_id}:${materials[i].purity_id}`) || null;
-    }
+    //console.log("materialPricePurity : ", materialPricePurity);
     //if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
     if (materialPricePurity) {
       //let materialPrice = materialPriceObj.materialPricePurities[0];
-      let materialPrice = materialPricePurity;
+      let materialPrice = await applyLiveGoldPrice(materialPricePurity, materials[i]);
       //mrp = parseFloat(materialPrice.per_gram_price);
       //mrp = parseFloat(materialPrice[price_type]);
       mrp = parseFloat(materialPrice.per_gram_price);
@@ -776,13 +803,10 @@ const calculateProductPrice = async (
       discount_percent = parseFloat(materialPrice[discount_type]);
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
       if (!fromCart) {
-        // Prices one piece for the listing. Metal taken as payment is weighed,
-        // not counted (quantity 0), so there is no piece to price - value the
-        // whole holding instead.
-        if (isMaterial && parseInt(materials[i].quantity) > 0) {
+        if (isMaterial) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
-          total_gram = convertUnitToGram(unit_name, perWeight);
+          total_gram = convertUnitToGram(unit_name, 1);
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -883,6 +907,7 @@ const calculateProductPriceCartNew = async (
     : (stockData && Array.isArray(stockData.stockMaterials) ? stockData.stockMaterials : []);
   const stockSize = stockData && stockData.size ? stockData.size : null;
 
+  console.log("role_id : ", role_id);
   let price_type = "",
     discount_type = "",
     making_dis_type = "";
@@ -923,6 +948,7 @@ const calculateProductPriceCartNew = async (
       dis_type = "customer_discount";
       macking_dis_type = "customer_discount";
     }*/
+      //console.log(materials.get({ plain: true}));
 
   /* for all stock metirials */
   for (let i = 0; i < materials.length; i++) {
@@ -973,13 +999,10 @@ const calculateProductPriceCartNew = async (
       discount_percent = parseFloat(materialPrice[discount_type]);
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
       if (!fromCart) {
-        // Prices one piece for the listing. Metal taken as payment is weighed,
-        // not counted (quantity 0), so there is no piece to price - value the
-        // whole holding instead.
-        if (isMaterial && parseInt(materials[i].quantity) > 0) {
+        if (isMaterial) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
-          total_gram = convertUnitToGram(unit_name, perWeight);
+          total_gram = convertUnitToGram(unit_name, 1);
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -1049,7 +1072,9 @@ const calculateProductPriceCartNew = async (
         }
       }*/
     }
+    //console.log("===============================");
     materials[i] = materials[i].get({ plain: true});
+    //console.log(materials); return false;
     materialsNew.push({
       ...materials[i],
       material_name: materials[i].material.name,
@@ -1100,6 +1125,7 @@ const calculateProductPriceCartNew = async (
   total_sale_price += total_making_charge;
 
   let total_tax = 0;
+  console.log("tax_info : ", tax_info);
   if (tax_info) {
     /* let igst = 0;
     let cgst = !isEmpty(tax_info.cgst)
@@ -1139,6 +1165,7 @@ const calculateProductPriceCartNew = async (
       : 0;
     total_mrp_price += igst + cgst_m + sgst_m;
     total_sale_price += igst + cgst + sgst;
+    console.log(`igst + cgst + sgst : ${igst} + ${cgst} + ${sgst}, ${priceFormat(igst + cgst + sgst)}`);
     total_tax = priceFormat(igst + cgst + sgst);
   }
 
@@ -1188,16 +1215,7 @@ const calculateProductPriceCart = async (
   isMaterial,
   price_by_role,
   tax_info,
-  fromCart,
-  /**
-   * Optional per-response cache of material price rows, keyed by material +
-   * purity. A listing asks for the same handful of prices once per row, and
-   * the rows are only read here, so one lookup can serve them all. The
-   * promise is cached rather than the result, so rows running side by side
-   * share the single query. Omit it and nothing changes - every call goes to
-   * the database exactly as before.
-   */
-  priceCache = null
+  fromCart
 ) => {
   let price_type = "",
     discount_type = "",
@@ -1229,30 +1247,19 @@ const calculateProductPriceCart = async (
     total_material_discount = 0,
     total_mrp_price = 0,
     total_sale_price = 0;
-  const loadMaterialPrice = (material_id, purity_id) => {
-    const query = () =>
-      MaterialPriceModel.findOne({
-        where: { material_id: material_id },
-        include: [
-          {
-            model: MaterialPricePurityModel,
-            as: "materialPricePurities",
-            where: { purity_id: purity_id },
-            separate: true,
-          },
-        ],
-      });
-    if (!priceCache) return query();
-    const key = material_id + ":" + purity_id;
-    if (!priceCache.has(key)) priceCache.set(key, query());
-    return priceCache.get(key);
-  };
-
+  console.log("materials : ", materials);
   for (let i = 0; i < materials.length; i++) {
-    let materialPriceObj = await loadMaterialPrice(
-      materials[i].material_id,
-      materials[i].purity_id
-    );
+    let materialPriceObj = await MaterialPriceModel.findOne({
+      where: { material_id: materials[i].material_id },
+      include: [
+        {
+          model: MaterialPricePurityModel,
+          as: "materialPricePurities",
+          where: { purity_id: materials[i].purity_id },
+          separate: true,
+        },
+      ],
+    });
     let price = 0,
       mrp = 0,
       unit_based_mrp = 0,
@@ -1274,13 +1281,11 @@ const calculateProductPriceCart = async (
       discount_percent = parseFloat(materialPrice[discount_type]);
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
       if (!fromCart) {
-        // Prices one piece for the listing. Metal taken as payment is weighed,
-        // not counted (quantity 0), so there is no piece to price - value the
-        // whole holding instead.
-        if (isMaterial && parseInt(materials[i].quantity) > 0) {
+        if (isMaterial) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
+          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -1317,6 +1322,7 @@ const calculateProductPriceCart = async (
       total_gram: weightFormat(total_gram),
     });
   }
+  console.log("total_mrp_price : ", total_mrp_price);
   let total_making_charge = 0;
   let making_charge_type = sub_category ? sub_category.making_charge_type : "";
   let making_charge = sub_category ? sub_category.making_charge : 0;
@@ -1333,6 +1339,7 @@ const calculateProductPriceCart = async (
     (total_making_charge * making_charge_discount_percent) / 100
   );
   total_mrp_price += total_making_charge;
+  console.log("total_mrp_price after making charge : ", total_mrp_price);
   total_making_charge = priceFormat(total_making_charge - discount_amount);
   total_discount += discount_amount;
   total_sale_price += total_making_charge;
@@ -1347,6 +1354,7 @@ const calculateProductPriceCart = async (
       ? priceFormat((total_mrp_price * parseFloat(tax_info.sgst)) / 100, true)
       : 0;
     total_mrp_price += igst + cgst + sgst;
+    console.log("total_mrp_price after tax : ", total_mrp_price);
     total_tax = igst + cgst + sgst;
     total_sale_price += priceFormat(igst + cgst + sgst);
   }
@@ -1375,6 +1383,7 @@ const calculateProductPriceReport = async (
   tax_info,
   fromCart
 ) => {
+  console.log("price_by_role : ", price_by_role);
   let price_type = "",
     discount_type = "",
     making_dis_type = "";
@@ -1405,6 +1414,7 @@ const calculateProductPriceReport = async (
     total_material_discount = 0,
     total_mrp_price = 0,
     total_sale_price = 0;
+  console.log("materials : ", materials);
   for (let i = 0; i < materials.length; i++) {
     let materialPriceObj = await MaterialPriceModel.findOne({
       where: { material_id: materials[i].material_id },
@@ -1430,22 +1440,26 @@ const calculateProductPriceReport = async (
     if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
       let materialPrice = materialPriceObj.materialPricePurities[0];
       //mrp = parseFloat(materialPrice.per_gram_price);
+      console.log('price_type:', price_type);
+      console.log('materialPrice : ', JSON.stringify(materialPrice));
       //mrp = parseFloat(materialPrice[price_type]);
       mrp = parseFloat(materialPrice.price);
+      console.log('material mrp : ', mrp);
       unit_based_mrp = convertPerGramPriceToPerUnit(
         mrp,
         unit_name
       );
+      console.log('material unit_based_mrp : ', unit_based_mrp);
       discount_percent = parseFloat(materialPrice[discount_type]);
+      console.log('material : ', JSON.stringify(materials[i]));
       total_gram = convertUnitToGram(unit_name, materials[i].weight);
+      console.log('material total_gram : ', total_gram);
       if (!fromCart) {
-        // Prices one piece for the listing. Metal taken as payment is weighed,
-        // not counted (quantity 0), so there is no piece to price - value the
-        // whole holding instead.
-        if (isMaterial && parseInt(materials[i].quantity) > 0) {
+        if (isMaterial) {
           let perWeight =
             parseFloat(materials[i].weight) / parseInt(materials[i].quantity);
           total_gram = convertUnitToGram(unit_name, 1);
+          //console.log(total_gram)
         }
         //total_gram = isMaterial ? weightFormat(total_gram / parseInt(materials[i].quantity)) : total_gram;
       }
@@ -1487,6 +1501,7 @@ const calculateProductPriceReport = async (
       total_gram: weightFormat(total_gram),
     });
   }
+  console.log("total_mrp_price : ", total_mrp_price);
   let total_making_charge = 0;
   let making_charge_type = sub_category ? sub_category.making_charge_type : "";
   let making_charge = sub_category ? sub_category.making_charge : 0;
@@ -1503,6 +1518,7 @@ const calculateProductPriceReport = async (
     (total_making_charge * making_charge_discount_percent) / 100
   );
   total_mrp_price += total_making_charge;
+  console.log("total_mrp_price after making charge : ", total_mrp_price);
   total_making_charge = priceFormat(total_making_charge - discount_amount);
   total_discount += discount_amount;
   total_sale_price += total_making_charge;
@@ -1517,6 +1533,7 @@ const calculateProductPriceReport = async (
       ? priceFormat((total_mrp_price * parseFloat(tax_info.sgst)) / 100, true)
       : 0;
     total_mrp_price += igst + cgst + sgst;
+    console.log("total_mrp_price after tax : ", total_mrp_price);
     total_tax = igst + cgst + sgst;
     total_sale_price += priceFormat(igst + cgst + sgst);
   }
@@ -1671,34 +1688,11 @@ const getAdminDistributorIds = async (id, state_id) => {
   return arrayColumn(ids, "id");
 };
 
-/**
- * Get distributors that belong directly to this admin (own distributors).
- * These are distributors where parent_id = admin_id AND own = true.
- */
-const getAdminOwnDistributorIds = async (adminId) => {
-  let ids = await UserModel.findAll({
-    where: { 
-      parent_id: adminId, 
-      role_id: getRoleId("distributor"),
-      own: true
-    },
-    attributes: ["id"],
-    raw: true,
-  });
-  return arrayColumn(ids, "id");
-};
-
-let _superAdminId = null;
 const getSuperAdminId = async () => {
-  if (_superAdminId) return _superAdminId;
-  const user = await UserModel.findOne({
-    attributes: ["id"],
+  let user = await UserModel.findOne({
     where: { role_id: getRoleId("superadmin") },
-    order: [["id", "ASC"]],
   });
-  if (!user) throw new Error("No superadmin user found");
-  _superAdminId = user.id;
-  return _superAdminId;
+  return user.id;
 };
 
 const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admin") => {
@@ -1715,26 +1709,30 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
       as: "stockMaterials",
       required: true,
       separate: true,
-      attributes: ["id", "stock_id", "material_id", "purity_id", "unit_id", "weight", "quantity"],
       include: [
-        // material_price -> materialPricePurities is deliberately NOT included here.
-        // It multiplied 8,655 stock_material rows into 25,920; calculateProductPrice
-        // now resolves the same row from getMaterialPriceMap(). `material` itself
-        // stays because the live-gold-rate check reads its name.
         {
           model: materialModel,
           as: "material",
-          attributes: ["id", "name"],
+          include: [
+            {
+              model: MaterialPriceModel,
+              as: "material_price",
+              include: [
+                {
+                  model: MaterialPricePurityModel,
+                  as: "materialPricePurities",
+                },
+              ],
+            },
+          ],
         },
         {
           model: UnitModel,
           as: "unit",
-          attributes: ["id", "name"],
         },
         {
           model: PurityModel,
           as: "purity",
-          attributes: ["id", "name", "value"],
         },
       ],
     },
@@ -1744,23 +1742,18 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
       model: productsModel,
       as: "product",
       required: true,
-      attributes: ["id", "category_id", "sub_category_id", "type"],
       include: [
         {
           model: CategoryModel,
           as: "category",
-          attributes: ["id", "name"],
         },
         {
-          // not projected - passed whole into calculateProductPrice, which reads
-          // its making-charge fields. 66 rows, so the cost is negligible anyway.
           model: SubCategoryModel,
           as: "sub_category",
         },
         {
           model: TaxSlabModel,
           as: "tax",
-          attributes: ["id", "name", "cgst", "sgst", "igst"],
         },
       ],
     });
@@ -1769,25 +1762,31 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
       model: materialModel,
       as: "material",
       required: true,
-      attributes: ["id", "name", "category_id"],
       include: [
         {
           model: CategoryModel,
           as: "category",
-          attributes: ["id", "name"],
         },
-        // material_price -> materialPricePurities dropped here too: the loop below
-        // only reads category_id and category.name off this branch.
+        {
+          model: MaterialPriceModel,
+          as: "material_price",
+          include: [
+            {
+              model: MaterialPricePurityModel,
+              as: "materialPricePurities",
+            },
+          ],
+        },
       ],
     });
   }
 
   let stocks = await StockModel.findAll({
     where: conditions,
-    attributes: ["id", "type", "quantity", "certificate_no", "product_id", "material_id", "user_id"],
     include: _include,
   });
 
+  console.log("This is stock value :- " ,stocks.map(s => s.id).join(", "));
 
   let total_price = 0,
     categories = [];
@@ -1830,6 +1829,7 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
       taxInfo,
       true
     );
+    // console.log(priceMaterials)
     let thisPrice = priceMaterials.total_mrp_price - priceMaterials.total_tax; //priceMaterials.total_mrp_price
     //thisPrice = priceMaterials.total_mrp_price;
     total_price += thisPrice;
@@ -1862,6 +1862,8 @@ const getTotalStockPriceByUser = async (byCategory, userId, type, roleName="admi
     }
   }
 
+  // console.log(" Total_Prize :- ", + total_price);
+  console.log("By categories ---------------: ", categories);
   return byCategory ? categories : priceFormat(total_price);
 };
 
@@ -1915,6 +1917,7 @@ const getWalletBalance = async (
     if (paymentId) {
       paymentIdQ = " AND id <= " + paymentId;
     }
+    console.log("payment_mode : ", payment_mode);
     if (!payment_mode) {
       let query =
         "SELECT SUM(CASE WHEN (type = 'debit') THEN amount ELSE 0 END) AS total_debit, SUM(CASE WHEN (type = 'credit') THEN amount ELSE 0 END) AS total_credit FROM payments WHERE status = 'success' AND payment_belongs = " +
@@ -1923,6 +1926,7 @@ const getWalletBalance = async (
         payment_type +
         "' AND deleted_at IS NULL" +
         paymentIdQ;
+        console.log(query);
       const paymentObj = await dbSequelize.query(query, {
         type: QueryTypes.SELECT,
       });
@@ -1955,6 +1959,7 @@ const getWalletBalance = async (
           paymentIdQ;
           
       }
+      console.log(query);
       const paymentObj = await dbSequelize.query(query, {
         type: QueryTypes.SELECT,
       });
@@ -1971,55 +1976,8 @@ const getWalletBalance = async (
       }
     } 
   } catch(err){
+    console.log(err);
   }
-};
-
-/**
- * Normalise an email for storage/comparison. Returns null for blanks so the
- * column stays NULL rather than holding an empty string.
- */
-const normalizeEmail = (email) => {
-  if (isEmpty(email)) return null;
-  let value = String(email).toLowerCase().trim();
-  return value === "" ? null : value;
-};
-
-/**
- * Email is a login identifier alongside mobile, so it has to resolve to exactly
- * one account across every role — a customer and a retailer cannot share one.
- * Comparison is case-insensitive; pass excludeUserId when editing a record so a
- * user doesn't collide with themselves.
- */
-const emailExists = async (email, excludeUserId = null) => {
-  let value = normalizeEmail(email);
-  if (!value) return false;
-
-  let conditions = {
-    [Op.and]: [
-      dbSequelize.where(dbSequelize.fn("LOWER", dbSequelize.col("email")), value),
-    ],
-  };
-  if (excludeUserId) {
-    conditions.id = { [Op.ne]: excludeUserId };
-  }
-
-  const user = await UserModel.findOne({ where: conditions });
-  return !!user;
-};
-
-/**
- * Users sign in with either their mobile number or their email address, so any
- * login / forgot-password lookup has to match whichever one they typed.
- * Spread into a where clause alongside the role condition, e.g.
- *   where: { ...loginIdentifierWhere(req.body.mobile), role_id: roleId }
- */
-const loginIdentifierWhere = (identifier) => {
-  let value = isEmpty(identifier) ? "" : String(identifier).trim();
-  if (value === "") {
-    // Never fall through to matching a real row when nothing was supplied.
-    return { id: null };
-  }
-  return { [Op.or]: [{ mobile: value }, { email: value.toLowerCase() }] };
 };
 
 const getNextUserName = async (role, id) => {
@@ -2568,6 +2526,7 @@ const sendEmail = (params) => {
     return new Promise(function (resolve, reject) {
       transporter.sendMail(mailOptions, function (error, info) {
         if (error) {
+          console.log("mail error: " + error.toString());
           addLog("mail error: " + error.toString());
           reject(false);
         } else {
@@ -2637,6 +2596,7 @@ const getProductSizeMaterials = async (
     purities.sort(function (a, b) {
       return purityIds.indexOf(a.id) - purityIds.indexOf(b.id);
     });
+    //console.log(sizeMatarialsData[i].size.name, sizeMatarialsData[i].purities)
     //purities.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
 
     // for(let p of purityToFirst){
@@ -2677,9 +2637,11 @@ const getProductSizeMaterials = async (
         mgroup,
         (item) => sizeMatarialsData[i].productMaterial && sizeMatarialsData[i].productMaterial.group && item == sizeMatarialsData[i].productMaterial.group
       );
+      //console.log("sizeMatarialsData[i].productMaterial : ", sizeMatarialsData[i].productMaterial);
       if(mgIndex === -1 && sizeMatarialsData[i].productMaterial && sizeMatarialsData[i].productMaterial.group){
         mgroup.push(sizeMatarialsData[i].productMaterial.group);
       }
+      console.log("mgroup : ", mgroup);
       /* group materials */
       //let gmaterials = [];
       /* if(mgroup.length > 0){
@@ -2803,6 +2765,7 @@ const getProductSizeMaterials = async (
           mrp_price = 0,
           discount_percent = 0;
         if (materialPriceObj && materialPriceObj.materialPricePurities.length) {
+          //console.log(purityIds)
           materialPriceObj.materialPricePurities.sort(function (a, b) {
             return (
               purityIds.indexOf(a.purity_id) - purityIds.indexOf(b.purity_id)
@@ -2967,166 +2930,165 @@ const getProductSizeMaterials = async (
 };
 
 const getTotalStockByUser = async (userId, type) => {
+  console.log("userId is the getTotalStockByUser ===", userId);
+
   type = type !== undefined ? type : "product";
-  const ids = Array.isArray(userId) ? userId : [userId];
-  if (!ids.length) return 0;
-  // Material stock is weighed, not counted - its `quantity` column is always 0,
-  // so summing quantity reported 0 however much metal was actually held.
-  // total_weight is already normalised to grams by convertUnitToGram.
-  const measure = type === "material" ? "total_weight" : "COALESCE(quantity, 1)";
-  // stocks is paranoid - raw SQL must filter soft-deleted rows by hand or the
-  // total silently includes them (was inflating the superadmin tile 3165 -> 2342).
-  const [row] = await dbSequelize.query(
-    `SELECT COALESCE(SUM(${measure}), 0) AS qty
-       FROM stocks
-      WHERE type = :type AND user_id IN (:ids) AND deleted_at IS NULL`,
-    { replacements: { type, ids }, type: QueryTypes.SELECT }
-  );
-  return Number((row && row.qty) || 0);
+  let conditions = { type: type };
+  if (isArray(userId)) {
+    conditions.user_id = { [Op.in]: userId };
+  } else {
+    conditions.user_id = userId;
+  }
+  let qty = 0;
+  // console.log(" stocks common condition is the  upper  === ", conditions);
+  let stocks = await StockModel.findAll({ where: conditions });
+  for (let i = 0; i < stocks.length; i++) {
+    qty += stocks[i].quantity ? parseInt(stocks[i].quantity) : 1;
+  }
+
+  return qty;
 };
 
 const getTransferSale = async (userId, type) => {
-  // Was: findAndCountAll with two unprojected `users` joins (neither used), then one
-  // SELECT COUNT(*) per row awaited in series - a round trip per transfer sale. Both
-  // tables are paranoid, so the raw SQL filters deleted_at by hand.
-  const [row] = await dbSequelize.query(
-    `SELECT COALESCE(SUM(COALESCE(sp.n, 0)), 0) AS totalStock,
-            COALESCE(SUM(s.total_amount), 0)    AS totalPrice
-       FROM sales s
-       LEFT JOIN (
-         SELECT sale_id, COUNT(*) AS n
-           FROM sale_products
-          WHERE deleted_at IS NULL
-          GROUP BY sale_id
-       ) sp ON sp.sale_id = s.id
-      WHERE s.is_assigned = 1 AND s.is_approval = 0 AND s.is_approved = '0'
-        AND s.sale_by = :uid AND s.deleted_at IS NULL`,
-    { replacements: { uid: userId }, type: QueryTypes.SELECT }
-  );
 
-  return {
-    totalStock: Number(row.totalStock) || 0,
-    totalPrice: Number(row.totalPrice) || 0,
+  console.log("this is the userId ====", userId||"this is not defiend userId");
+  
+  const getModelObject_data = async (data, userId) => {
+    // console.log(" call in the getModelObject_data");
+
+    let no_of_products = await SaleProductModel.count({
+      where: { sale_id: data.id },
+    });
+
+    // console.log(no_of_products, "no_of_products is the count");
+    
+
+    return await {
+      no_of_products: no_of_products,
+      total_amount: data.total_amount,
+    };
   };
+
+
+  let TransferData = await SaleModel.findAndCountAll({
+    order: [["id", "DESC"]],
+    where: {
+      is_assigned: true,
+      is_approval: false,
+      is_approved: "0",
+      sale_by: userId,
+    },
+    include: [
+      {
+        model: UserModel,
+        as: "user",
+      },
+      {
+        model: UserModel,
+        as: "saleBy",
+      },
+    ],
+    distinct: true,
+  })
+    .then(async (data) => {
+      console.log(
+        "this is call the SaleListCollection ========",
+        data.rows.length
+      );
+      let arr = [];
+      for (let i = 0; i < data.rows.length; i++) {
+        arr.push(await getModelObject_data(data.rows[i], userId));
+      }
+
+      return arr;
+    })
+    .catch((err) => {
+      console.log("Error in getTransferSale: ", err);
+    });
+
+  let totalStock = 0,totalPrice=0
+
+  TransferData.map((item) => {
+    console.log("this is the item ========", item);
+    totalStock += item.no_of_products;
+    totalPrice += item.total_amount;
+  });
+  // console.log("this is the total stock ========", totalStock);
+  return {totalStock,totalPrice};
 };
 
 const getMyRetailerIds = async (userId) => {
   let roleId = getRoleId("retailer");
-  
-  // Check user_to_users table
-  let userToUserIds = await UserToUserModel.findAll({
+  let ids = await UserToUserModel.findAll({
     where: { to_role_id: roleId, user_id: userId },
     attributes: ["to_user_id"],
     raw: true,
   });
-  
-  // Also check parent_id OR created_by on retailers (retailers created by this user)
-  let retailersByLink = await UserModel.findAll({
-    where: { 
-      role_id: roleId, 
-      [Op.or]: [
-        { parent_id: userId },
-        { created_by: userId }
-      ]
-    },
-    attributes: ["id"],
-    raw: true,
-  });
-  
-  // Combine all sources and deduplicate
-  const fromUserToUser = arrayColumn(userToUserIds, "to_user_id");
-  const fromRetailers = arrayColumn(retailersByLink, "id");
-  return [...new Set([...fromUserToUser, ...fromRetailers])];
+  return arrayColumn(ids, "to_user_id");
 };
 
 /**
- * The users whose retailers count as "mine".
+ * A sales executive's Total Retailer figure: the book of the admin at the top
+ * of its chain - that admin's own retailers, the retailers of the admin's own
+ * distributors, and those of every sales executive in the chain. The three
+ * groups are keyed on parent_id, so a retailer falls in exactly one of them and
+ * the counts add up without overlap.
  *
- * A sales executive or distributor owns the retailers it created - the link
- * lives in user_to_users. An admin creates none directly; its retailers are the
- * ones belonging to its distributors and sales executives. Shared by the
- * retailer list and the dashboard card so the two cannot disagree.
+ * Lifted out of the sales executive's dashboard card so the executive list can
+ * show the same number the executive itself sees. Two copies of a rule this
+ * shaped drift.
  */
-const getMyRetailerOwnerIds = async (req) => {
-  /**
-   * Sales executives under one parent work the same book: a retailer added by
-   * one of them belongs to the group, not to whoever happened to enter it. So
-   * "mine" for a sales executive is the parent plus every sales executive that
-   * reports to it, itself included.
-   */
-  if (isSalesExecutive(req)) {
-    const parentId = await getUserColumnValue(req.userId, "parent_id");
-    if (!parentId) return [req.userId];
-    const siblings = await UserModel.findAll({
-      attributes: ["id"],
-      where: { parent_id: parentId, role_id: getRoleId("sales_executive") },
-    });
-    return [...new Set([req.userId, parentId, ...arrayColumn(siblings, "id")])];
-  }
+const getSalesExecutiveTotalRetailerIds = async (userId) => {
+  const retailerRoleId = getRoleId("retailer");
+  const distributorRoleId = getRoleId("distributor");
 
-  if (!isAdmin(req)) return [req.userId];
-  // Get admin's own distributors (those with parent_id = admin_id)
-  const ownDistributorIds = [...new Set(await getAdminOwnDistributorIds(req.userId))];
-  // Get SEs under those distributors
-  const seUnderDistributors = ownDistributorIds.length > 0 
-    ? await UserModel.findAll({ 
-        attributes: ["id"], 
-        where: { parent_id: { [Op.in]: ownDistributorIds }, role_id: getRoleId("sales_executive") } 
-      })
-    : [];
-  // Get admin's own direct SEs (those with parent_id = admin_id)
-  const ownSE = await UserModel.findAll({
+  const parentId = await getUserColumnValue(userId, "parent_id");
+  if (!parentId) return [];
+
+  /* the parent is a distributor most of the time, but an admin may own a
+     sales executive directly, and then it is its own admin */
+  const parentRoleId = await getUserColumnValue(parentId, "role_id");
+  const adminId =
+    parentRoleId == getRoleId("admin")
+      ? parentId
+      : await getUserColumnValue(parentId, "parent_id");
+  if (!adminId) return [];
+
+  const distributors = await UserModel.findAll({
     attributes: ["id"],
-    where: { parent_id: req.userId, role_id: getRoleId("sales_executive") },
+    where: { role_id: distributorRoleId, own: true, parent_id: adminId },
   });
-  return [
-    req.userId,
-    ...ownDistributorIds,
-    ...arrayColumn(seUnderDistributors, "id"),
-    ...arrayColumn(ownSE, "id"),
-  ];
+  const distributorIds = arrayColumn(distributors, "id");
+
+  const seCondition = await getAdminSEWhereCondition(
+    distributorIds.concat(adminId),
+    null,
+    true
+  );
+  const allSE = await UserModel.findAll({
+    attributes: ["id"],
+    where: seCondition,
+  });
+
+  /* the admin, its own distributors and every executive in the chain - a
+     retailer hangs off exactly one of them */
+  const ownerIds = [adminId, ...distributorIds, ...arrayColumn(allSE, "id")];
+  const retailers = await UserModel.findAll({
+    attributes: ["id"],
+    where: { role_id: retailerRoleId, parent_id: { [Op.in]: ownerIds } },
+  });
+  return arrayColumn(retailers, "id");
 };
 
-/** retailer ids linked to any of the given owners */
-const getMyRetailerIdsFor = async (ownerIds) => {
-  const all = await Promise.all(ownerIds.map((id) => getMyRetailerIds(id)));
-  return [...new Set(all.flat())];
-};
+const getSalesExecutiveTotalRetailerCount = async (userId) =>
+  (await getSalesExecutiveTotalRetailerIds(userId)).length;
 
-/**
- * "My Retailer" is what this user created - nobody else's.
- */
-const getOwnRetailerIds = async (req) => getMyRetailerIdsFor([req.userId]);
-
-/**
- * The retailers of the whole group, which is what the Total Retailer figure
- * shows: for a sales executive that is the parent and every sales executive
- * reporting to it, so one team sees one book. Kept separate from
- * getOwnRetailerIds on purpose - Total is shared, My Retailer is not.
- */
-const getGroupRetailerIds = async (req) =>
-  getMyRetailerIdsFor(await getMyRetailerOwnerIds(req));
-
-/** 
- * Retailer ids that belong to the caller based on their role:
- * - Admin: retailers from self + own distributors + own SEs + SEs under distributors
- * - Distributor: retailers from self + own SEs
- * - SE: retailers from self only (team sharing handled separately)
- */
-const getMyRetailerIdsForRequest = async (req) => {
-  if (isAdmin(req)) {
-    // Admin sees retailers created by themselves, their distributors, and their SEs
-    return getMyRetailerIdsFor(await getMyRetailerOwnerIds(req));
-  }
-  if (isDistributor(req)) {
-    // Distributor sees retailers created by themselves and their SEs
-    const seCondition = { parent_id: req.userId, role_id: getRoleId("sales_executive") };
-    const ownSEs = await UserModel.findAll({ attributes: ["id"], where: seCondition });
-    const ownerIds = [req.userId, ...arrayColumn(ownSEs, "id")];
-    return getMyRetailerIdsFor(ownerIds);
-  }
-  // SE and others: only their own retailers
-  return getOwnRetailerIds(req);
+/** How many retailers this user brought in - the "My Retailer" figure. */
+const getMyRetailerCount = async (userId) => {
+  const ids = await getMyRetailerIds(userId);
+  return UserModel.count({
+    where: { role_id: getRoleId("retailer"), id: { [Op.in]: ids } },
+  });
 };
 
 const insertLoanEMI = async (loan, startDate, emi, amount) => {
@@ -3594,80 +3556,21 @@ const getStockUserID = async (req, userID) => {
   return userID;
 };
 
-/**
- * Cart availability for a whole page of stock rows, in two queries.
- *
- * canStockAddCart() answers this one row at a time, so a 50-row stock page
- * spent 50 round trips - and 50 pooled connections - on a question the database
- * can answer for the page in one go. Same rules, evaluated the same way:
- *
- *   material rows      - a row is available unless the carts hold at least the
- *                        whole stocked quantity
- *   everything else    - available unless the row is already in this user's cart
- *
- * Returns a Map keyed by stock id. Rows missing from the map are treated as
- * available, which is what the per-row version returns when the stock is not
- * found for that user.
- */
-const canStockAddCartMap = async (stockIds, user_id) => {
-  const result = new Map();
-  const ids = [...new Set((stockIds || []).filter((id) => id !== null && id !== undefined))];
-  if (!ids.length) return result;
-
-  const [stockRows, cartRows] = await Promise.all([
-    dbSequelize.query(
-      `SELECT s.id, s.quantity,
-              (SELECT SUM(quantity) FROM carts
-                WHERE stock_id = s.id AND deleted_at IS NULL) AS total_quantity
-         FROM stocks s
-        WHERE s.id IN (:ids) AND s.user_id = :user_id
-          AND s.deleted_at IS NULL`,
-      { replacements: { ids, user_id }, type: QueryTypes.SELECT }
-    ),
-    cartsModel.findAll({
-      attributes: ["stock_id"],
-      where: { stock_id: { [Op.in]: ids }, user_id: user_id },
-      raw: true,
-    }),
-  ]);
-
-  const stockById = new Map();
-  stockRows.forEach((row) => stockById.set(String(row.id), row));
-  const inCart = new Set(cartRows.map((row) => String(row.stock_id)));
-
-  ids.forEach((id) => {
-    const key = String(id);
-    result.set(key, {
-      material: (() => {
-        const row = stockById.get(key);
-        return !row || !row.total_quantity || row.total_quantity < row.quantity;
-      })(),
-      other: !inCart.has(key),
-    });
-  });
-  return result;
-};
-
 const canStockAddCart = async (stockId, productType, user_id, certificate_no = null) => {
-  let can_add_cart;
   if (productType == "material") {
-    // One round trip instead of two - the listings call this once per row, so
-    // the second trip cost as much as the whole rest of the page.
-    // ponytail: still one query per row; batch by stock_id if a page ever
-    // needs to list more rows than a screenful.
-    const rows = await dbSequelize.query(
-      `SELECT s.quantity,
-              (SELECT SUM(quantity) FROM carts
-                WHERE stock_id = s.id AND deleted_at IS NULL) AS total_quantity
-         FROM stocks s
-        WHERE s.id = :stockId AND s.user_id = :user_id
-          AND s.deleted_at IS NULL`,
-      { replacements: { stockId, user_id }, type: QueryTypes.SELECT }
-    );
+    let stock = await StockModel.findOne({
+      where: { id: stockId, user_id: user_id },
+    });
+    let query =
+      "SELECT SUM(quantity) as total_quantity FROM carts WHERE stock_id = " +
+      stockId +
+      " AND deleted_at IS NULL";
+    const cart = await dbSequelize.query(query, { type: QueryTypes.SELECT });
     if (
-      !rows.length ||
-      !rows[0].total_quantity ||
-      rows[0].total_quantity < rows[0].quantity
+      !stock ||
+      !cart.length ||
+      !cart[0].total_quantity ||
+      cart[0].total_quantity < stock.quantity
     ) {
       can_add_cart = true;
     } else {
@@ -3702,6 +3605,7 @@ const canStockAddCart = async (stockId, productType, user_id, certificate_no = n
   //       sale_id: { [Op.in]: saleIds }, 
   //     },
   //   });
+  //   console.log("---------------------->saleProductExists->>>>>>>>>", saleProductExists);
   //   if (!saleProductExists) {
   //     can_add_cart = true;
   //   } else {
@@ -3990,7 +3894,7 @@ const haveLeave = async (userId, date) => {
   return leave ? true : false;
 };
 
-const getPurchaseProducts = async (params, countsOnly = false) => {
+const getPurchaseProducts = async (params) => {
   /*let mansgers = await UserModel.findAll({
     attributes: ["id"],
     where: { role_id: getRoleId("manager") },
@@ -4000,77 +3904,64 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
   managerIds.push(superadminId);*/
 
   let managerIds = await avlStockUserIdsNew(null, getRoleId("superadmin"));
+  //console.log(managerIds);
 
-  // The dashboard reads only the four totals below, never `items`/`categories`.
-  // In that mode the material/purity/unit/size/category joins and all the display
-  // formatting are pure waste, so both are skipped. The counting logic itself is
-  // untouched - it encodes business rules that are not safe to restate as SQL.
-  const purchaseProductInclude = countsOnly
-    ? [
-        {
-          model: productsModel,
-          as: "product",
-          attributes: ["id", "type"],
-        },
-        {
-          model: PurchaseProductMaterialModel,
-          as: "purchaseMaterials",
-          separate: true,
-          attributes: ["id", "purchase_product_id", "quantity", "return_qty"],
-        },
-      ]
-    : [
-        {
-          model: productsModel,
-          as: "product",
-          include: [
-            {
-              model: CategoryModel,
-              as: "category",
-            },
-          ],
-        },
-        {
-          model: PurchaseProductMaterialModel,
-          as: "purchaseMaterials",
-          separate: true,
-          include: [
-            { model: MaterialModel, as: "material" },
-            { model: PurityModel, as: "purity" },
-            { model: UnitModel, as: "unit" },
-          ],
-        },
-        {
-          model: SizeModel,
-          as: "size",
-        },
-      ];
+  let purchaseWhere = {
+    is_approved: { [Op.ne]: 2 },
+    is_assigned: false,
+    is_approval: false,
+    sale_id: { [Op.is]: null },
+    //type: { [Op.in]: ["product", "order_purchase"] },
+    type: {[Op.ne]: "material"},
+    user_id: { [Op.in]: managerIds },
+  };
+  if (isObject(params) && !isEmpty(params.supplier_id)) {
+    purchaseWhere.supplier_id = params.supplier_id;
+  }
 
   let purchases = await PurchaseModel.findAll({
-    // req_data is a longtext audit blob (~570 MB across the rows this matches)
-    // that nothing below reads. Selecting it cost ~10s per dashboard load.
-    attributes: countsOnly
-      ? ["id", "total_payable", "created_at"]
-      : { exclude: ["req_data"] },
-    where: {
-      is_approved: { [Op.ne]: 2 },
-      is_assigned: false,
-      is_approval: false,
-      sale_id: { [Op.is]: null },
-      //type: { [Op.in]: ["product", "order_purchase"] },
-      type: {[Op.ne]: "material"},
-      user_id: { [Op.in]: managerIds },
-    },
+    where: purchaseWhere,
     order: [["createdAt", "DESC"]],
     include: [
       {
         model: PurchaseProductModel,
         as: "purchaseProducts",
         separate: true,
-        ...(countsOnly
-          ? { attributes: ["id", "purchase_id", "product_id", "is_return", "certificate_no"] }
-          : {}),
-        include: purchaseProductInclude,
+        include: [
+          {
+            model: productsModel,
+            as: "product",
+            include: [
+              {
+                model: CategoryModel,
+                as: "category",
+              },
+            ],
+          },
+          {
+            model: PurchaseProductMaterialModel,
+            as: "purchaseMaterials",
+            separate: true,
+            include: [
+              {
+                model: MaterialModel,
+                as: "material",
+              },
+              {
+                model: PurityModel,
+                as: "purity",
+              },
+              {
+                model: UnitModel,
+                as: "unit",
+              },
+            ],
+          },
+          {
+            model: SizeModel,
+            as: "size",
+          },
+        ],
       },
     ],
   });
@@ -4108,28 +3999,24 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
             pushItem = false;
           }
         }
-
         if (!isEmpty(params.sub_category_id)) {
           if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.supplier_id)) {
-          if (!p || p.supplier_id != params.supplier_id) {
             pushItem = false;
           }
         }
       }
 
       let image = "";
-      if (!countsOnly && product && isArray(product.images)) {
+      if (product && isArray(product.images)) {
         for (let img = 0; img < product.images.length; img++) {
+          // console.log(getFileAbsulatePath(product.images[img].path))
+          // console.log(product.images)
           image = getFileAbsulatePath(product.images[img].path);
           break;
         }
       }
 
+      // console.log("---------product data ", product)
 
       let weight_display = [],
         unit_display = [],
@@ -4138,19 +4025,14 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         materialString = [];
       for (let y = 0; y < pp.purchaseMaterials.length; y++) {
         let pm = pp.purchaseMaterials[y];
+        let str = pm.material ? pm.material.name : "";
+        let weight = pm.weight ? parseFloat(pm.weight) : 0;
         let quantity = pm.quantity ? parseFloat(pm.quantity) : 0;
         let return_qty = pm.return_qty ? parseFloat(pm.return_qty) : 0;
+        let return_weight = pm.return_weight ? parseFloat(pm.return_weight) : 0;
         if (return_qty > 0) {
           quantity = quantity - return_qty;
         }
-        if (countsOnly) {
-          // the counters below read only [0].quantity and [0].return_qty
-          materialItem.push({ quantity: quantity, return_qty: return_qty });
-          continue;
-        }
-        let str = pm.material ? pm.material.name : "";
-        let weight = pm.weight ? parseFloat(pm.weight) : 0;
-        let return_weight = pm.return_weight ? parseFloat(pm.return_weight) : 0;
         if (return_weight > 0) {
           weight = weightFormat(weight - return_weight);
         }
@@ -4168,6 +4050,7 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         });
         materialString.push(str);
         if (product && product.type == "material") {
+          //console.log(pm.quantity, pm.return_qty, product.name)
           weight_display.push(weightFormat(quantity));
         } else if(product && isEmpty(pp.certificate_no) && product.type != "material"){ 
           weight_display.push(weightFormat(quantity));
@@ -4177,39 +4060,37 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         unit_display.push(pm.unit ? pm.unit.name : "-");
         purity_display.push(pm.purity ? pm.purity.name : "-");
       }
-      if (!countsOnly) {
-        let total_weight_display = "";
-        if (materialItem.length == 1) {
-          total_weight_display =
-            weightFormat(materialItem[0].weight) +
-            " , " +
-            materialItem[0].unit_name;
-        } else {
-          total_weight_display = weightFormat(pp.total_weight) + " , gm";
-        }
+      let total_weight_display = "";
+      if (materialItem.length == 1) {
+        total_weight_display =
+          weightFormat(materialItem[0].weight) +
+          " , " +
+          materialItem[0].unit_name;
+      } else {
+        total_weight_display = weightFormat(pp.total_weight) + " , gm";
+      }
 
-        let item = {
-          purchase_id: p.id,
-          image: image,
-          current_image:
-            pp.current_image == null
-              ? null
-              : getFileAbsulatePath(pp.current_image),
-          name: product ? product.name : "",
-          certificate_no: pp.certificate_no ?? "",
-          total_weight_display: total_weight_display,
-          stock_material_display: materialString,
-          purity_display: purity_display,
-          weight_display: weight_display,
-          unit_display: unit_display,
-          product_code: product ? product.product_code : "",
-          size_name: pp.size ? pp.size.name : "",
-          mrp_display: displayAmount(pp.total),
-        };
+      let item = {
+        purchase_id: p.id,
+        image: image,
+        current_image:
+          pp.current_image == null
+            ? null
+            : getFileAbsulatePath(pp.current_image),
+        name: product ? product.name : "",
+        certificate_no: pp.certificate_no ?? "",
+        total_weight_display: total_weight_display,
+        stock_material_display: materialString,
+        purity_display: purity_display,
+        weight_display: weight_display,
+        unit_display: unit_display,
+        product_code: product ? product.product_code : "",
+        size_name: pp.size ? pp.size.name : "",
+        mrp_display: displayAmount(pp.total),
+      };
 
-        if (pushItem) {
-          items.push(item);
-        }
+      if (pushItem) {
+        items.push(item);
       }
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
@@ -4223,7 +4104,7 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
         //total_return_product++;
       }
 
-      if (product && !countsOnly) {
+      if (product) {
         let index = _.findIndex(
           categories,
           (jj) => jj.category_id == product.category_id
@@ -4264,57 +4145,29 @@ const getPurchaseProducts = async (params, countsOnly = false) => {
   };
 };
 
-/**
- * `countsOnly` mirrors getPurchaseProducts: the dashboard reads only the four
- * totals below, never `items`/`categories`, so in that mode the material,
- * purity, unit, size and category joins and all the display formatting are
- * skipped. The counting itself is untouched - it encodes business rules that
- * are not safe to restate as SQL.
- */
-const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
+const getPurchaseProductsUser = async (req, params) => {
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
-
-  let productWhere = {};
-  if (isObject(params) && !isEmpty(params.category_id)) {
-    productWhere.category_id = params.category_id;
+  let purchaseWhere = {
+    is_approved: { [Op.ne]: 2 },
+    is_assigned: false,
+    is_approval: false,
+    //sale_id: { [Op.is]: null },
+    //type: { [Op.in]: ["product", "order_purchase"] },
+    user_id: userID,
+  };
+  if (isObject(params) && !isEmpty(params.supplier_id)) {
+    purchaseWhere.supplier_id = params.supplier_id;
   }
-  let productRequired = !isEmpty(productWhere);
-
   // fetch pruchase records
   let purchases = await PurchaseModel.findAll({
-    // see getPurchaseProducts - req_data is an unread longtext blob
-    attributes: { exclude: ["req_data"] },
-    where: {
-      is_approved: { [Op.ne]: 2 },
-      is_assigned: false,
-      is_approval: false,
-      //sale_id: { [Op.is]: null },
-      //type: { [Op.in]: ["product", "order_purchase"] },
-      user_id: userID,
-      ...(isObject(params) && !isEmpty(params.supplier_id)
-        ? { supplier_id: params.supplier_id }
-        : {}),
-    },
+    where: purchaseWhere,
     order: [["createdAt", "DESC"]],
     include: [
       {
         model: PurchaseProductModel,
         as: "purchaseProducts",
         separate: true,
-        ...(countsOnly
-          ? { attributes: ["id", "purchase_id", "product_id", "is_return", "certificate_no"] }
-          : {}),
-        include: countsOnly
-          ? [
-              { model: productsModel, as: "product", attributes: ["id", "type"] },
-              {
-                model: PurchaseProductMaterialModel,
-                as: "purchaseMaterials",
-                separate: true,
-                attributes: ["id", "purchase_product_id", "quantity", "return_qty"],
-              },
-            ]
-          : [
+        include: [
           {
             model: productsModel,
             as: "product",
@@ -4387,29 +4240,24 @@ const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
             pushItem = false;
           }
         }
-
         if (!isEmpty(params.sub_category_id)) {
           if (!product || product.sub_category_id != params.sub_category_id) {
-            pushItem = false;
-          }
-        }
-
-        if (!isEmpty(params.supplier_id)) {
-          if (!p || p.supplier_id != params.supplier_id) {
             pushItem = false;
           }
         }
       }
 
       let image = "";
-      // countsOnly: the caller never reads items[], so skip the display work
       if (product && isArray(product.images)) {
         for (let img = 0; img < product.images.length; img++) {
+          // console.log(getFileAbsulatePath(product.images[img].path))
+          // console.log(product.images)
           image = getFileAbsulatePath(product.images[img].path);
           break;
         }
       }
 
+      // console.log("---------product data ", product)
 
       let weight_display = [],
         unit_display = [],
@@ -4443,6 +4291,7 @@ const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
         });
         materialString.push(str);
         if (product && product.type == "material") {
+          //console.log(pm.quantity, pm.return_qty, product.name)
           weight_display.push(weightFormat(quantity));
         } else if(product && isEmpty(pp.certificate_no) && product.type != "material"){ 
           weight_display.push(weightFormat(quantity));
@@ -4453,7 +4302,7 @@ const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
         purity_display.push(pm.purity ? pm.purity.name : "-");
       }
       let total_weight_display = "";
-      if (!countsOnly && materialItem.length == 1) {
+      if (materialItem.length == 1) {
         total_weight_display =
           weightFormat(materialItem[0].weight) +
           " , " +
@@ -4481,7 +4330,9 @@ const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
         mrp_display: displayAmount(pp.total),
       };
 
-      if (!countsOnly) items.push(item);
+      if (pushItem) {
+        items.push(item);
+      }
 
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
@@ -4538,19 +4389,13 @@ const getPurchaseProductsUser = async (req, params, countsOnly = false) => {
 
 const getOwnUserSaleProducts = async (req, params, roleId = null) => {
   let userIds = await avlStockUserIdsNew(req, roleId);
+  console.log("getOwnUserSaleProducts users ===> ", userIds);
   
   //let superadminId = isManager(req) ? req.userId : await getWorkingUserID(req);
   //userIds.push(superadminId);
   let sales = await SaleModel.findAll({
     where: {
-      // sale_by must stay AND-ed with the userIds scope, not overwrite it -
-      // a plain `sale_by:` key here would clobber the authorization filter above.
-      [Op.and]: [
-        { sale_by: { [Op.in]: userIds } },
-        ...(isObject(params) && !isEmpty(params.sale_by)
-          ? [{ sale_by: params.sale_by }]
-          : []),
-      ],
+      sale_by: { [Op.in]: userIds },
       //is_assigned: false, is_approval: false, /* is_approved: { [Op.ne]: 2 } */
       /* [Op.or]: [
         { is_approval: false, is_approved: { [Op.ne]: 2 } },
@@ -4569,22 +4414,6 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
           {
             model: productsModel,
             as: "product",
-            // see getPurchaseProducts - pushing the filter into SQL instead of
-            // filtering the fetched rows in JS is what makes these dropdowns fast.
-            ...(isObject(params) &&
-            (!isEmpty(params.category_id) || !isEmpty(params.sub_category_id))
-              ? {
-                  required: true,
-                  where: {
-                    ...(!isEmpty(params.category_id)
-                      ? { category_id: params.category_id }
-                      : {}),
-                    ...(!isEmpty(params.sub_category_id)
-                      ? { sub_category_id: params.sub_category_id }
-                      : {}),
-                  },
-                }
-              : {}),
             include: [
               {
                 model: CategoryModel,
@@ -4627,6 +4456,7 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
       },
     ],
   });
+  console.log("sales length -----", sales.length);
   let items = [],
     total_amount = 0,
     total_product = 0,
@@ -4640,8 +4470,26 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
       if (pp.is_return) {
         continue;
       }
-      // category_id/sub_category_id/sale_by are now applied as SQL filters
-      // above, so every saleProduct reaching this point already matches.
+      let pushItem = true;
+      if (isObject(params)) {
+        if (!isEmpty(params.category_id)) {
+          if (!product || product.category_id != params.category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.sub_category_id)) {
+          if (!product || product.sub_category_id != params.sub_category_id) {
+            pushItem = false;
+          }
+        }
+
+        if (!isEmpty(params.sale_by)) {
+          if (!p || p.sale_by != params.sale_by) {
+            pushItem = false;
+          }
+        }
+      }
 
       let image = "";
       if (product && isArray(product.images)) {
@@ -4716,7 +4564,9 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
         sale_by: p.sale_by,
         sale_by_name: p.saleBy ? p.saleBy.name : "",
       };
-      items.push(item);
+      if (pushItem) {
+        items.push(item);
+      }
       if (product && product.type == "material") {
         total_product += materialItem.length ? materialItem[0].quantity : 0;
       } else if(product && isEmpty(pp.certificate_no) && product.type != "material"){
@@ -4756,6 +4606,7 @@ const getOwnUserSaleProducts = async (req, params, roleId = null) => {
       }
     }
   }
+  console.log("items of length is ----------", items.length);
 
   return {
     items: items,
@@ -4927,7 +4778,6 @@ module.exports = {
   getCustomRoleIds,
   getProductPrices,
   calculateProductPrice,
-  resetMaterialPriceCache,
   calculateProductPriceCart,
   calculateProductPriceCartNew,
   getDistributorAdmin,
@@ -4935,10 +4785,8 @@ module.exports = {
   calculateProductPriceByPurity,
   getCartMaterialPrices,
   getTotalStockPriceByUser,
-  getLiveGoldRate,
   getUserColumnValue,
   getWalletBalance,
-  hasWalletFunds,
   emailExists,
   normalizeEmail,
   loginIdentifierWhere,
@@ -4961,25 +4809,21 @@ module.exports = {
   getProductSizeMaterials,
   getTotalStockByUser,
   getMyRetailerIds,
-  getMyRetailerOwnerIds,
-  getMyRetailerIdsFor,
-  getMyRetailerIdsForRequest,
-  getOwnRetailerIds,
-  getGroupRetailerIds,
+  getMyRetailerCount,
+  getSalesExecutiveTotalRetailerCount,
+  getSalesExecutiveTotalRetailerIds,
   getTransferSale,
   insertLoanEMI,
   updateRetailerAvgReview,
   insertVisit,
   productHaveWishlist,
   getAdminDistributorIds,
-  getAdminOwnDistributorIds,
   getOrderStatusProgress,
   getNotificationLabelByType,
   convertToNotificationGroup,
   updateProductAvgReview,
   getStockUserID,
   canStockAddCart,
-  canStockAddCartMap,
   updateStockRawMaterialOutStanding,
   getTodayAttendence,
   haveLeave,

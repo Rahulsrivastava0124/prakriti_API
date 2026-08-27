@@ -20,7 +20,7 @@ const db = require("@models");
 const moment = require("moment");
 const { Op } = require("sequelize");
 const { filter, map } = require("lodash");
-const { getRoleId, haveLeave, emailExists, normalizeEmail } = require("@library/common");
+const { getRoleId, haveLeave } = require("@library/common");
 const { UserCollection } = require("@resources/sales_executive/UserCollection");
 const {
   AttendanceCollection,
@@ -54,16 +54,9 @@ exports.editProfile = async (req, res) => {
       .send(formatErrorResponse("User already exists"));
   }
 
-  /* email doubles as a login identifier, so it must stay unique across every role */
-  if (await emailExists(data.email, req.userId)) {
-    return res
-      .status(errorCodes.default)
-      .send(formatErrorResponse("This email is already exists."));
-  }
-
   const postData = {
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email || null,
     mobile: data.mobile,
   };
 

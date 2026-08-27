@@ -1,5 +1,4 @@
-const {
-  mapConcurrent, isObject, isEmpty, getFileAbsulatePath, isArray, arrayColumn, productTypeDisplay, priceFormat, displayAmount, weightFormat, convertUnitToGram } = require("@helpers/helper");
+const { isObject, isEmpty, getFileAbsulatePath, isArray, arrayColumn, productTypeDisplay, priceFormat, displayAmount, weightFormat, convertUnitToGram } = require("@helpers/helper");
 const {ProductSizeCollection} = require("@resources/superadmin/ProductSizeCollection");
 const {ProductCertificateCollection} = require("@resources/customer/ProductCertificateCollection");
 const {calculateProductPrice, getProductSizeMaterials, productHaveWishlist} = require("@library/common");
@@ -18,8 +17,11 @@ const ProductDetailsCollection = async(data, req) => {
     if(isObject(data)){
         return await getModelObject(data, req);
     }else{
-        return await mapConcurrent(data, (item, i) => getModelObject(item, req));
-
+        let arr = [];
+        for(let i = 0; i < data.length; i++){
+            arr.push(await getModelObject(data[i], req));
+        }
+        return arr;
     }
 }
 
