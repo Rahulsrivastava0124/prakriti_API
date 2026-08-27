@@ -21,6 +21,9 @@ fs.mkdirSync('logs', { recursive: true });
 let _isShuttingDown = false;
 const _logErr = (tag, err) => {
   const line = `[${tag}] ${new Date().toISOString()} ${err && err.message ? err.stack || err.message : String(err)}\n`;
+  // Also to stderr: file-only logging is why a crash shows up as a bare
+  // "app crashed" in nodemon with no reason attached.
+  process.stderr.write(line);
   try { fs.appendFileSync('logs/error.log', line); } catch (_) {}
 };
 
