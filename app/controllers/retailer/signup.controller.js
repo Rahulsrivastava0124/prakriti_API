@@ -1,7 +1,7 @@
 const config = require("@config/auth.config");
 const db = require("@models");
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
-const { getRoleId, emailExists, normalizeEmail } = require("@library/common");
+const { getRoleId } = require("@library/common");
 const { addActivityLog } = require("@library/activityLog");
 const {UserCollection} = require("@resources/retailer/UserCollection");
 const userModel = db.users;
@@ -24,14 +24,9 @@ exports.signup = async (req, res) => {
     return res.status(errorCodes.default).send(formatErrorResponse('Mobile is already exists.'));
   }
 
-  // Email doubles as a login identifier, so it must be unique across every role.
-  if (await emailExists(data.email)) {
-    return res.status(errorCodes.default).send(formatErrorResponse('Email is already exists.'));
-  }
-
   const postData = {
     name: data.name,
-    email: normalizeEmail(data.email),
+    email: data.email || null,
     mobile: data.mobile,
     password: bcrypt.hashSync(data.password, 8),
     role_id: customerRoleId
