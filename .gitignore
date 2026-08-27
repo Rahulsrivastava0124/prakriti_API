@@ -1,11 +1,3 @@
-# macOS
-.DS_Store
-**/.DS_Store
-
-# Temp/test scripts
-_*.js
-chk-tmp*.js
-
 # Logs
 logs
 *.log

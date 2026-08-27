@@ -20,6 +20,18 @@ const getPaginationOptions = (page, size) => {
   };
 };
 
+
+/*
+const getPaginationOptions = (page, size) => {
+  page = page === undefined ? 1 : page;
+  size = 15; //size === undefined ? 10 : size;
+  return {
+    page: page,
+    limit: size,
+  };
+ };
+*/
+
 /**
  * Return data with pagination data
  *
