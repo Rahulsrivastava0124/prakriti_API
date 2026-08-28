@@ -560,7 +560,7 @@ const getCustomRoleIds = async () => {
  * slow or down feed cannot stall a page - callers fall back to the configured
  * per-gram price when this returns 0.
  */
-const GOLD_RATE_URL = "https://n8n.prakriti.one/webhook/gold-rate-india";
+const GOLD_RATE_URL = process.env.GOLD_RATE_URL || "https://n8n.prakriti.one/webhook/gold-rate-india";
 const GOLD_RATE_TTL = 10 * 60 * 1000;
 // Cache stores per-karat rates directly from the API.
 let goldRateCache = { rate: 0, rate22: 0, rate18: 0, display: "", at: 0 };
@@ -595,14 +595,24 @@ const getLiveGoldRate = async () => {
       const res = await fetch(GOLD_RATE_URL, { signal: controller.signal });
       clearTimeout(timer);
       const body = await res.json();
-      const pg = body && body.per_gram ? body.per_gram : {};
+      /* Feed shape varies by webhook: the AIB one returns base_per_gram (ex-GST)
+         and retailer_per_gram (incl 3% GST); the older one returned per_gram.
+         Take the EX-GST rate - every caller feeds it into a taxable base that
+         then has igst% added on top (computeProductTotals, calculateProductPrice),
+         so a GST-inclusive rate would tax the customer twice. */
+      const pg = (body && (body.base_per_gram || body.per_gram || body.retailer_per_gram)) || {};
       const rate = parseFloat(pg["24K"] || 0);
       if (rate > 0) {
+        const rate22 = parseFloat(pg["22K"] || 0);
+        const rate18 = parseFloat(pg["18K"] || 0);
+        /* body.display quotes the GST-inclusive figures, so printing it beside an
+           ex-GST rate column would contradict it. Build the line from what we use. */
+        const perG = (n) => `\u20b9${Math.round(n).toLocaleString("en-IN")}/g`;
         goldRateCache = {
           rate:    rate,
-          rate22:  parseFloat(pg["22K"] || 0),
-          rate18:  parseFloat(pg["18K"] || 0),
-          display: body.display || "",
+          rate22:  rate22,
+          rate18:  rate18,
+          display: `24K ${perG(rate)} \u00b7 22K ${perG(rate22)} \u00b7 18K ${perG(rate18)} (ex-GST)`,
           at:      Date.now(),
         };
         goldRateFailedAt = 0;

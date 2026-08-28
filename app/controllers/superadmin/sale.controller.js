@@ -6906,9 +6906,12 @@ exports.downloadInvoiceInfo = async (req, res) => {
                             <td>
                               <table cellspacing="0" cellpadding="0" border="0"
                                   align="center" width="100%">
+                                  <tr><td style="position: relative;">
                                   <h1 style="font-size: 14px; text-align:
                                       center; margin-bottom: 5px; font-weight:
                                       300;">SALE${saleData.is_approved == "3" ? " ON APPROVAL" : ""} TAX INVOICE</h1>
+                                  ${atCurrentRate ? `<span style="position: absolute; top: 0; right: 10px; background: #e53935; color: #fff; padding: 4px 12px; font-size: 11px; font-weight: 600; border-radius: 3px;">CURRENT</span>` : ""}
+                                  </td></tr>
                               </table>
                               <table cellspacing="0" cellpadding="0" border="0"
                                   align="center" width="100%">
