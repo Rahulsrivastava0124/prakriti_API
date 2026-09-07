@@ -1,5 +1,5 @@
 const {
-  mapConcurrent, isObject, isEmpty, productTypeDisplay, isArray, priceFormat } = require("@helpers/helper");
+  mapConcurrent, isObject, isEmpty, productTypeDisplay, isArray, priceFormat, getFileAbsulatePath } = require("@helpers/helper");
 const {CartMaterialCollection} = require("@resources/superadmin/CartMaterialCollection");
 const {calculateProductPriceCart, isAdmin, isDistributor, isSuperAdmin} = require("@library/common");
 const { Op, QueryTypes } = require("sequelize");
@@ -134,6 +134,17 @@ const getModelObject = async (data, req) => {
     }
 
 
+    /* The piece actually being sold is photographed on its stock row; the
+       product's main_image is the generic catalogue shot and only stands in
+       when this stock has no photo of its own. Same order OrderProductCollection
+       uses, so a cart line and the order it becomes show the same picture. */
+    let image = data.product && !isEmpty(data.product.main_image)
+        ? getFileAbsulatePath(data.product.main_image)
+        : '';
+    if (data.stock && !isEmpty(data.stock.current_image)) {
+        image = getFileAbsulatePath(data.stock.current_image);
+    }
+
     return {
         id: data.id,
         product_id: data.product_id,
@@ -141,7 +152,10 @@ const getModelObject = async (data, req) => {
         product_name: !isEmpty(data.product) ? data.product.name : '',
         product_code: !isEmpty(data.product) ? data.product.product_code : '',
         certificate_no: data.stock ? data.stock.certificate_no : data.certificate_no,
-        current_image:data.current_image,
+        image: image,
+        /* carts.current_image is never written, so this was always null. Kept
+           as the resolved image so anything already reading it works. */
+        current_image: image,
         size_id: !isEmpty(data.size_id) ? data.size_id : '',
         size_name: !isEmpty(data.size) ? data.size.name : '',
         making_charge: making_charge,
