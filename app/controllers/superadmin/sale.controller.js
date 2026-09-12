@@ -149,7 +149,19 @@ exports.index = async (req, res) => {
   }
   if (!isEmpty(user_id)) {
     conditions.user_id = user_id;
-    if (isSuperAdmin(req) && isAdmin(req) && isDistributor(req)) {
+    /*
+     * Viewing one retailer's invoices.
+     *
+     * A sales executive may see only their OWN invoices to that retailer. An
+     * admin sees every seller's, so a retailer served by more than one SE shows
+     * the full history.
+     *
+     * This was gated on isSuperAdmin(req) && isAdmin(req) && isDistributor(req)
+     * - three roles at once, which no user can hold, since `role` is a single
+     * value. The filter therefore never applied and one SE could read another
+     * SE's invoices to the same retailer.
+     */
+    if (isSalesExecutive(req)) {
       conditions.sale_by = userID;
     }
   } else {
