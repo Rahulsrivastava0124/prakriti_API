@@ -2273,20 +2273,55 @@ const walletShortfall = async (userId, mode, amount) => {
   return "Insufficient wallet balance.";
 };
 
+/**
+ * Refresh the running "Balance" snapshot for a ledger, starting at `paymenId`.
+ *
+ * Each row stores the ledger balance as it stood at that row: the sum of every
+ * successful, non-deleted row with an id up to and including it. That snapshot
+ * is only correct while the rows before it stay as they were.
+ *
+ * This used to refresh the one row it was handed and nothing after it. So when
+ * an older payment changed later - a pending transfer accepted, a request
+ * declined, a row reverted - every row written in the meantime kept a balance
+ * that no longer added up. An SE's wallet showed a Rs 1,500 debit applied to
+ * the rows before it was accepted but not to the three written while it was
+ * still pending, so the column jumped by 1,500 for no visible reason.
+ *
+ * It now carries the balance forward through every later row in the same
+ * ledger. For a newly written row there are no later rows, so the common case
+ * costs one extra lookup; rows whose snapshot is already right are not
+ * rewritten.
+ */
 const updateWalletRemainingBalance = async (userId, paymenId, payment_type) => {
   payment_type = payment_type === undefined ? "wallet" : payment_type;
-  let remaining_balance = await getWalletBalance(
-    userId,
-    null,
-    payment_type,
-    paymenId
+  if (isEmpty(userId) || isEmpty(paymenId)) return;
+
+  let running = parseFloat(
+    await getWalletBalance(userId, null, payment_type, paymenId),
   );
-  await PaymentModel.update(
-    {
-      remaining_balance: remaining_balance,
+
+  const rows = await PaymentModel.findAll({
+    attributes: ["id", "type", "status", "amount", "remaining_balance"],
+    where: {
+      payment_belongs: userId,
+      payment_type: payment_type,
+      id: { [Op.gte]: paymenId },
     },
-    { where: { id: paymenId } }
-  );
+    order: [["id", "ASC"]],
+  });
+
+  for (const row of rows) {
+    if (row.id !== parseInt(paymenId, 10) && row.status === "success") {
+      running += (row.type === "credit" ? 1 : -1) * parseFloat(row.amount);
+    }
+    const value = priceFormat(running);
+    if (Math.abs(parseFloat(row.remaining_balance) - value) >= 0.005) {
+      await PaymentModel.update(
+        { remaining_balance: value },
+        { where: { id: row.id } },
+      );
+    }
+  }
 };
 
 const updateAdvanceAmount = async (userId, belongsId, amount, isCredit) => {
