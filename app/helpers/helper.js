@@ -522,8 +522,134 @@ const paymentModeDisplay = (type) => {
  */
 const APPROVAL_PAYMENT_MODES = ["cheque", "imps_neft"];
 
-const requiresPaymentApproval = (mode) => {
+/**
+ * Payment types raised from the wallet screen rather than against an invoice.
+ *
+ * These move money between two wallets, so the receiving side has to confirm it
+ * arrived whatever the mode - a cash hand-over or a UPI transfer is no more
+ * certain than a cheque until the other party says they got it. Everything here
+ * therefore waits for accept/decline on every mode.
+ *
+ * NOTE: `payment_type` is overloaded in this codebase. On the sale and purchase
+ * RETURN endpoints the same field name carries the refund disposition
+ * ("advance" | "return"), which has nothing to do with this list - do not route
+ * those through requiresPaymentApproval().
+ */
+const APPROVAL_PAYMENT_TYPES = ["send_money", "advance", "payment"];
+
+/**
+ * Does this payment need the receiver to accept it before the money moves?
+ *
+ * @param {string} mode        payment_mode: cash | online | cheque | imps_neft | metal
+ * @param {string} [paymentType] request-level payment_type, when the payment was
+ *   raised from the wallet screen (send_money | advance | payment). Omit for
+ *   payments made against an invoice.
+ *
+ * Metal is deliberately absent from both lists: it settles on the spot in every
+ * context, unchanged from before.
+ */
+/**
+ * Roles, by id: 1 superadmin, 2 admin, 3 distributor, 4 sales executive,
+ * 5 retailer, 6 customer, 9 manager.
+ *
+ * A sales executive selling to one of their retailers is the ONE relationship
+ * that settles a cash / UPI invoice payment on the spot: the SE is standing in
+ * front of the retailer and takes the money by hand, so there is nothing to
+ * confirm later. Every other pair - admin to admin, SE to admin, anyone to a
+ * super admin - is moving money between two wallets that are not in the same
+ * room, so the receiving side confirms it whatever the mode.
+ */
+const SALES_EXECUTIVE_ROLE = 4;
+const RETAILER_ROLE = 5;
+
+/**
+ * Roles that can actually act on an accept/decline.
+ *
+ * A supplier has no panel at all, and nor do customers, employees, workers or
+ * investors. Demanding their approval would leave the payment pending forever
+ * with nobody able to clear it, so a payment to one of them keeps the original
+ * mode-based behaviour: cash and UPI settle on the spot, cheque and RTGS wait.
+ */
+const WALLET_PARTY_ROLES = [1, 2, 3, 4, 5];
+
+/**
+ * Roles whose portal shows a wallet they manage: super admin, admin,
+ * distributor, sales executive and employee. (Role 12 is a second "Employee"
+ * role in the data.)
+ *
+ * These users transact ONLY through that wallet, so any debit against one of
+ * them - on any payment mode, and whoever initiated it - has to be covered by
+ * the balance. A retailer, customer or supplier has no wallet screen: they pay
+ * with real cash or a bank transfer, so their balance is not the source of the
+ * funds and is not checked.
+ */
+const WALLET_VISIBLE_ROLES = [1, 2, 3, 4, 7, 12];
+
+const hasVisibleWallet = (roleId) =>
+  !isEmpty(roleId) && WALLET_VISIBLE_ROLES.includes(parseInt(roleId, 10));
+
+const canActOnApproval = (roleId) =>
+  !isEmpty(roleId) && WALLET_PARTY_ROLES.includes(parseInt(roleId, 10));
+
+/**
+ * Is this an SE <-> retailer pair? Checked in both directions so the two halves
+ * of one invoice - the seller's credit and the buyer's mirrored debit - always
+ * reach the same verdict and can never settle out of step with each other.
+ */
+const isSalesExecutiveRetailerPair = (roleA, roleB) => {
+  if (isEmpty(roleA) || isEmpty(roleB)) return false;
+  const a = parseInt(roleA, 10);
+  const b = parseInt(roleB, 10);
+  return (
+    (a === SALES_EXECUTIVE_ROLE && b === RETAILER_ROLE) ||
+    (a === RETAILER_ROLE && b === SALES_EXECUTIVE_ROLE)
+  );
+};
+
+/**
+ * @param {string} mode        payment_mode
+ * @param {string} [paymentType] request-level payment_type (send_money | advance | payment)
+ * @param {object} [context]   { senderRole, receiverRole } - the two parties'
+ *   role ids. Supply them wherever they can be resolved; without them this
+ *   falls back to the mode-only rule, which is what every caller did before
+ *   relationships entered the picture.
+ */
+const requiresPaymentApproval = (mode, paymentType, context) => {
   if (isEmpty(mode)) return false;
+  if (String(mode).toLowerCase().trim() === "metal") return false;
+
+  // Wallet-screen transfers (send money, advance, a part payment raised from
+  // the payment screen) wait for the receiver on every mode, whoever the two
+  // parties are - the money is in flight, not handed over.
+  if (
+    !isEmpty(paymentType) &&
+    APPROVAL_PAYMENT_TYPES.includes(String(paymentType).toLowerCase().trim())
+  ) {
+    return true;
+  }
+
+  const senderRole = context ? context.senderRole : null;
+  const receiverRole = context ? context.receiverRole : null;
+  const rolesKnown = !isEmpty(senderRole) && !isEmpty(receiverRole);
+
+  if (rolesKnown) {
+    // SE <-> retailer: cash and UPI land in the wallet directly, cheque and
+    // RTGS still wait to be accepted.
+    if (isSalesExecutiveRetailerPair(senderRole, receiverRole)) {
+      return APPROVAL_PAYMENT_MODES.includes(String(mode).toLowerCase().trim());
+    }
+    /*
+     * The receiver has to be able to accept. A supplier has no panel, so
+     * asking them to approve would strand the payment; those keep the
+     * mode-based rule they always had.
+     */
+    if (!canActOnApproval(receiverRole)) {
+      return APPROVAL_PAYMENT_MODES.includes(String(mode).toLowerCase().trim());
+    }
+    // Any other pair: the receiver accepts it, whatever the mode.
+    return true;
+  }
+
   return APPROVAL_PAYMENT_MODES.includes(String(mode).toLowerCase().trim());
 };
 
@@ -818,6 +944,13 @@ module.exports = {
   convertUnitToGram,
   paymentModeDisplay,
   requiresPaymentApproval,
+  isSalesExecutiveRetailerPair,
+  canActOnApproval,
+  hasVisibleWallet,
+  WALLET_VISIBLE_ROLES,
+  WALLET_PARTY_ROLES,
+  SALES_EXECUTIVE_ROLE,
+  RETAILER_ROLE,
   APPROVAL_PAYMENT_MODES,
   getFormatedAddress,
   weightFormat,

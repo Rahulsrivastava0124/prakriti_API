@@ -14,6 +14,7 @@ const {
   displayAmount,
   priceFormat,
   requiresPaymentApproval,
+  canActOnApproval,
 } = require("@helpers/helper");
 const sequelize = db.sequelize;
 const {
@@ -31,6 +32,10 @@ const {
   sendNotification,
   updateAdvanceAmount,
   isManager,
+  supersededPaymentRowIds,
+  paymentNeedsApproval,
+  hasWalletFunds,
+  walletShortfall,
 } = require("@library/common");
 const {
   recalculatePaymentRemainingBalance,
@@ -59,6 +64,15 @@ exports.index = async (req, res) => {
   if (!isEmpty(table_id)) {
     conditions.table_id = table_id;
   }
+
+  /*
+   * A request that was accepted after newer rows had arrived is represented by
+   * the "Accepted" row written above it; the original folds away underneath as
+   * history and must not also appear as a row of its own. Same rule the wallet
+   * screen follows, so an invoice's payment table and the wallet never disagree
+   * about how many rows one payment produced.
+   */
+  conditions.id = { [Op.notIn]: supersededPaymentRowIds() };
 
   const paginatorOptions = getPaginationOptions(page, limit);
   PaymentModel.findAndCountAll({
@@ -104,6 +118,74 @@ exports.store = async (req, res) => {
       ? req.userId
       : await getWorkingUserID(req);
     let amount = parseFloat(data.amount);
+
+    /*
+     * A wallet must never go negative - you cannot pay out money you do not
+     * hold. This endpoint had no such check, so paying an invoice from an empty
+     * wallet simply drove the balance below zero.
+     *
+     * Only payments that take money OUT are checked: settling a purchase
+     * invoice, or sending money / advance from the wallet screen. A sale
+     * payment brings money in, and metal is not held as a balance.
+     */
+    /*
+     * A user whose portal shows a wallet transacts only through it, so any
+     * debit against such a user must be covered by their balance - on every
+     * payment mode, and regardless of who initiated the payment.
+     *
+     * Two parties can be debited here:
+     *  - the caller, when settling a purchase invoice or sending money out;
+     *  - the counterparty, when the caller records a SALE payment, because the
+     *    buyer's mirrored debit is written on their behalf and they are not at
+     *    the screen to be asked.
+     *
+     * Parties with no wallet screen (retailer, customer, supplier) are skipped:
+     * they pay with real cash or a bank transfer, so their balance is not the
+     * source of the funds.
+     */
+    const requestPaymentType = String(data.payment_type || "")
+      .toLowerCase()
+      .trim();
+    /*
+     * A wallet-screen transfer is NOT an invoice payment, even though the UI
+     * stamps table_type="sale" on a Send Money whose recipient is an admin or
+     * distributor. Treating that as a sale made the counterparty check fire on
+     * the RECEIVER, so an SE with Rs 500 in RTGS was refused because the
+     * receiving admin held nothing. A genuine invoice payment always names the
+     * invoice it settles, so table_id is required as well.
+     */
+    const isWalletScreenTransfer = ["send_money", "advance", "payment"].includes(
+      requestPaymentType,
+    );
+    /*
+     * The caller is paying out whenever they are settling something they owe
+     * (table_type "purchase" - an invoice, an advance given, a wallet-screen
+     * "payment"), or sending money from their wallet. The wallet-transfer
+     * exclusion below belongs only to the counterparty test; applying it here
+     * left payment_type "payment" against a purchase unguarded.
+     */
+    const callerDebits =
+      data.table_type === "purchase" || requestPaymentType === "send_money";
+    const counterpartyDebits =
+      !isWalletScreenTransfer &&
+      data.table_type === "sale" &&
+      !isEmpty(data.table_id);
+
+    const debitChecks = [];
+    if (callerDebits) debitChecks.push(currentUserID);
+    if (counterpartyDebits && !isEmpty(data.user_id)) debitChecks.push(data.user_id);
+
+    for (const debitUserId of debitChecks) {
+      const shortfall = await walletShortfall(
+        debitUserId,
+        data.payment_mode,
+        amount,
+      );
+      if (shortfall) {
+        return res.status(errorCodes.default).send(formatErrorResponse(shortfall));
+      }
+    }
+
     let conditions = { status: "due" };
     if ("table_id" in data && !isEmpty(data.table_id)) {
       conditions.id = data.table_id;
@@ -153,7 +235,7 @@ exports.store = async (req, res) => {
             metal_rate: data.metal_rate || null,
             gross_weight: data.weight || null,
             status:
-              !requiresPaymentApproval(data.payment_mode)
+              !requiresPaymentApproval(data.payment_mode, data.payment_type)
                 ? "success"
                 : "pending",
             payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
@@ -204,10 +286,13 @@ exports.store = async (req, res) => {
               weight: data.effective_weight || null,
               metal_rate: data.metal_rate || null,
               gross_weight: data.weight || null,
-              status:
-                !requiresPaymentApproval(data.payment_mode)
-                  ? "success"
-                  : "pending",
+              /*
+                 * Bound to the parent row's status, not recomputed. When these two
+                 * were decided separately a cash transfer settled this debit on the
+                 * spot while the receiver's credit stayed pending - the money left
+                 * one wallet and arrived in none.
+                 */
+                status: payment.status,
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
               ),
@@ -252,7 +337,7 @@ exports.store = async (req, res) => {
 
               compactLog("AMOUNT:", amount, "DUE:", due_amount, "PAID:", paid_amount, "STATUS:", status, "PAYMENT:", payment_amount);
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -315,7 +400,7 @@ exports.store = async (req, res) => {
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -352,10 +437,13 @@ exports.store = async (req, res) => {
                 weight: data.effective_weight || null,
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
-                status:
-                  !requiresPaymentApproval(data.payment_mode)
-                    ? "success"
-                    : "pending",
+                /*
+                   * Bound to the parent row's status, not recomputed. When these two
+                   * were decided separately a cash transfer settled this debit on the
+                   * spot while the receiver's credit stayed pending - the money left
+                   * one wallet and arrived in none.
+                   */
+                  status: payment.status,
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
                 ),
@@ -402,7 +490,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await PurchaseModel.update(
                   {
@@ -440,7 +528,7 @@ exports.store = async (req, res) => {
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
@@ -513,10 +601,13 @@ exports.store = async (req, res) => {
               weight: data.effective_weight || null,
               metal_rate: data.metal_rate || null,
               gross_weight: data.weight || null,
-              status:
-                !requiresPaymentApproval(data.payment_mode)
-                  ? "success"
-                  : "pending",
+              /*
+                 * Bound to the parent row's status, not recomputed. When these two
+                 * were decided separately a cash transfer settled this debit on the
+                 * spot while the receiver's credit stayed pending - the money left
+                 * one wallet and arrived in none.
+                 */
+                status: payment.status,
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
               ),
@@ -569,7 +660,7 @@ exports.store = async (req, res) => {
               });
             }
             let paymentStatus =
-              isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode)
+              isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode, data.payment_type)
                 ? "pending"
                 : "success";
             let purpose = "",
@@ -651,10 +742,13 @@ exports.store = async (req, res) => {
                 weight: data.effective_weight || null,
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
-                status:
-                  !requiresPaymentApproval(data.payment_mode)
-                    ? "success"
-                    : "pending",
+                /*
+                   * Bound to the parent row's status, not recomputed. When these two
+                   * were decided separately a cash transfer settled this debit on the
+                   * spot while the receiver's credit stayed pending - the money left
+                   * one wallet and arrived in none.
+                   */
+                  status: payment2.status,
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
                 ),
@@ -699,7 +793,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -762,7 +856,7 @@ exports.store = async (req, res) => {
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -799,10 +893,13 @@ exports.store = async (req, res) => {
                 weight: data.effective_weight || null,
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
-                status:
-                  !requiresPaymentApproval(data.payment_mode)
-                    ? "success"
-                    : "pending",
+                /*
+                   * Bound to the parent row's status, not recomputed. When these two
+                   * were decided separately a cash transfer settled this debit on the
+                   * spot while the receiver's credit stayed pending - the money left
+                   * one wallet and arrived in none.
+                   */
+                  status: payment.status,
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
                 ),
@@ -829,7 +926,21 @@ exports.store = async (req, res) => {
               order: [["id", "ASC"]],
               where: { ...conditions, user_id: currentUserID },
             });
-            let user = await UserModel.findByPk(data.user_id);
+            /*
+             * Who is being paid. "Pay Now" on the invoice screen sends no
+             * user_id, so fall back to the supplier recorded on the invoice.
+             * Without this the receiver was unknown: no credit row was written
+             * into their wallet - so an admin paying a super admin never showed
+             * up in the super admin's wallet history - and the approval rule
+             * could not see the pair, leaving a UPI payment to settle on the
+             * spot when only SE <-> retailer may do that.
+             */
+            let receiverId = data.user_id;
+            if (isEmpty(receiverId)) {
+              const firstInvoice = tableData[0];
+              receiverId = firstInvoice ? firstInvoice.supplier_id : null;
+            }
+            let user = await UserModel.findByPk(receiverId);
             let isPaymentToSuperAdmin = false;
             if (user && isSuperAdmin(user.role_id)) {
               isPaymentToSuperAdmin = true;
@@ -865,8 +976,8 @@ exports.store = async (req, res) => {
               compactLog("======STATUS=====", status);
               compactLog("======PAYMENT AMOUNT=====", payment_amount);
               //return false;
-              //if ((!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode)) || data.payment_mode == "metal") {
-              if (!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode)) {
+              //if ((!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode, data.payment_type)) || data.payment_mode == "metal") {
+              if (!isPaymentToSuperAdmin && !requiresPaymentApproval(data.payment_mode, data.payment_type)) {
                 await PurchaseModel.update(
                   {
                     due_amount: due_amount,
@@ -898,7 +1009,7 @@ exports.store = async (req, res) => {
                 isAdmin(user.role_id) &&
                 item.sale_id;
 
-              if (isAdminSupplier && !requiresPaymentApproval(data.payment_mode)) {
+              if (isAdminSupplier && !requiresPaymentApproval(data.payment_mode, data.payment_type)) {
                 await SaleModel.update(
                   {
                     due_amount: due_amount,
@@ -912,8 +1023,19 @@ exports.store = async (req, res) => {
                 );
               }
 
+              /*
+               * Relationship-aware: only an SE paying their own retailer settles
+               * cash / UPI on the spot. Every other pair waits on every mode.
+               * The mode-only test let an admin's UPI payment auto-accept.
+               */
               let paymentStatus =
-                isPaymentToSuperAdmin || requiresPaymentApproval(data.payment_mode)
+                isPaymentToSuperAdmin ||
+                (await paymentNeedsApproval(
+                  data.payment_mode,
+                  data.payment_type,
+                  currentUserID,
+                  receiverId,
+                ))
                   ? "pending"
                   : "success";
 
@@ -939,7 +1061,7 @@ exports.store = async (req, res) => {
                   ),
                   table_type: "sale",
                   table_id: item.sale_id,
-                  payment_belongs: data.user_id,
+                  payment_belongs: receiverId,
                   due_date: data.due_date
                     ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                     : null,
@@ -951,7 +1073,9 @@ exports.store = async (req, res) => {
 
               let payment2 = await PaymentModel.create({
                 parent_id: payment ? payment.id : null,
-                user_id: data.user_id,
+                // The counterparty, resolved from the invoice when Pay Now
+                // sends no user_id.
+                user_id: receiverId,
                 payment_by: req.userId,
                 amount: payment_amount,
                 payment_mode: data.payment_mode,
@@ -980,10 +1104,27 @@ exports.store = async (req, res) => {
 
               await updateWalletRemainingBalance(currentUserID, payment2.id);
 
-              // Mirror the payment as a credit into the admin-supplier's wallet
-              // so it appears in their wallet history (previously this credit
-              // row was only created for superadmin suppliers).
-              if (isAdminSupplier) {
+              /*
+               * Mirror the payment as a credit into the supplier's wallet.
+               *
+               * This used to require the supplier be an admin AND the purchase
+               * be linked to a sale, so an SE or distributor supplier never saw
+               * money an admin had paid them - it existed only in the payer's
+               * ledger. A super admin supplier already has its credit row
+               * written above, so it is excluded here to avoid a duplicate.
+               */
+              /*
+               * Only for a supplier that actually holds a wallet. A plain
+               * supplier (role 8) has no panel and no wallet screen, so a
+               * credit row there would be invisible and meaningless - those
+               * purchases keep the single-sided record they always had.
+               */
+              const creditSupplier =
+                !isPaymentToSuperAdmin &&
+                !isEmpty(receiverId) &&
+                user &&
+                canActOnApproval(user.role_id);
+              if (creditSupplier) {
                 let supplierPayment = await PaymentModel.create({
                   parent_id: payment2.id,
                   user_id: currentUserID,
@@ -999,13 +1140,17 @@ exports.store = async (req, res) => {
                   weight: data.effective_weight || null,
                   metal_rate: data.metal_rate || null,
                   gross_weight: data.weight || null,
-                  status: paymentStatus,
+                  // In step with the payer's debit - the two halves of one
+                  // payment must never settle independently.
+                  status: payment2.status,
                   payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                     "YYYY-MM-DD",
                   ),
-                  table_type: "sale",
-                  table_id: item.sale_id,
-                  payment_belongs: data.user_id,
+                  // Reference the linked sale when there is one; otherwise the
+                  // purchase this payment was made against.
+                  table_type: item.sale_id ? "sale" : "purchase",
+                  table_id: item.sale_id || item.id,
+                  payment_belongs: receiverId,
                   due_date: data.due_date
                     ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                     : null,
@@ -1015,7 +1160,7 @@ exports.store = async (req, res) => {
                 });
 
                 await updateWalletRemainingBalance(
-                  data.user_id,
+                  receiverId,
                   supplierPayment.id,
                 );
               }
@@ -1074,10 +1219,13 @@ exports.store = async (req, res) => {
               weight: data.effective_weight || null,
               metal_rate: data.metal_rate || null,
               gross_weight: data.weight || null,
-              status:
-                !requiresPaymentApproval(data.payment_mode)
-                  ? "success"
-                  : "pending",
+              /*
+                 * Bound to the parent row's status, not recomputed. When these two
+                 * were decided separately a cash transfer settled this debit on the
+                 * spot while the receiver's credit stayed pending - the money left
+                 * one wallet and arrived in none.
+                 */
+                status: payment2.status,
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
               ),
@@ -1129,7 +1277,7 @@ exports.store = async (req, res) => {
               });
             }
             let paymentStatus =
-              isPaymentToAdmin || requiresPaymentApproval(data.payment_mode)
+              isPaymentToAdmin || requiresPaymentApproval(data.payment_mode, data.payment_type)
                 ? "pending"
                 : "success";
             let purpose = "";
@@ -1209,7 +1357,7 @@ exports.store = async (req, res) => {
                 amount = 0;
               }
 
-              if (!isPaymentToAdmin && !requiresPaymentApproval(data.payment_mode)) {
+              if (!isPaymentToAdmin && !requiresPaymentApproval(data.payment_mode, data.payment_type)) {
                 await PurchaseModel.update(
                   {
                     due_amount: due_amount,
@@ -1233,7 +1381,7 @@ exports.store = async (req, res) => {
               }
 
               let paymentStatus =
-                isPaymentToAdmin || requiresPaymentApproval(data.payment_mode)
+                isPaymentToAdmin || requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "pending"
                   : "success";
 
@@ -1257,7 +1405,7 @@ exports.store = async (req, res) => {
                   ),
                   table_type: "sale",
                   table_id: item.sale_id,
-                  payment_belongs: data.user_id,
+                  payment_belongs: receiverId,
                   due_date: data.due_date
                     ? moment(data.due_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD")
                     : null,
@@ -1327,7 +1475,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -1389,7 +1537,7 @@ exports.store = async (req, res) => {
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1425,10 +1573,13 @@ exports.store = async (req, res) => {
                 weight: data.effective_weight || null,
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
-                status:
-                  !requiresPaymentApproval(data.payment_mode)
-                    ? "success"
-                    : "pending",
+                /*
+                   * Bound to the parent row's status, not recomputed. When these two
+                   * were decided separately a cash transfer settled this debit on the
+                   * spot while the receiver's credit stayed pending - the money left
+                   * one wallet and arrived in none.
+                   */
+                  status: payment.status,
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
                 ),
@@ -1520,10 +1671,13 @@ exports.store = async (req, res) => {
               weight: data.effective_weight || null,
               metal_rate: data.metal_rate || null,
               gross_weight: data.weight || null,
-              status:
-                !requiresPaymentApproval(data.payment_mode)
-                  ? "success"
-                  : "pending",
+              /*
+                 * Bound to the parent row's status, not recomputed. When these two
+                 * were decided separately a cash transfer settled this debit on the
+                 * spot while the receiver's credit stayed pending - the money left
+                 * one wallet and arrived in none.
+                 */
+                status: payment.status,
               payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                 "YYYY-MM-DD",
               ),
@@ -1553,7 +1707,7 @@ exports.store = async (req, res) => {
               metal_rate: data.metal_rate || null,
               gross_weight: data.weight || null,
               status:
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
                   ? "success"
                   : "pending",
               payment_date: moment(data.payment_date, ["YYYY-MM-DD","MM/DD/YYYY","DD/MM/YYYY"]).format("YYYY-MM-DD"),
@@ -1601,7 +1755,7 @@ exports.store = async (req, res) => {
               }
 
               if (
-                !requiresPaymentApproval(data.payment_mode)
+                !requiresPaymentApproval(data.payment_mode, data.payment_type)
               ) {
                 await SaleModel.update(
                   {
@@ -1663,7 +1817,7 @@ exports.store = async (req, res) => {
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
                 status:
-                  !requiresPaymentApproval(data.payment_mode)
+                  !requiresPaymentApproval(data.payment_mode, data.payment_type)
                     ? "success"
                     : "pending",
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
@@ -1699,10 +1853,13 @@ exports.store = async (req, res) => {
                 weight: data.effective_weight || null,
                 metal_rate: data.metal_rate || null,
                 gross_weight: data.weight || null,
-                status:
-                  !requiresPaymentApproval(data.payment_mode)
-                    ? "success"
-                    : "pending",
+                /*
+                   * Bound to the parent row's status, not recomputed. When these two
+                   * were decided separately a cash transfer settled this debit on the
+                   * spot while the receiver's credit stayed pending - the money left
+                   * one wallet and arrived in none.
+                   */
+                  status: payment.status,
                 payment_date: moment(data.payment_date, "MM/DD/YYYY").format(
                   "YYYY-MM-DD",
                 ),
@@ -1825,35 +1982,76 @@ exports.updateStatus = async (req, res) => {
         where: { parent_id: payment.id, status: "pending" },
       });
 
-      // mark original receiver-side request row as processed (keep status=pending so serializer shows 'processed')
-      const updateObj = { can_accept: false };
-      if (data.ref_no) updateObj.ref_no = data.ref_no;
-      await PaymentModel.update(updateObj, { where: { id: payment.id } });
-
-      // insert a new accepted ledger row so it appears at the top of the list
-      const acceptedPayment = await PaymentModel.create({
-        parent_id: payment.id,
-        user_id: payment.user_id,
-        payment_by: payment.payment_by,
-        amount: payment.amount,
-        payment_mode: payment.payment_mode,
-        payment_type: payment.payment_type,
-        remaining_balance: 0,
-        notes: payment.notes || null,
-        cheque_no: payment.cheque_no || null,
-        txn_id: payment.txn_id || null,
-        weight: payment.weight || null,
-        status: "success",
-        payment_date: moment().format("YYYY-MM-DD"),
-        table_type: payment.table_type,
-        table_id: payment.table_id,
-        payment_belongs: payment.payment_belongs,
-        due_date: payment.due_date || null,
-        type: payment.type,
-        purpose: payment.purpose,
-        can_accept: false,
-        is_advance: payment.is_advance,
+      /*
+       * Where the accepted row goes depends on whether the receiver's ledger
+       * has moved on since the request landed.
+       *
+       * Nothing newer: the row is still the latest thing they have, so it just
+       * becomes "Accepted" in place - one row, no duplicate.
+       *
+       * Something newer: the ledger reads newest-first, so an in-place update
+       * would bury the acceptance mid-list. The original is superseded instead
+       * and a fresh row carrying the accepted status goes to the top, with the
+       * original folded away underneath it as history the UI can expand.
+       *
+       * "Newer" is judged across the receiver's whole ledger - any row of
+       * theirs with a higher id, whoever sent it and whatever type it was.
+       */
+      const newerRowCount = await PaymentModel.count({
+        where: {
+          payment_belongs: payment.payment_belongs,
+          id: { [Op.gt]: payment.id },
+        },
       });
+      const isLatestForReceiver = newerRowCount === 0;
+
+      let acceptedPayment;
+      if (isLatestForReceiver) {
+        const updateObj = { status: "success", can_accept: false };
+        if (data.ref_no) updateObj.ref_no = data.ref_no;
+        await PaymentModel.update(updateObj, { where: { id: payment.id } });
+        acceptedPayment = await PaymentModel.findOne({
+          where: { id: payment.id },
+        });
+      } else {
+        // Supersede the original: it keeps status=pending so it still reads as
+        // a request, and can_accept=false so it can no longer be acted on.
+        const updateObj = { can_accept: false };
+        if (data.ref_no) updateObj.ref_no = data.ref_no;
+        await PaymentModel.update(updateObj, { where: { id: payment.id } });
+
+        /*
+         * The accepted row shares its parent's `payment_belongs`, which is what
+         * separates it from a mirrored counterparty row: a mirror lands in the
+         * OTHER party's ledger, this one lands in the same ledger it supersedes.
+         * The wallet query relies on exactly that to know which originals to
+         * fold away - see WalletCollection / wallet.controller.
+         */
+        acceptedPayment = await PaymentModel.create({
+          parent_id: payment.id,
+          user_id: payment.user_id,
+          payment_by: payment.payment_by,
+          amount: payment.amount,
+          payment_mode: payment.payment_mode,
+          payment_type: payment.payment_type,
+          remaining_balance: 0,
+          notes: payment.notes || null,
+          cheque_no: payment.cheque_no || null,
+          txn_id: payment.txn_id || null,
+          weight: payment.weight || null,
+          ref_no: data.ref_no || payment.ref_no || null,
+          status: "success",
+          payment_date: moment().format("YYYY-MM-DD"),
+          table_type: payment.table_type,
+          table_id: payment.table_id,
+          payment_belongs: payment.payment_belongs,
+          due_date: payment.due_date || null,
+          type: payment.type,
+          purpose: payment.purpose,
+          can_accept: false,
+          is_advance: payment.is_advance,
+        });
+      }
       await updateWalletRemainingBalance(
         acceptedPayment.payment_belongs,
         acceptedPayment.id,
@@ -1943,9 +2141,13 @@ exports.updateStatus = async (req, res) => {
               });
               if (childPayment) {
                 // do not modify sender-side payment rows here; only update purchase records when appropriate
-                if (
-                  !requiresPaymentApproval(childPayment.payment_mode)
-                ) {
+                /*
+                 * `table_type` is "sale"/"purchase"/"send_money" - it was being
+                 * passed where a request-level payment_type belongs, so this
+                 * asked a question the helper could not answer. What actually
+                 * matters is whether the mirrored row has settled.
+                 */
+                if (childPayment.status == "success") {
                   const updateObj2 = { due_amount, paid_amount, status };
                   if (payment.due_date)
                     updateObj2.due_date = moment(payment.due_date).format(

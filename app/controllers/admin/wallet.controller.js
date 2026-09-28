@@ -1,10 +1,15 @@
 const { errorCodes, formatErrorResponse, formatResponse } = require("@utils/response.config");
 const { getPaginationOptions } = require('@helpers/paginator');
 const db = require("@models");
+const { Op } = require("sequelize");
 const moment = require('moment');
 const { isEmpty, getDateFromToWhere, displayAmount, priceFormat } = require("@helpers/helper");
 const sequelize = db.sequelize;
-const { getWalletBalance, getSuperAdminId } = require("@library/common");
+const {
+  getWalletBalance,
+  getSuperAdminId,
+  supersededPaymentRowIds,
+} = require("@library/common");
 const {WalletCollection} = require("@resources/superadmin/WalletCollection");
 const PaymentModel = db.payments;
 const SaleModel = db.sales;
@@ -28,6 +33,8 @@ exports.index = async (req, res) => {
     conditions.payment_mode = payment_mode;
   }
   conditions = {...conditions, ...getDateFromToWhere(date_from, date_to, 'payment_date')}
+  // Superseded originals belong under their accepted row, not beside it.
+  conditions.id = { [Op.notIn]: supersededPaymentRowIds(req.userId) };
   const paginatorOptions = getPaginationOptions(page, limit);
   PaymentModel.findAndCountAll({ 
     order:[['id', 'DESC']],

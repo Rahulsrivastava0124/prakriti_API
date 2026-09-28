@@ -23,7 +23,6 @@ const {
   encodeForStorage,
   decodeFromStorage,
   cleanInput,
-  requiresPaymentApproval,
 } = require("@helpers/helper");
 const {
   updateOrCreate,
@@ -1479,7 +1478,20 @@ exports.store = async (req, res) => {
     let status = "due",
       paid_amount = 0,
       due_amount = 0;
-    if (!requiresPaymentApproval(data.payment_mode)) {
+    /*
+     * One verdict for this whole purchase: the invoice's paid/due figures and
+     * the payment row below must agree about whether the money has actually
+     * left the wallet. Cash and UPI settle on the spot only between an SE and
+     * their retailer; every other pair, and cheque/RTGS in every pair, waits
+     * for the receiving side to accept.
+     */
+    const purchasePaymentNeedsApproval = await paymentNeedsApproval(
+      data.payment_mode,
+      null,
+      userID,
+      data.supplier_id,
+    );
+    if (!purchasePaymentNeedsApproval) {
       status =
         priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
           ? "paid"
@@ -1789,7 +1801,7 @@ exports.store = async (req, res) => {
           payment_date: moment().format("YYYY-MM-DD"),
           txn_id: data.transaction_no,
           cheque_no: data.cheque_no,
-          status: requiresPaymentApproval(data.payment_mode) ? "pending" : "success",
+          status: purchasePaymentNeedsApproval ? "pending" : "success",
           type: "debit",
           table_type: "purchase",
           table_id: purchase.id,
@@ -2512,10 +2524,7 @@ exports.statuschange = async (req, res) => {
               },
             });
             if (payment) {
-              if (
-                requiresPaymentApproval(payment.payment_mode) &&
-                payment.status == "pending"
-              ) {
+              if (payment.status == "pending") {
                 await paymentModel.destroy({
                   where: { table_type: "purchase", table_id: purchase.id },
                 });
@@ -2860,7 +2869,14 @@ exports.statuschange = async (req, res) => {
             payment_date: moment().format("YYYY-MM-DD"),
             txn_id: purchase.transaction_no,
             cheque_no: purchase.cheque_no,
-            status: requiresPaymentApproval(purchase.payment_mode) ? "pending" : "success",
+            status: (await paymentNeedsApproval(
+              purchase.payment_mode,
+              null,
+              userID,
+              saleReturn.user_id,
+            ))
+              ? "pending"
+              : "success",
             type: "debit",
             table_type: "purchase",
             table_id: purchase.id,
@@ -3256,7 +3272,13 @@ exports.update = async (req, res) => {
       let status = "due",
         paid_amount = 0,
         due_amount = 0;
-      if (!requiresPaymentApproval(data.payment_mode)) {
+      // Same verdict rule as store() above.
+      if (!(await paymentNeedsApproval(
+        data.payment_mode,
+        null,
+        userID,
+        data.supplier_id,
+      ))) {
         status =
           priceFormat(data.paid_amount) >= priceFormat(data.total_payable)
             ? "paid"

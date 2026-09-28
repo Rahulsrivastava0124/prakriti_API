@@ -6,6 +6,7 @@ const {
   displayAmount,
   paymentModeDisplay,
 } = require("@helpers/helper");
+const { getPaymentRowHistory } = require("@library/common");
 const db = require("@models");
 const PaymentModel = db.payments;
 
@@ -13,12 +14,18 @@ const PaymentCollection = async (data) => {
   if (isObject(data)) {
     return await getModelObject(data);
   } else {
-    return await mapConcurrent(data, (item, i) => getModelObject(item));
+    return await mapConcurrent(data, (item) => getModelObject(item));
 
   }
 };
 
-const getModelObject = async (data) => {
+/**
+ * @param {boolean} isHistoryRow true when this row is being serialised as one
+ *   of the superseded entries folded under an accepted row. Such a row is a
+ *   record of what happened, not a live line: it carries no money figure (the
+ *   accepted row above it holds that) and no further history of its own.
+ */
+const getModelObject = async (data, isHistoryRow = false) => {
   let payment_mode = paymentModeDisplay(data.payment_mode);
   if (data.payment_mode == "cheque" && !isEmpty(data.cheque_no)) {
     payment_mode += " ( " + data.cheque_no + " )";
@@ -30,11 +37,22 @@ const getModelObject = async (data) => {
     display_mode = '<p style="margin: 0;">' + payment_mode + "</p>";
 
   // If this pending request already has a successful child row, it has been accepted.
-  // Keep old request row as "processed" and hide any action on it.
+  // Keep old request row as "Processed" and hide any action on it.
   let hasAcceptedChild = false;
   if (!data.parent_id && data.status == "pending") {
+    /*
+     * Scoped to the same ledger. A transfer writes the counterparty's mirror as
+     * a child of this row, and that mirror lands in the OTHER party's ledger -
+     * so an unscoped lookup read the sender's own debit as proof the receiver
+     * had accepted. That is what made a still-pending row show "Processed" and
+     * lose its Accept / Decline buttons.
+     */
     const acceptedChild = await PaymentModel.findOne({
-      where: { parent_id: data.id, status: "success" },
+      where: {
+        parent_id: data.id,
+        status: "success",
+        payment_belongs: data.payment_belongs,
+      },
     });
     if (acceptedChild) {
       hasAcceptedChild = true;
@@ -42,11 +60,16 @@ const getModelObject = async (data) => {
   }
 
   // If this row is a child row and another child with the same parent is already
-  // accepted, this pending row is stale and should be shown as processed.
+  // accepted, this pending row is stale and should be shown as Processed.
   let hasAcceptedSibling = false;
   if (data.parent_id && data.status == "pending") {
+    // Same-ledger rule as above.
     const acceptedSibling = await PaymentModel.findOne({
-      where: { parent_id: data.parent_id, status: "success" },
+      where: {
+        parent_id: data.parent_id,
+        status: "success",
+        payment_belongs: data.payment_belongs,
+      },
     });
     if (acceptedSibling && acceptedSibling.id != data.id) {
       hasAcceptedSibling = true;
@@ -57,7 +80,7 @@ const getModelObject = async (data) => {
   // The sender created both records (same payment_by). The receiver-side row has
   // can_accept=true and no parent_id. The sender's mirror debit row has can_accept=false
   // and parent_id pointing here. When the SENDER views this receiver-side row through
-  // their own list (filtered by payment_by), it should show "process" not "Pending".
+  // their own list (filtered by payment_by), it should is still Pending - the sender simply has nothing to act on.
   let isSenderViewingReceiverRow = false;
   if (data.status == "pending" && data.can_accept && !data.parent_id) {
     const senderMirror = await PaymentModel.findOne({
@@ -68,13 +91,19 @@ const getModelObject = async (data) => {
     }
   }
 
-  // Show 'processed' only for original pending rows that have been acted on (can_accept=false and no parent)
+  // Show 'Processed' only for original pending rows that have been acted on (can_accept=false and no parent)
   if (
     data.can_accept === false &&
     !data.parent_id &&
     (data.status == "pending" || data.status == "failed")
   ) {
-    action_status = "processed";
+    /*
+     * A declined request is finished and refused, not merely "acted on". This
+     * branch labelled both alike, so a decline rendered as "Processed" - green,
+     * settled - with the amount still in the money column. Only a row that is
+     * still pending and has been superseded is Processed.
+     */
+    action_status = data.status == "failed" ? "Declined" : "Processed";
     if (data.payment_mode == "cheque") {
       if (!isEmpty(data.ref_no)) {
         display_mode +=
@@ -91,7 +120,7 @@ const getModelObject = async (data) => {
     }
   } else if (data.status == "pending") {
     if (hasAcceptedChild) {
-      action_status = "processed";
+      action_status = "Processed";
     } else if (
       hasAcceptedSibling &&
       data.table_type == "send_money" &&
@@ -101,14 +130,14 @@ const getModelObject = async (data) => {
       // sender-side mirrored send_money row becomes Accepted once accepted
       action_status = "Accepted";
     } else if (hasAcceptedSibling) {
-      action_status = "processed";
+      action_status = "Processed";
     } else if (isSenderViewingReceiverRow) {
       // Sender is viewing the receiver-side row — payment is in-flight, waiting for receiver
-      action_status = "process";
+      action_status = "Pending";
     } else if (data.can_accept || data.parent_id) {
       action_status = "Pending";
     } else {
-      action_status = "processed";
+      action_status = "Processed";
     }
   } else {
     if (data.payment_mode == "cheque") {
@@ -140,7 +169,7 @@ const getModelObject = async (data) => {
   if (data.parent_id) {
     let parentPay = await PaymentModel.findByPk(data.parent_id);
     if (data.status == "pending") {
-      // if same parent already has an accepted child, keep this stale pending row as processed
+      // if same parent already has an accepted child, keep this stale pending row as Processed
       if (
         hasAcceptedSibling &&
         data.table_type == "send_money" &&
@@ -148,22 +177,53 @@ const getModelObject = async (data) => {
       ) {
         action_status = "Accepted";
       } else if (hasAcceptedSibling) {
-        action_status = "processed";
+        action_status = "Processed";
       }
-      // if parent was acted on (can_accept=false), the sender mirror row should show 'processed'
+      // if parent was acted on (can_accept=false), the sender mirror row should show 'Processed'
       else if (parentPay && parentPay.can_accept === false) {
-        action_status = "processed";
+        action_status = "Processed";
       } else if (data.can_accept) {
         action_status = "Pending";
       } else {
         // sender's debit mirror row: payment submitted, waiting for receiver to confirm
-        action_status = "process";
+        action_status = "Pending";
       }
     }
   }
   let purpose = [data.purpose];
   if (!isEmpty(data.notes)) {
     purpose.push(data.notes);
+  }
+
+  /*
+   * Accepted and Declined are the only final states. Until a payment reaches
+   * one of them the Amount column stays empty and the figure rides beside the
+   * payment mode instead, so a row can never read as settled before it is.
+   *
+   * This tests the label rather than `data.status`, deliberately: a "Processed"
+   * row is still `status = 'pending'` underneath, so keying off the raw status
+   * would let it print its amount as though it had settled.
+   */
+  const isFinalStatus =
+    action_status === "Accepted" || action_status === "Declined";
+
+  const amount_display = isFinalStatus ? displayAmount(data.amount) : "";
+
+  /*
+   * The invoice payment tables bind their Payment Mode column to
+   * `payment_mode_display`, which this collection stopped sending - so that
+   * column rendered blank on every sale and purchase view. It is the bare mode
+   * (the cheque no / txn id have their own columns on those screens and must
+   * not be repeated) plus, while the payment is unsettled, the amount as a chip.
+   */
+  let payment_mode_display = paymentModeDisplay(data.payment_mode);
+  if (!isFinalStatus) {
+    payment_mode_display +=
+      '<span style="display:inline-block;margin-left:6px;padding:1px 8px;' +
+      "border-radius:10px;background:#ffd54f;color:#3d2f00;font-size:12px;" +
+      'font-weight:600;white-space:nowrap;">' +
+      displayAmount(data.amount) +
+      "</span>";
   }
 
   // If this is a pending payment that can be accepted by the current user,
@@ -177,16 +237,44 @@ const getModelObject = async (data) => {
     !hasAcceptedChild
   ) {
     credit_amount = 0;
+    /*
+     * A chip, not coloured text: #ff9800 on the white row is about 2.2:1, and
+     * no shade of yellow-orange text clears 4.5:1 while still reading as
+     * yellow. Dark text on the same colour as a background is 8.6:1 and
+     * unmistakably yellow, which is what makes it stand out at a glance.
+     */
     display_mode +=
-      '<p style="margin:0;font-size:12px;color:#ff9800;">To be processed: ' +
+      '<p style="margin:0;font-size:12px;">' +
+      '<span style="display:inline-block;padding:1px 8px;border-radius:10px;' +
+      "background:#ffd54f;color:#3d2f00;font-size:12px;font-weight:600;" +
+      'white-space:nowrap;">To be processed: ' +
       displayAmount(data.amount) +
-      "</p>";
+      "</span></p>";
+  }
+
+  /*
+   * Rows this one superseded when it was accepted, oldest first. Present only
+   * when the acceptance had to be written as a new row because the ledger had
+   * already moved on; a payment accepted in place supersedes nothing and
+   * carries an empty history, so the UI shows no expander for it.
+   */
+  let history = [];
+  if (!isHistoryRow) {
+    const historyRows = await getPaymentRowHistory(data);
+    history = await mapConcurrent(historyRows, (row) =>
+      getModelObject(row, true),
+    );
   }
 
   return {
+    history: history,
+    has_history: history.length > 0,
     id: data.id,
-    amount: displayAmount(data.amount),
+    amount: isHistoryRow ? "" : amount_display,
+    // The raw figure, for callers that need it regardless of settlement state.
+    amount_value: displayAmount(data.amount),
     payment_mode: paymentModeDisplay(data.payment_mode),
+    payment_mode_display: payment_mode_display,
     notes: data.notes || "",
     cheque_no: data.cheque_no || "",
     txn_id: data.txn_id || "",
@@ -209,8 +297,9 @@ const getModelObject = async (data) => {
     purpose: purpose,
     action_value: action_status,
     display_mode: display_mode,
-    credit: credit_amount,
+    credit: isHistoryRow ? 0 : credit_amount,
     can_accept:
+      !isHistoryRow &&
       data.status == "pending" &&
       data.can_accept &&
       !isSenderViewingReceiverRow &&

@@ -5,6 +5,7 @@ const {
 } = require("@utils/response.config");
 const { getPaginationOptions } = require("@helpers/paginator");
 const db = require("@models");
+const { Op } = require("sequelize");
 const moment = require("moment");
 const {
   isEmpty,
@@ -17,6 +18,7 @@ const {
   getWalletBalance,
   getWorkingUserID,
   isManager,
+  supersededPaymentRowIds,
 } = require("@library/common");
 const { WalletCollection } = require("@resources/superadmin/WalletCollection");
 const PaymentModel = db.payments;
@@ -52,6 +54,12 @@ exports.index = async (req, res) => {
     ...conditions,
     ...getDateFromToWhere(date_from, date_to, "payment_date"),
   };
+  /*
+   * A request that was accepted after newer rows had arrived is represented by
+   * the "Accepted" row written above it; the original folds away underneath as
+   * history and must not also appear as a row of its own.
+   */
+  conditions.id = { [Op.notIn]: supersededPaymentRowIds(superAdminId) };
   const paginatorOptions = getPaginationOptions(page, limit);
   PaymentModel.findAndCountAll({
     order: [["id", "DESC"]],

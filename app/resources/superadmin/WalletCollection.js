@@ -6,7 +6,7 @@ const {
   displayAmount,
   paymentModeDisplay,
 } = require("@helpers/helper");
-const { getWalletBalance } = require("@library/common");
+const { getWalletBalance, getPaymentRowHistory } = require("@library/common");
 const db = require("@models");
 const PaymentModel = db.payments;
 
@@ -19,7 +19,22 @@ const WalletCollection = async (data, p_mode = null) => {
   }
 };
 
-const getModelObject = async (data, index = null, p_mode = null) => {
+/**
+ * @param {boolean} withHistory serialise the superseded rows folded under this
+ *   one. False for the history entries themselves, so the walk terminates.
+ */
+const getModelObject = async (
+  data,
+  index = null,
+  p_mode = null,
+  withHistory = true,
+) => {
+  /*
+   * A history row is a record of what happened, not a live ledger line. The
+   * accepted row above it already carries the money, so repeating the figure
+   * here would read as though the amount had landed twice.
+   */
+  const isHistoryRow = !withHistory;
   let debit_amount = 0;
   let credit_amount = 0;
   if (data.type == "debit") {
@@ -58,8 +73,19 @@ const getModelObject = async (data, index = null, p_mode = null) => {
   // accepted child exists for this original request row
   let hasAcceptedChild = false;
   if (!data.parent_id && data.status == "pending") {
+    /*
+     * Scoped to the same ledger. A transfer writes the counterparty's mirror as
+     * a child of this row, and that mirror lands in the OTHER party's ledger -
+     * so an unscoped lookup read the sender's own debit as proof the receiver
+     * had accepted. That is what made a still-pending row show "Processed" and
+     * lose its Accept / Decline buttons.
+     */
     const acceptedChild = await PaymentModel.findOne({
-      where: { parent_id: data.id, status: "success" },
+      where: {
+        parent_id: data.id,
+        status: "success",
+        payment_belongs: data.payment_belongs,
+      },
     });
     if (acceptedChild) hasAcceptedChild = true;
   }
@@ -67,8 +93,13 @@ const getModelObject = async (data, index = null, p_mode = null) => {
   // accepted sibling exists for this child row group
   let hasAcceptedSibling = false;
   if (data.parent_id && data.status == "pending") {
+    // Same-ledger rule as above.
     const acceptedSibling = await PaymentModel.findOne({
-      where: { parent_id: data.parent_id, status: "success" },
+      where: {
+        parent_id: data.parent_id,
+        status: "success",
+        payment_belongs: data.payment_belongs,
+      },
     });
     if (acceptedSibling && acceptedSibling.id != data.id) {
       hasAcceptedSibling = true;
@@ -81,7 +112,13 @@ const getModelObject = async (data, index = null, p_mode = null) => {
     !data.parent_id &&
     (data.status == "pending" || data.status == "failed")
   ) {
-    action_status = "Processed";
+    /*
+     * A declined request is finished and refused, not merely "acted on". This
+     * branch labelled both alike, so a decline rendered as "Processed" - green,
+     * settled - with the amount still in the money column. Only a row that is
+     * still pending and has been superseded is Processed.
+     */
+    action_status = data.status == "failed" ? "Declined" : "Processed";
     if (data.payment_mode == "cheque") {
       if (!isEmpty(data.ref_no)) {
         display_mode +=
@@ -138,20 +175,51 @@ const getModelObject = async (data, index = null, p_mode = null) => {
   if (index == 0 && p_mode == "advance") {
     remaining_balance = await getWalletBalance(data.payment_belongs, "Advance");
   } else remaining_balance = data.remaining_balance || 0;
-  // Show "To be processed" only for actionable pending rows.
+  /*
+   * Show "To be processed" only for actionable pending rows.
+   *
+   * A chip, not coloured text: #ff9800 on the white row is about 2.2:1, and no
+   * shade of yellow-orange text clears 4.5:1 while still reading as yellow.
+   * Dark text on the same colour as a background is 8.6:1 and unmistakably
+   * yellow, which is what makes it stand out at a glance.
+   */
   if (data.status == "pending" && data.can_accept) {
     credit_amount = 0;
     display_mode +=
-      '<p style="margin:0;font-size:12px;color:#ff9800;">To be processed: ' +
+      '<p style="margin:0;font-size:12px;">' +
+      '<span style="display:inline-block;padding:1px 8px;border-radius:10px;' +
+      "background:#ffd54f;color:#3d2f00;font-size:12px;font-weight:600;" +
+      'white-space:nowrap;">To be processed: ' +
       displayAmount(data.amount) +
-      "</p>";
+      "</span></p>";
   }
 
   // Ensure action buttons are only enabled for truly pending rows that can be accepted.
   const ui_can_accept =
     data.status == "pending" && data.can_accept ? true : false;
 
+  /*
+   * Rows this one superseded when it was accepted, oldest first. Present only
+   * when the acceptance had to be written as a new row because the ledger had
+   * already moved on; a row accepted in place supersedes nothing and carries an
+   * empty history, so the UI shows no expander for it.
+   */
+  let history = [];
+  if (withHistory) {
+    const historyRows = await getPaymentRowHistory(data);
+    history = await mapConcurrent(historyRows, (row) =>
+      getModelObject(row, null, p_mode, false),
+    );
+  }
+
+  if (isHistoryRow) {
+    debit_amount = 0;
+    credit_amount = 0;
+  }
+
   return {
+    history: history,
+    has_history: history.length > 0,
     id: data.id,
     amount: displayAmount(data.amount),
     payment_mode: payment_mode,

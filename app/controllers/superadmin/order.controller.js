@@ -282,7 +282,18 @@ exports.updateOrderStatus = async (req, res) => {
     if (order) {
       let role_id = await getUserColumnValue(order.user_id, 'role_id')
       let paid_amount = order.paid_amount ? parseFloat(order.paid_amount) : 0;
-      if (!requiresPaymentApproval(data.payment_mode)) {
+      /*
+       * An advance is money in flight, not money handed over, so it waits for
+       * the receiver to accept it whatever the mode - passing the payment type
+       * is what tells the helper that. This used to ask about the mode alone,
+       * so a cash advance credited the wallet and bumped the order's paid
+       * amount before anyone had confirmed it arrived.
+       */
+      const advanceNeedsApproval = requiresPaymentApproval(
+        data.payment_mode,
+        "advance",
+      );
+      if (!advanceNeedsApproval) {
         paid_amount += parseFloat(data.advance_amount);
       }
       obj.paid_amount = paid_amount;
@@ -297,7 +308,7 @@ exports.updateOrderStatus = async (req, res) => {
         remaining_balance: 0,
         notes: data.notes || null,
         cheque_no: data.cheque_no || null,
-        status: (!requiresPaymentApproval(data.payment_mode)) ? "success" : "pending",
+        status: advanceNeedsApproval ? "pending" : "success",
         payment_date: moment().format("YYYY-MM-DD"),
         payment_belongs: req.userId,
         due_date: null,
@@ -307,7 +318,7 @@ exports.updateOrderStatus = async (req, res) => {
         is_advance: true
       });
 
-      if (!requiresPaymentApproval(data.payment_mode)) {
+      if (!advanceNeedsApproval) {
         await updateWalletRemainingBalance(payment.payment_belongs, payment.id);
 
         await updateAdvanceAmount(payment.user_id, payment.payment_belongs, payment.amount, true);
