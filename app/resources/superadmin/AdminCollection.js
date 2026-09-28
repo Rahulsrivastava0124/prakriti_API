@@ -13,21 +13,24 @@ const {
   getTotalStockByUser,
   getTotalStockPriceByUser,
   getWalletBalance,
+  liveSaleAmounts,
 } = require("@library/common");
 const db = require("@models");
 const { Op } = require("sequelize");
 const SaleModel = db.sales;
 
-const AdminCollection = async (data, saleByUserId = null) => {
+/* live: totals at today's gold rate (see liveSaleAmounts). It reprices every
+   sale of each admin passed in, so pass it for a page of admins, not "all". */
+const AdminCollection = async (data, saleByUserId = null, { live = false } = {}) => {
   if (isObject(data)) {
-    return await getModelObject(data, saleByUserId);
+    return await getModelObject(data, saleByUserId, live);
   } else {
-    return await mapConcurrent(data, (item, i) => getModelObject(item, saleByUserId));
+    return await mapConcurrent(data, (item, i) => getModelObject(item, saleByUserId, live));
 
   }
 };
 
-const getModelObject = async (data, saleByUserId = null) => {
+const getModelObject = async (data, saleByUserId = null, live = false) => {
   let documents = [];
   if (isArray(data.documents)) {
     for (let i = 0; i < data.documents.length; i++) {
@@ -57,6 +60,25 @@ const getModelObject = async (data, saleByUserId = null) => {
     where: saleWhere,
   });
   let total_return = await SaleModel.sum("return_amount", { where: saleWhere });
+
+  if (live) {
+    const sales = await SaleModel.findAll({
+      // the stored money columns liveSaleAmounts works from
+      attributes: { exclude: ["req_data"] },
+      where: saleWhere,
+    });
+    const amounts = await liveSaleAmounts(sales);
+    if (amounts.size) {
+      const sum = (key) =>
+        sales.reduce((t, s) => {
+          const a = amounts.get(s.id);
+          return t + (parseFloat(a ? a[key] : s[key]) || 0);
+        }, 0);
+      total_sale = sum("bill_amount");
+      total_payable_amount = sum("total_payable");
+      total_sale_due = sum("due_amount");
+    }
+  }
 
   let totalStock = await getTotalStockByUser(data.id);
   let totalStockPrice = await getTotalStockPriceByUser(null, data.id);

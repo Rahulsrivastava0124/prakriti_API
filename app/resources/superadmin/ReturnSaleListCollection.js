@@ -29,6 +29,9 @@ const getModelObject = (data) => {
         invoice_date: formatDateTime(sale.invoice_date, 9),
         return_date: data.return_date ? formatDateTime(data.return_date, 9) : '',
         return_amount: displayAmount(data.total_amount),
+        /* the returned products at their full value, GST included - the
+           return amount above is net of GST, report charge and discount */
+        return_amount_with_gst: displayAmount(data.product_amount),
         bill_amount: displayAmount(sale.bill_amount),
         status: status,
         status_display: ucWords((status.split("_")).join(" "))

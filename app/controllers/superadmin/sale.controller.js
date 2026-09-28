@@ -48,10 +48,16 @@ const {
   getUserColumnValue,
   avlStockUserIdsNew,
   getLiveGoldRate,
+  liveSaleAmounts,
 } = require("@library/common");
 const { getPaginationOptions } = require("@helpers/paginator");
 const { byTxnDateDesc } = require("@helpers/ledgerOrder");
-const { repriceSaleAtLiveGold } = require("@library/liveInvoicePricing");
+const {
+  repriceSaleAtLiveGold,
+  withoutReturnedProducts,
+  withoutReturnedTotals,
+  heldAtLiveRate,
+} = require("@library/liveInvoicePricing");
 
 /* The "Current Invoice" button posts current=1; accepted on the query string or
    in the body so either style of call works. */
@@ -124,6 +130,60 @@ const env = process.env.NODE_ENV;
  * @param req
  * @param res
  */
+/**
+ * Current-rate documents bill only the held pieces (withoutReturnedProducts),
+ * but still LIST the returned ones, crossed out. Call after SaleCollection:
+ * puts the returned products back into data.products (sale order) and their
+ * grouped rows into data.subCatItems, all flagged is_return, repriced at the
+ * same live rate on a stand-in so no sale total moves.
+ */
+const addReturnedRows = (sale, allSaleProducts, liveRates, data) => {
+  const kept = sale.saleProducts || [];
+  const returned = (allSaleProducts || []).filter((p) => !kept.includes(p));
+  if (!returned.length) return data;
+  /* no rates = the plain invoice: the returned rows show as sold */
+  if (liveRates) {
+    repriceSaleAtLiveGold(
+      { saleProducts: returned, discount: 0, paid_amount: 0 },
+      liveRates,
+    );
+  }
+  sale.saleProducts = returned;
+  const returnedData = SaleCollection(sale);
+  sale.saleProducts = kept;
+  let k = 0,
+    r = 0;
+  data.products = allSaleProducts.map((p) =>
+    kept.includes(p) ? data.products[k++] : returnedData.products[r++],
+  );
+  data.subCatItems = [
+    ...data.subCatItems,
+    ...returnedData.subCatItems.map((row) => ({ ...row, is_return: true })),
+  ];
+  return data;
+};
+
+/**
+ * One Due for every current-rate screen and document: the figure the sales
+ * lists show (liveSaleAmounts) - bill at today's rate, less returns as they
+ * were credited, less paid. Read it BEFORE the sale instance is repriced,
+ * since it works from the stored figures; apply it after, over whatever the
+ * repricing wrote. Returns a function that applies it.
+ */
+const liveLedgerDue = async (sale) => {
+  const amounts = (await liveSaleAmounts([sale])).get(sale.id);
+  return () => {
+    if (!amounts) return;
+    sale.setDataValue("total_payable", amounts.total_payable);
+    sale.setDataValue("due_amount", amounts.due_amount);
+  };
+};
+
+/* inline on a returned row's <tr> in the PDFs - every line of every cell is
+   struck through, and fading (not a grey) keeps it legible on navy rows */
+const returnedRowStyle = (row) =>
+  row && row.is_return ? " text-decoration: line-through; opacity: 0.55;" : "";
+
 exports.index = async (req, res) => {
   let {
     page,
@@ -239,6 +299,15 @@ exports.index = async (req, res) => {
         "this the transfer 0 data in the sales controller =====",
         data.count,
       );
+
+      if (isCurrentRateInvoice(req)) {
+        const live = await liveSaleAmounts(data.rows);
+        for (const sale of data.rows) {
+          const amounts = live.get(sale.id);
+          if (!amounts) continue;
+          for (const key in amounts) sale.setDataValue(key, amounts[key]);
+        }
+      }
 
       let result = {
         items: await SaleListCollection(data.rows, userID),
@@ -2663,9 +2732,16 @@ exports.view = async (req, res) => {
      would bake live rates into a brand new sale. Nothing is persisted either
      way — the instance is only reshaped for this response. */
   let liveGold = null;
+  let allSaleProducts = null;
+  let liveRates = null;
   if (isCurrentRateInvoice(req)) {
-    const liveRates = await getLiveGoldRate();
+    liveRates = await getLiveGoldRate();
+    const applyDue = await liveLedgerDue(sale);
+    /* returned pieces are no longer the customer's - bill what is held */
+    allSaleProducts = [...(sale.saleProducts || [])];
+    withoutReturnedProducts(sale);
     const repricing = repriceSaleAtLiveGold(sale, liveRates);
+    applyDue(); // the same Due as the sales lists
     /* The page has to be able to say which rate it is showing, and to stay
        quiet when the feed gave us nothing (rate 0) rather than print a zero. */
     liveGold = {
@@ -2678,11 +2754,12 @@ exports.view = async (req, res) => {
     };
   }
 
+  const data = SaleCollection(sale);
+  /* listed crossed out on the invoice and the product list, never billed */
+  if (allSaleProducts) addReturnedRows(sale, allSaleProducts, liveRates, data);
+
   res.send(
-    formatResponse(
-      { ...SaleCollection(sale), live_gold: liveGold },
-      "Sale details"
-    )
+    formatResponse({ ...data, live_gold: liveGold }, "Sale details"),
   );
 };
 
@@ -2753,6 +2830,16 @@ exports.edit = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("Sale not found"));
+  }
+
+  /* The return page asks for current=1: a return is credited at today's gold
+     rate, not the invoice's. Only the line figures move - what the customer
+     actually owes is a fact of the ledger, and the return form nets the refund
+     against due_amount, so the stored balance is put back. Nothing is saved. */
+  if (isCurrentRateInvoice(req)) {
+    const due_amount = sale.due_amount;
+    repriceSaleAtLiveGold(sale, await getLiveGoldRate());
+    sale.setDataValue("due_amount", due_amount);
   }
 
   res.send(
@@ -5267,14 +5354,33 @@ exports.downloadInvoice = async (req, res) => {
      template below renders the live figures instead. */
   const atCurrentRate = isCurrentRateInvoice(req);
   let liveRepricing = null;
+  let allSaleProducts = null;
   if (atCurrentRate) {
     const liveRates = await getLiveGoldRate();
-    liveRepricing = repriceSaleAtLiveGold(sale, liveRates);
+    /* returned pieces are no longer the customer's - bill what is held */
+    allSaleProducts = [...(sale.saleProducts || [])];
+    const applyDue = await liveLedgerDue(sale);
+    /* held pieces at today's rate, in the stored figures' terms */
+    liveRepricing = heldAtLiveRate(sale, liveRates);
+    applyDue(); // the same Payable / Due as the sales lists
     liveRepricing.rate_display = liveRates.display || "";
     liveRepricing.rates = liveRates;
   }
 
+  /* The plain invoice keeps every rate as sold, but returned pieces still come
+     off its counts and totals (listed crossed out below). Sales without
+     returns print exactly as stored. */
+  if (!atCurrentRate && (sale.saleProducts || []).some((p) => p.is_return)) {
+    allSaleProducts = [...sale.saleProducts];
+    withoutReturnedTotals(sale);
+  }
+  const rowRates = liveRepricing ? liveRepricing.rates : null;
+
   let saleData = SaleCollection(sale);
+  /* listed crossed out, never billed */
+  if (allSaleProducts) {
+    addReturnedRows(sale, allSaleProducts, rowRates, saleData);
+  }
 
   let payments = await PaymentModel.findAll({
     where: {
@@ -5641,7 +5747,7 @@ exports.downloadInvoice = async (req, res) => {
                                       </thead>
                                       <tbody>`;
   for (let i = 0; i < saleData.products.length; i++) {
-    html += `<tr style="background-color: #C1BDBD;">
+    html += `<tr style="background-color: #C1BDBD;${returnedRowStyle(saleData.products[i])}">
                                               <td style="text-align: left;
                                                   font-size: 11px;
                                                   font-weight: 400;">
@@ -5684,7 +5790,7 @@ exports.downloadInvoice = async (req, res) => {
                                               </td>
                                           </tr>
                                           <tr style="background-color: #fff;
-                                              vertical-align: top;">
+                                              vertical-align: top;${returnedRowStyle(saleData.products[i])}">
                                               <td colspan="3"
                                                   style="border-bottom: 1px solid
                                                   #1E2757; width: 300px; text-align: left;">
@@ -6762,14 +6868,33 @@ exports.downloadInvoiceInfo = async (req, res) => {
      template below renders the live figures instead. */
   const atCurrentRate = isCurrentRateInvoice(req);
   let liveRepricing = null;
+  let allSaleProducts = null;
   if (atCurrentRate) {
     const liveRates = await getLiveGoldRate();
-    liveRepricing = repriceSaleAtLiveGold(sale, liveRates);
+    /* returned pieces are no longer the customer's - bill what is held */
+    allSaleProducts = [...(sale.saleProducts || [])];
+    const applyDue = await liveLedgerDue(sale);
+    /* held pieces at today's rate, in the stored figures' terms */
+    liveRepricing = heldAtLiveRate(sale, liveRates);
+    applyDue(); // the same Payable / Due as the sales lists
     liveRepricing.rate_display = liveRates.display || "";
     liveRepricing.rates = liveRates;
   }
 
+  /* The plain invoice keeps every rate as sold, but returned pieces still come
+     off its counts and totals (listed crossed out below). Sales without
+     returns print exactly as stored. */
+  if (!atCurrentRate && (sale.saleProducts || []).some((p) => p.is_return)) {
+    allSaleProducts = [...sale.saleProducts];
+    withoutReturnedTotals(sale);
+  }
+  const rowRates = liveRepricing ? liveRepricing.rates : null;
+
   let saleData = SaleCollection(sale);
+  /* listed crossed out, never billed */
+  if (allSaleProducts) {
+    addReturnedRows(sale, allSaleProducts, rowRates, saleData);
+  }
 
   let payments = await PaymentModel.findAll({
     where: {
@@ -7121,7 +7246,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                 <tbody>`;
     for (let i = 0; i < saleData.products.length; i++) {
       let bgTrColor = i % 2 == 0 ? "#C1BDBD" : "#C4BEED";
-      html += `<tr style="background-color: ${bgTrColor}">
+      html += `<tr style="background-color: ${bgTrColor};${returnedRowStyle(saleData.products[i])}">
                                         <td style="text-align: left;
                                             font-size: 11px;
                                             font-weight: 400;">
@@ -7373,7 +7498,8 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let makingChargeMap = {};
     if (saleData.products) {
       saleData.products.forEach((p) => {
-        const key = p.sub_category_hsn || "";
+        /* returned rows are listed with their own making charge */
+        const key = (p.sub_category_hsn || "") + (p.is_return ? "|returned" : "");
         if (!makingChargeMap[key]) makingChargeMap[key] = 0;
         makingChargeMap[key] +=
           (parseFloat(p.making_charge) || 0) -
@@ -7413,7 +7539,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
 
     /* Sum making_charge after discount from products */
     if (saleData.products) {
-      saleData.products.forEach((product) => {
+      saleData.products.filter((p) => !p.is_return).forEach((product) => {
         totalMakingCharge +=
           (parseFloat(product.making_charge) || 0) -
           (parseFloat(product.making_charge_discount_amount) || 0);
@@ -7422,8 +7548,10 @@ exports.downloadInvoiceInfo = async (req, res) => {
 
     for (let i = 0; i < saleData.subCatItems.length; i++) {
       let item = saleData.subCatItems[i];
+      /* a returned row is listed crossed out, but counts toward no total */
+      const billed = !item.is_return;
       item.material.map((itm) => {
-        if (itm.id == 1) {
+        if (itm.id == 1 && billed) {
           fine_metals += parseFloat(itm.weight);
         }
       });
@@ -7432,15 +7560,18 @@ exports.downloadInvoiceInfo = async (req, res) => {
       let rowGrossWeight = 0;
       item.material.forEach((mat) => {
         rowGrossWeight += convertUnitToGram(mat.unit, mat.weight);
-        totalGrossWeight += convertUnitToGram(mat.unit, mat.weight);
+        if (billed) totalGrossWeight += convertUnitToGram(mat.unit, mat.weight);
       });
 
       /* Accumulate material totals */
       let taxableAmt = parseFloat(item.taxableAmount) || 0;
       let taxPercent = parseFloat(item.tax) || 0;
-      totalTaxableAmt += taxableAmt;
-      totalTax += (taxableAmt * taxPercent) / 100;
+      if (billed) {
+        totalTaxableAmt += taxableAmt;
+        totalTax += (taxableAmt * taxPercent) / 100;
+      }
       item.material.forEach((mat) => {
+        if (!billed) return;
         const key = mat.name;
         if (!materialTotals[key]) {
           materialTotals[key] = {
@@ -7466,9 +7597,10 @@ exports.downloadInvoiceInfo = async (req, res) => {
         .join("<br/>");
       let bgTrColor = i % 2 == 0 ? "#f5f5f5" : "#ffffff";
       let slNo = i + 1 <= 9 ? "0" + (i + 1) : i + 1;
-      let makingCharge = makingChargeMap[item.hsn] || 0;
+      let makingCharge =
+        makingChargeMap[item.hsn + (item.is_return ? "|returned" : "")] || 0;
 
-      html += `<tr style="background-color: ${bgTrColor}; border-bottom: 1px solid #e0e0e0;">
+      html += `<tr style="background-color: ${bgTrColor}; border-bottom: 1px solid #e0e0e0;${returnedRowStyle(item)}">
                   <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${slNo}</td>
                   <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.name}</td>
                   <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.qty}</td>
@@ -7795,6 +7927,15 @@ exports.downloadInvoiceItemList = async (req, res) => {
     return res
       .status(errorCodes.default)
       .send(formatErrorResponse("Sale not found"));
+  }
+  /* current=1: every row at today's gold rate, returned (crossed-out) ones
+     included. This document prints only row sums, so the products are
+     repriced on a stand-in and no sale-level figure is touched. */
+  if (isCurrentRateInvoice(req)) {
+    repriceSaleAtLiveGold(
+      { saleProducts: sale.saleProducts || [], discount: 0, paid_amount: 0 },
+      await getLiveGoldRate(),
+    );
   }
   let saleData = SaleCollection(sale);
 
@@ -8140,13 +8281,16 @@ exports.downloadInvoiceItemList = async (req, res) => {
     }
     productAmt =
       goldAmt + stoneAmt + parseFloat(saleData.products[i].making_charge);
-    totalGrossWeight += grossWeight;
-    totalStoneWeight += stoneWeight;
-    totalGoldAmt += goldAmt;
-    totalStoneAmt += stoneAmt;
-    totalMaterialAmt += parseFloat(saleData.products[i].making_charge);
-    totalAmt += productAmt;
-    html += `<tr style="background-color: ${bgTrColor}; color:#FFFFFF;">
+    /* a returned product is listed crossed out, but left out of the totals */
+    if (!saleData.products[i].is_return) {
+      totalGrossWeight += grossWeight;
+      totalStoneWeight += stoneWeight;
+      totalGoldAmt += goldAmt;
+      totalStoneAmt += stoneAmt;
+      totalMaterialAmt += parseFloat(saleData.products[i].making_charge);
+      totalAmt += productAmt;
+    }
+    html += `<tr style="background-color: ${bgTrColor}; color:#FFFFFF;${returnedRowStyle(saleData.products[i])}">
                                               <td style="text-align: left;
                                                   font-size: 11px;
                                                   font-weight: 400; width: 25px; border-bottom: 1px solid #FFFFFF !important;">
@@ -8448,7 +8592,22 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
       .status(errorCodes.default)
       .send(formatErrorResponse("Sale not found"));
   }
+  /* current=1: the rows at today's gold rate, and the Sub-Total / GST /
+     Total Payable / Rest Due boxes recalculated to match - held pieces only,
+     the returned ones listed crossed out after them */
+  let allSaleProducts = null;
+  let liveRates = null;
+  if (isCurrentRateInvoice(req)) {
+    liveRates = await getLiveGoldRate();
+    const applyDue = await liveLedgerDue(sale);
+    allSaleProducts = [...(sale.saleProducts || [])];
+    heldAtLiveRate(sale, liveRates);
+    applyDue(); // the same Payable / Due as the sales lists
+  }
   let saleData = SaleCollection(sale);
+  if (allSaleProducts) {
+    addReturnedRows(sale, allSaleProducts, liveRates, saleData);
+  }
 
   let payments = await PaymentModel.findAll({
     where: {
@@ -8551,6 +8710,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   let totalSave = 0.0;
   let totalTagPrice = 0.0;
   for (let i = 0; i < saleData.products.length; i++) {
+    if (saleData.products[i].is_return) continue; // listed crossed out only
     totalSave += saleData.products[i].total_discount;
     totalTagPrice += saleData.products[i].subtotal_price;
   }
@@ -8842,7 +9002,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                       <tbody>`;
   for (let i = 0; i < saleData.products.length; i++) {
     let bgTrColor = i % 2 == 0 ? "#1E2757" : "#1E2757";
-    html += `<tr style="background-color: ${bgTrColor}; color:#FFFFFF;">
+    html += `<tr style="background-color: ${bgTrColor}; color:#FFFFFF;${returnedRowStyle(saleData.products[i])}">
                                               <td style="text-align: left;
                                                   font-size: 11px;
                                                   font-weight: 400; width: 25px;">
@@ -8892,7 +9052,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                               </td>
   
                                           </tr>
-                                          <tr style="vertical-align: top; background-color: #FFFFFF;">
+                                          <tr style="vertical-align: top; background-color: #FFFFFF;${returnedRowStyle(saleData.products[i])}">
                                               <td colspan="2" style="border-bottom: 1px solid #1E2757; padding:0;">
                                                   
                                           `;

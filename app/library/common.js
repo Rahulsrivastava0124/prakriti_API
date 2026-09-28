@@ -631,6 +631,66 @@ const getLiveGoldRate = async () => {
   return goldRateInFlight;
 };
 
+/**
+ * A sale's money figures at today's gold rate, for pages that show "current"
+ * values. Returns Map(sale id -> { bill_amount, total_payable, due_amount }).
+ *
+ * The same figures the current-rate invoice prints (heldAtLiveRate):
+ *   bill_amount   - the pieces the customer still holds, at today's rate,
+ *                   with their report charge, less the cash discount;
+ *                   returned pieces are not billed at all
+ *   total_payable - bill_amount
+ *   due_amount    - bill_amount - paid_amount, never below zero
+ * return_amount (what was credited) and paid_amount never move; the return
+ * is already out of the bill, so it is not taken off a second time.
+ * The sales passed in need their stored money columns (taxable_amount, the
+ * GST split, total_amount, discount, paid_amount, report_*). Nothing is
+ * persisted. Sales are returned unchanged when the feed has no rate.
+ */
+const liveSaleAmounts = async (sales) => {
+  const result = new Map();
+  if (!sales.length) return result;
+  const liveRates = await getLiveGoldRate();
+  if (!(liveRates && liveRates.rate > 0)) return result;
+
+  const { heldAtLiveRate } = require("@library/liveInvoicePricing");
+  const products = await SaleProductModel.findAll({
+    where: { sale_id: { [Op.in]: sales.map((s) => s.id) } },
+    include: [
+      {
+        model: SaleProductMaterialModel,
+        as: "saleMaterials",
+        separate: true,
+        include: [
+          { model: MaterialModel, as: "material" },
+          { model: PurityModel, as: "purity" },
+          { model: UnitModel, as: "unit" },
+        ],
+      },
+    ],
+  });
+
+  const keys = [
+    "taxable_amount", "cgst_tax", "sgst_tax", "igst_tax", "total_amount",
+    "discount", "paid_amount", "report_qty", "report_charge",
+    "report_tax_percentage",
+  ];
+  for (const sale of sales) {
+    const saleProducts = products.filter((p) => p.sale_id === sale.id);
+    if (!saleProducts.length) continue;
+    /* a plain stand-in, so the caller's sale instance is never touched */
+    const standIn = { saleProducts };
+    for (const k of keys) standIn[k] = sale[k];
+    heldAtLiveRate(standIn, liveRates);
+    result.set(sale.id, {
+      bill_amount: standIn.bill_amount,
+      total_payable: standIn.total_payable,
+      due_amount: standIn.due_amount,
+    });
+  }
+  return result;
+};
+
 const isGoldMaterial = (material) =>
   !!material && /gold/i.test(material.name || "");
 
@@ -4939,6 +4999,7 @@ module.exports = {
   getCartMaterialPrices,
   getTotalStockPriceByUser,
   getLiveGoldRate,
+  liveSaleAmounts,
   getUserColumnValue,
   getWalletBalance,
   emailExists,

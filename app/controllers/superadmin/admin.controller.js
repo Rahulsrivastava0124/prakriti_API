@@ -146,8 +146,19 @@ exports.index = async (req, res) => {
           });
         }
 
+        /* current=1: each admin's totals at today's gold rate; the cards
+           above the list are then the sum of those rows (same sales) */
+        const live = ["1", "true"].includes(String(req.query.current));
+        const items = await AdminCollection(data.rows, req.userId, { live });
+        if (live) {
+          const sum = (key) =>
+            items.reduce((t, item) => t + (parseFloat(item[key]) || 0), 0);
+          total_sale = sum("total_amount");
+          total_sale_due = sum("due_amount");
+        }
+
         let result = {
-          items: await AdminCollection(data.rows, req.userId),
+          items,
           total: data.count,
           total_sale: priceFormat(total_sale),
           total_sale_due: priceFormat(total_sale_due),
@@ -516,7 +527,9 @@ exports.fetch = async (req, res) => {
   }
   res.send(
     formatResponse(
-      await AdminCollection(admin, req.userId),
+      await AdminCollection(admin, req.userId, {
+        live: ["1", "true"].includes(String(req.query.current)),
+      }),
       "Admin fetched successfully!",
     ),
   );

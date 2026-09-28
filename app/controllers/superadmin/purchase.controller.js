@@ -42,6 +42,7 @@ const {
   getPurchaseProducts,
   getPurchaseProductsUser,
   getRoleId,
+  liveSaleAmounts,
 } = require("@library/common");
 const { getPaginationOptions } = require("@helpers/paginator");
 const {
@@ -208,6 +209,23 @@ exports.index = async (req, res) => {
   })
     .then(async (data) => {
       compactLog("data.count : ", data.count);
+      /* current=1: a purchase made from a sale shows that sale's figures at
+         today's gold rate - the same Total / Due the seller sees for it */
+      if (["1", "true"].includes(String(req.query.current))) {
+        const saleIds = data.rows.map((p) => p.sale_id).filter(Boolean);
+        if (saleIds.length) {
+          const sales = await db.sales.findAll({
+            attributes: { exclude: ["req_data"] },
+            where: { id: { [Op.in]: saleIds } },
+          });
+          const live = await liveSaleAmounts(sales);
+          for (const purchase of data.rows) {
+            const amounts = live.get(purchase.sale_id);
+            if (!amounts) continue;
+            for (const key in amounts) purchase.setDataValue(key, amounts[key]);
+          }
+        }
+      }
       let result = {
         items: await PurchaseListCollection(data.rows, load_payments),
         total: data.count,

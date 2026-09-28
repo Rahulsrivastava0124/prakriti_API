@@ -270,7 +270,150 @@ const repriceSaleAtLiveGold = (sale, liveRates) => {
   return { changes, taxable: saleTaxable, tax: saleTax, total: billAmount };
 };
 
+/**
+ * Takes what went back out of a loaded sale, so a current-rate invoice bills
+ * only what the customer still holds. Call it BEFORE repriceSaleAtLiveGold:
+ * the repricer rolls every sale total up from saleProducts, so whatever is
+ * left here is exactly what gets billed.
+ *
+ *   - a product returned whole (is_return) is dropped, and a certified one
+ *     takes its report charge with it (report_qty)
+ *   - a loose material returned in part keeps only the weight/qty still held
+ *
+ * In memory only, like the repricer - the caller must never save the sale.
+ */
+const withoutReturnedProducts = (sale) => {
+  const setVal = (obj, key, val) => {
+    if (obj.setDataValue) obj.setDataValue(key, val);
+    else obj[key] = val;
+  };
+  let returnedCertified = 0;
+  const kept = [];
+
+  for (const product of sale.saleProducts || []) {
+    if (product.is_return) {
+      if (product.certificate_no) returnedCertified++;
+      continue;
+    }
+    let held = 0;
+    for (const m of product.saleMaterials || []) {
+      const back = num(m.return_weight);
+      if (back > 0) {
+        const weight = round3(num(m.weight) - back);
+        /* total_gram is the same weight in grams, so it shrinks in step */
+        const gramsPerUnit = num(m.weight) > 0 ? num(m.total_gram) / num(m.weight) : 1;
+        setVal(m, "weight", weight);
+        setVal(m, "total_gram", round3(weight * gramsPerUnit));
+        setVal(m, "quantity", Math.max(0, num(m.quantity) - num(m.return_qty)));
+      }
+      held += num(m.weight);
+    }
+    if (held > 0 || !(product.saleMaterials || []).length) kept.push(product);
+  }
+
+  setVal(sale, "saleProducts", kept);
+  /* an included association lives as a plain property on a Sequelize
+     instance too, and that is what sale.saleProducts reads - setDataValue
+     alone left every returned piece on the invoice */
+  sale.saleProducts = kept;
+  setVal(sale, "report_qty", Math.max(0, num(sale.report_qty) - returnedCertified));
+  return sale;
+};
+
+/**
+ * The plain invoice (rates as sold) minus the returned pieces. Drops them
+ * like withoutReturnedProducts, then takes exactly their stored share off the
+ * stored sale figures - their totals and tax, plus the report charge (and its
+ * GST) of each returned certified piece. Nothing is recomputed, so a held
+ * piece prints to the paisa as it was sold, and so does the report charge.
+ * Returns the products taken out. In memory only; never save the sale.
+ */
+const withoutReturnedTotals = (sale) => {
+  const setVal = (obj, key, val) => {
+    if (obj.setDataValue) obj.setDataValue(key, val);
+    else obj[key] = val;
+  };
+  const all = [...(sale.saleProducts || [])];
+  const reportQtyBefore = num(sale.report_qty);
+  withoutReturnedProducts(sale);
+  const returned = all.filter((p) => !sale.saleProducts.includes(p));
+  if (!returned.length) return returned;
+
+  const productBack = returned.reduce((t, p) => t + num(p.total), 0);
+  const taxBack = returned.reduce((t, p) => t + num(p.tax), 0);
+  const reportBack =
+    (reportQtyBefore - num(sale.report_qty)) * num(sale.report_charge);
+  const reportTaxBack = (reportBack * num(sale.report_tax_percentage)) / 100;
+
+  setVal(sale, "taxable_amount",
+    round2(num(sale.taxable_amount) - (productBack - taxBack) - reportBack));
+  const allTaxBack = taxBack + reportTaxBack;
+  if (num(sale.cgst_tax) > 0 || num(sale.sgst_tax) > 0) {
+    setVal(sale, "cgst_tax", round2(num(sale.cgst_tax) - allTaxBack / 2));
+    setVal(sale, "sgst_tax", round2(num(sale.sgst_tax) - allTaxBack / 2));
+  } else {
+    setVal(sale, "igst_tax", round2(num(sale.igst_tax) - allTaxBack));
+  }
+  const totalAmount = round2(
+    num(sale.total_amount) - productBack - reportBack - reportTaxBack,
+  );
+  setVal(sale, "total_amount", totalAmount);
+  setVal(sale, "bill_amount", round2(totalAmount - num(sale.discount)));
+  return returned;
+};
+
+/**
+ * The current-rate invoice: what the customer still holds, at today's gold
+ * rate, in the stored sale figures' own terms (report charge and its GST
+ * included, as the invoice templates expect).
+ *
+ *   1. the returned pieces' stored share comes off (withoutReturnedTotals)
+ *   2. the held pieces are repriced at the live rate
+ *   3. each sale figure moves by exactly what the held pieces' totals and tax
+ *      moved, so the report charge and cash discount carry over untouched
+ *   4. total_payable = total_amount - discount, due = payable - paid (>= 0)
+ *
+ * Returns the repricer's summary ({ changes, ... }). In memory only.
+ */
+const heldAtLiveRate = (sale, liveRates) => {
+  const setVal = (obj, key, val) => {
+    if (obj.setDataValue) obj.setDataValue(key, val);
+    else obj[key] = val;
+  };
+  withoutReturnedTotals(sale);
+  const held = sale.saleProducts || [];
+  const before = held.map((p) => ({ total: num(p.total), tax: num(p.tax) }));
+  const repricing = repriceSaleAtLiveGold(
+    { saleProducts: held, discount: 0, paid_amount: 0 },
+    liveRates,
+  );
+  let dTotal = 0,
+    dTax = 0;
+  held.forEach((p, i) => {
+    dTotal += num(p.total) - before[i].total;
+    dTax += num(p.tax) - before[i].tax;
+  });
+
+  setVal(sale, "taxable_amount", round2(num(sale.taxable_amount) + dTotal - dTax));
+  if (num(sale.cgst_tax) > 0 || num(sale.sgst_tax) > 0) {
+    setVal(sale, "cgst_tax", round2(num(sale.cgst_tax) + dTax / 2));
+    setVal(sale, "sgst_tax", round2(num(sale.sgst_tax) + dTax / 2));
+  } else {
+    setVal(sale, "igst_tax", round2(num(sale.igst_tax) + dTax));
+  }
+  const totalAmount = round2(num(sale.total_amount) + dTotal);
+  const payable = round2(totalAmount - num(sale.discount));
+  setVal(sale, "total_amount", totalAmount);
+  setVal(sale, "bill_amount", payable);
+  setVal(sale, "total_payable", payable);
+  setVal(sale, "due_amount", round2(Math.max(0, payable - num(sale.paid_amount))));
+  return repricing;
+};
+
 module.exports = {
+  heldAtLiveRate,
+  withoutReturnedTotals,
+  withoutReturnedProducts,
   repriceSaleAtLiveGold,
   computeProductTotals,
   liveRateForPurity,
@@ -445,4 +588,76 @@ if (require.main === module) {
   assert.strictEqual(live.tax, 63.71, "sale tax");
   assert.strictEqual(sale2.total_payable, 2187.39, "sale total payable");
   assert.strictEqual(sale2.due_amount, 2187.39, "due follows the new total");
+
+  // ── returned products come off the current invoice ──
+  const sale3 = JSON.parse(JSON.stringify(sale));
+  sale3.report_qty = 2;
+  sale3.saleProducts[0].certificate_no = "A1";
+  sale3.saleProducts.push({
+    ...JSON.parse(JSON.stringify(sale.saleProducts[0])),
+    certificate_no: "A2",
+    is_return: true,
+  });
+  withoutReturnedProducts(sale3);
+  assert.strictEqual(sale3.saleProducts.length, 1, "returned product dropped");
+  assert.strictEqual(sale3.report_qty, 1, "its report charge goes with it");
+  const kept3 = repriceSaleAtLiveGold(sale3, LIVE);
+  assert.strictEqual(kept3.taxable, 2123.68, "billed for the kept product only");
+
+  // a loose material returned in part keeps only what is still held
+  const loose = {
+    saleProducts: [{
+      saleMaterials: [{ weight: "10.000", total_gram: "10.000", quantity: 1,
+        return_weight: "4.000", return_qty: 0 }],
+    }],
+  };
+  withoutReturnedProducts(loose);
+  assert.strictEqual(loose.saleProducts[0].saleMaterials[0].weight, 6, "6 of 10 g held");
+  assert.strictEqual(loose.saleProducts[0].saleMaterials[0].total_gram, 6);
+
+  // ── plain invoice: a returned piece takes exactly its stored share off ──
+  const plain = {
+    report_qty: 2, report_charge: 100, report_tax_percentage: 18,
+    taxable_amount: 1200, igst_tax: 36, cgst_tax: 0, sgst_tax: 0,
+    total_amount: 1236 + 36, discount: 1, // 1000+200 goods, 200 report
+    saleProducts: [
+      { certificate_no: "K", total: 515, tax: 15, saleMaterials: [{ weight: 1 }] },
+      { certificate_no: "R", total: 515, tax: 15, is_return: true, saleMaterials: [{ weight: 1 }] },
+    ],
+  };
+  const back = withoutReturnedTotals(plain);
+  assert.strictEqual(back.length, 1, "one returned product");
+  assert.strictEqual(plain.report_qty, 1, "its report charge goes");
+  assert.strictEqual(plain.taxable_amount, 1200 - 500 - 100, "goods + report off");
+  assert.strictEqual(plain.igst_tax, 36 - 15 - 18, "product GST + report GST off");
+  assert.strictEqual(plain.total_amount, 1272 - 515 - 100 - 18, "sub total");
+  assert.strictEqual(plain.bill_amount, plain.total_amount - 1, "less cash discount");
+
+  // ── current-rate invoice: held pieces at the live rate, report charge kept ──
+  // One held 18K piece (0.160 g, sold at 11550, as RV-S-89) + one returned.
+  const gold = (rate) => ({
+    material: { name: "Gold yellow" }, purity: { name: "18 Carat", value: "76.00" },
+    unit: { name: "GM" }, weight: "0.160", total_gram: "0.160", rate: String(rate),
+    discount_amount: "0.00",
+  });
+  const piece = (extra) => ({
+    tax_info: '{"igst":3}', making_charge: 545.45, making_charge_discount: 45,
+    cgst_tax: 0, sgst_tax: 0, igst_tax: 72.23, tax: 72.23, total: 2479.91,
+    certificate_no: "C", saleMaterials: [gold(11550)], ...extra,
+  });
+  const cur = {
+    report_qty: 2, report_charge: 100, report_tax_percentage: 18,
+    // goods 2 x 2407.68 + report 200; GST 2 x 72.23 + 36
+    taxable_amount: 5015.36, igst_tax: 180.46, cgst_tax: 0, sgst_tax: 0,
+    total_amount: 5195.82, discount: 0.82, paid_amount: 1000,
+    saleProducts: [piece(), piece({ is_return: true })],
+  };
+  heldAtLiveRate(cur, LIVE);
+  // held piece at 11398: 0.160 x 11398 = 1823.68 gold -> taxable 2123.68, tax 63.71
+  assert.strictEqual(cur.report_qty, 1, "returned piece's report charge off");
+  assert.strictEqual(cur.taxable_amount, round2(2123.68 + 100), "held goods at live + its report charge");
+  assert.strictEqual(cur.igst_tax, round2(63.71 + 18), "held GST at live + report GST");
+  assert.strictEqual(cur.total_amount, round2(2123.68 + 63.71 + 100 + 18), "sub total");
+  assert.strictEqual(cur.total_payable, round2(cur.total_amount - 0.82), "payable = total - cash discount");
+  assert.strictEqual(cur.due_amount, round2(cur.total_payable - 1000), "due = payable - paid");
 }
