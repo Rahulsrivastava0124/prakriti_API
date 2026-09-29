@@ -36,6 +36,7 @@ const {
   paymentNeedsApproval,
   hasWalletFunds,
   walletShortfall,
+  liveSaleAmounts,
 } = require("@library/common");
 const {
   recalculatePaymentRemainingBalance,
@@ -184,6 +185,47 @@ exports.store = async (req, res) => {
       if (shortfall) {
         return res.status(errorCodes.default).send(formatErrorResponse(shortfall));
       }
+    }
+
+    /*
+     * at_current_rate: the payment is taken against the invoice's Due at
+     * today's gold rate (Sale Details shows that figure). The payment below
+     * only settles a sale whose STORED status is "due", so the invoice is
+     * re-valued first - its stored Total Payable / Due (and its mirrored
+     * purchase's) become today's-rate figures - and then paid as usual.
+     * Without this a fully paid invoice matched nothing: the payment was
+     * recorded nowhere while the metal still moved into stock.
+     */
+    const atCurrentRate = ["1", "true"].includes(String(data.at_current_rate));
+    if (
+      atCurrentRate &&
+      data.table_type === "sale" &&
+      !isEmpty(data.table_id) &&
+      !isWalletScreenTransfer
+    ) {
+      const sale = await SaleModel.findOne({
+        attributes: { exclude: ["req_data"] },
+        where: { id: data.table_id, sale_by: currentUserID },
+      });
+      const live = sale ? (await liveSaleAmounts([sale])).get(sale.id) : null;
+      if (!live) {
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse("Today's gold rate is not available right now. Please try again."));
+      }
+      if (amount > live.due_amount + 0.01) {
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse(`Amount must be less than or equal to the due amount (${live.due_amount}).`));
+      }
+      const revalued = {
+        total_payable: live.total_payable,
+        due_amount: live.due_amount,
+        status: live.due_amount > 0 ? "due" : "paid",
+      };
+      compactLog("payment.store re-valued sale", sale.id, "at today's rate:", revalued);
+      await SaleModel.update(revalued, { where: { id: sale.id } });
+      await PurchaseModel.update(revalued, { where: { sale_id: sale.id } });
     }
 
     let conditions = { status: "due" };
