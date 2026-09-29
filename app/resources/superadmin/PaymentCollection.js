@@ -10,6 +10,31 @@ const { getPaymentRowHistory } = require("@library/common");
 const db = require("@models");
 const PaymentModel = db.payments;
 
+/**
+ * The weight x rate line printed beside a metal payment's amount.
+ *
+ * A metal payment's amount is fine weight x the 24K rate (13.000 g x 14,883.40
+ * = 193,484.20), so that is the pair printed - it always multiplies back to
+ * the amount. The quoted purity rate (14,808.98 for 24 Carat at 99.5%) goes
+ * with the gross weight, and gross rounded to 3 decimals does not multiply
+ * back exactly (13.065 x 14,808.98 = 193,479.32), so the gross weight follows
+ * for reference only. Weights print to at most 3 decimals; the rate comes
+ * from the stored weight so rounding the printed weight never moves it.
+ */
+const metalDetail = (data) => {
+  if (String(data.payment_mode || "").toLowerCase() !== "metal") return "";
+  const w3 = (v) => parseFloat((parseFloat(v) || 0).toFixed(3));
+  const fineStored = parseFloat(data.weight);
+  if (!(fineStored > 0)) return "";
+  const fine = w3(fineStored);
+  const gross = w3(data.gross_weight);
+  const rate24 = parseFloat(data.amount) / fineStored;
+  return (
+    `${fine} GM @ ${displayAmount(rate24)}/GM` +
+    (gross > 0 && gross !== fine ? `, gross ${gross} GM` : "")
+  );
+};
+
 const PaymentCollection = async (data) => {
   if (isObject(data)) {
     return await getModelObject(data);
@@ -292,6 +317,7 @@ const getModelObject = async (data, isHistoryRow = false) => {
           : parseFloat(data.weight)
             ? displayAmount(parseFloat(data.amount) / parseFloat(data.weight))
             : "",
+    metal_detail: metalDetail(data),
     payment_date: formatDateTime(data.payment_date, 8),
     payment_to: data.user ? data.user.name : "",
     purpose: purpose,
