@@ -48,6 +48,8 @@ const {
   avlStockUserIdsNew,
   getLiveGoldRate,
   liveSaleAmounts,
+  paymentNeedsApproval,
+  walletShortfall,
 } = require("@library/common");
 const { getPaginationOptions } = require("@helpers/paginator");
 const { byTxnDateDesc } = require("@helpers/ledgerOrder");
@@ -1260,8 +1262,15 @@ exports.store = async (req, res) => {
    * buyer has no wallet to draw on - they pay with real cash - so they are
    * skipped and ordinary retail sales are unaffected. This mirrors the check
    * purchase.controller.store() already performs on its own caller.
+   *
+   * Not when the super admin records it: the super admin may take another
+   * admin's wallet negative (the balance is settled with them later).
    */
-  if (priceFormat(data.paid_amount) > 0 && !isEmpty(data.user_id)) {
+  if (
+    !isSuperAdmin(req) &&
+    priceFormat(data.paid_amount) > 0 &&
+    !isEmpty(data.user_id)
+  ) {
     const shortfall = await walletShortfall(
       data.user_id,
       data.payment_mode,

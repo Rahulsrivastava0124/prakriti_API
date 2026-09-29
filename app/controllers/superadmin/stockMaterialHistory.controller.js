@@ -392,9 +392,11 @@ const transferMaterial = async (req, data) => {
             }
         });
         compactLog("stock id:", stock && stock.id);
+        let senderDebited = false;
         if (stock) {
             let stockMaterial = await StockMaterialModel.findOne({ where: { material_id: data.material_id, stock_id: stock.id } });
             if (stockMaterial) {
+                senderDebited = true;
                 compactLog("stockMaterial id:", stockMaterial && stockMaterial.id);
                 let quantity = data.quantity ? parseInt(data.quantity) : 0;
                 await StockMaterialModel.update({
@@ -412,6 +414,41 @@ const transferMaterial = async (req, data) => {
                     }, { where: { id: stock.id } });
                 //}
             }
+        }
+
+        /* A sender with no stock row of this metal was not debited at all. When
+           the super admin takes the metal (e.g. metal paid against an invoice),
+           the sender's stock may go negative, so the row is opened at minus
+           this weight instead of the debit being skipped. */
+        if (!senderDebited && isSuperAdmin(req)) {
+            const quantity = data.quantity ? parseInt(data.quantity) : 0;
+            const material = await MaterialModel.findByPk(data.material_id);
+            if (!stock) {
+                stock = await StockModel.create({
+                    material_id: data.material_id,
+                    purity_id: stockPurityId,
+                    user_id: data.from_user_id,
+                    type: 'material',
+                    weight: 0,
+                    unit_id: data.unit_id,
+                    quantity: 0,
+                    total_weight: 0,
+                }, { transaction: t });
+            }
+            await StockMaterialModel.create({
+                stock_id: stock.id,
+                material_id: data.material_id,
+                weight: -weightFormat(data.effective_weight),
+                weight_in_gram: -weightFormat(weight_in_gram),
+                quantity: -quantity,
+                purity_id: stockPurityId,
+                unit_id: data.unit_id,
+                category_id: material ? material.id : null,
+            }, { transaction: t });
+            await StockModel.update({
+                quantity: (parseInt(stock.quantity) || 0) - quantity,
+                total_weight: (parseFloat(stock.total_weight) || 0) - weight_in_gram,
+            }, { where: { id: stock.id }, transaction: t });
         }
 
         // Credit the receiver regardless of whether the sender had a tracked

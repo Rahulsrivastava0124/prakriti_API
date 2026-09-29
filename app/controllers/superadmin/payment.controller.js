@@ -167,10 +167,13 @@ exports.store = async (req, res) => {
      */
     const callerDebits =
       data.table_type === "purchase" || requestPaymentType === "send_money";
+    /* ...except when the super admin records it: the super admin may take
+       the buyer's wallet negative (the balance is settled with them later) */
     const counterpartyDebits =
       !isWalletScreenTransfer &&
       data.table_type === "sale" &&
-      !isEmpty(data.table_id);
+      !isEmpty(data.table_id) &&
+      !isSuperAdmin(req);
 
     const debitChecks = [];
     if (callerDebits) debitChecks.push(currentUserID);
