@@ -5240,7 +5240,10 @@ exports.downloadInvoiceInfo = async (req, res) => {
         (parseFloat(fine_metals) * parseFloat(purity18K.value)) / 100;
     }
 
-    let rest_metal = fine_metals - receive_metal;
+    /* rounded to the 2 decimals it prints with, and -0 made 0: a fully paid
+       invoice left a rounding crumb (e.g. -0.0004) that printed as "-0.00" */
+    let rest_metal =
+      Math.round((fine_metals - receive_metal) * 100) / 100 + 0;
 
     let totalReportCharge = 0;
     let taxOnReportCharge = 0;

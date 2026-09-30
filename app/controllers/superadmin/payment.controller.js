@@ -75,10 +75,21 @@ exports.index = async (req, res) => {
    */
   conditions.id = { [Op.notIn]: supersededPaymentRowIds() };
 
+  /*
+   * Whose rows: the ones the caller entered. On one invoice's payment table
+   * also the ones written onto the caller's own ledger by the other party -
+   * a purchase made from a super admin sale has every payment entered by the
+   * super admin (payment_by) on the buyer's ledger (payment_belongs), so the
+   * buyer's Purchase Details listed none of them.
+   */
+  const whose = !isEmpty(table_id)
+    ? { [Op.or]: [{ payment_by: req.userId }, { payment_belongs: req.userId }] }
+    : { payment_by: req.userId };
+
   const paginatorOptions = getPaginationOptions(page, limit);
   PaymentModel.findAndCountAll({
     order: [["id", "DESC"]],
-    where: { payment_by: req.userId, ...conditions },
+    where: { ...whose, ...conditions },
     offset: paginatorOptions.offset,
     limit: paginatorOptions.limit,
     include: [
@@ -229,6 +240,29 @@ exports.store = async (req, res) => {
       compactLog("payment.store re-valued sale", sale.id, "at today's rate:", revalued);
       await SaleModel.update(revalued, { where: { id: sale.id } });
       await PurchaseModel.update(revalued, { where: { sale_id: sale.id } });
+    }
+
+    /*
+     * One invoice can only take what it owes. The settle loop below pays the
+     * due and silently drops the rest, so a metal payment larger than the due
+     * credited only the due while the metal moved in full (RV-S-125: 10.24 g
+     * worth 152,034.30 recorded as 11,885.28). Refuse it instead.
+     */
+    if (
+      data.table_type === "sale" &&
+      !isEmpty(data.table_id) &&
+      !isWalletScreenTransfer
+    ) {
+      const invoice = await SaleModel.findOne({
+        attributes: ["id", "due_amount", "status"],
+        where: { id: data.table_id, sale_by: currentUserID },
+      });
+      const due = invoice && invoice.status === "due" ? parseFloat(invoice.due_amount) : 0;
+      if (invoice && amount > due + 0.01) {
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse(`Amount must be less than or equal to the due amount (${due.toFixed(2)}).`));
+      }
     }
 
     let conditions = { status: "due" };
