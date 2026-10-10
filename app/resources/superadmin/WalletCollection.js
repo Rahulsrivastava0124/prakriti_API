@@ -61,6 +61,9 @@ const getModelObject = async (
     payment_mode += " ( " + data.cheque_no + " )";
   } else if (data.payment_mode == "imps_neft" && !isEmpty(data.txn_id)) {
     payment_mode += " ( " + data.txn_id + " )";
+  } else if (data.payment_mode == "metal" && parseFloat(data.weight) > 0) {
+    // what is being handed over, for whoever approves it
+    payment_mode += " ( " + parseFloat(parseFloat(data.weight).toFixed(3)) + " GM fine )";
   }
 
   let action_status = "",
@@ -183,16 +186,12 @@ const getModelObject = async (
    * Dark text on the same colour as a background is 8.6:1 and unmistakably
    * yellow, which is what makes it stand out at a glance.
    */
-  if (data.status == "pending" && data.can_accept) {
-    credit_amount = 0;
-    display_mode +=
-      '<p style="margin:0;font-size:12px;">' +
-      '<span style="display:inline-block;padding:1px 8px;border-radius:10px;' +
-      "background:#ffd54f;color:#3d2f00;font-size:12px;font-weight:600;" +
-      'white-space:nowrap;">To be processed: ' +
-      displayAmount(data.amount) +
-      "</span></p>";
-  }
+  /*
+   * A pending row keeps its amount in its own Credit / Debit column, like every
+   * payment table - the Pending tag and the Accept / Decline buttons say it is
+   * not settled, and the Balance does not move until it is accepted (pending
+   * rows are not counted in the running balance).
+   */
 
   // Ensure action buttons are only enabled for truly pending rows that can be accepted.
   const ui_can_accept =
@@ -228,7 +227,9 @@ const getModelObject = async (
     debit: debit_amount,
     credit: credit_amount,
     txn_id: data.txn_id || "",
-    remaining_balance: displayAmount(remaining_balance),
+    // metal is not held in the money balance, so a metal row has none to show
+    remaining_balance:
+      data.payment_type === "gold" ? "—" : displayAmount(remaining_balance),
     payment_date: formatDateTime(data.payment_date, 8),
     payment_to: data.user ? data.user.name : "",
     status: data.status,

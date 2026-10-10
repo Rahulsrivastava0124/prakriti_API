@@ -49,6 +49,10 @@ module.exports = (sequelize, DataTypes) => {
     weight: DataTypes.STRING,
     metal_rate: DataTypes.DECIMAL(15, 2),
     gross_weight: DataTypes.DECIMAL(15, 4),
+    // what a metal payment is made of - needed to move the metal on accept
+    material_id: DataTypes.INTEGER,
+    purity_id: DataTypes.INTEGER,
+    unit_id: DataTypes.INTEGER,
     status: DataTypes.STRING,
     type: DataTypes.STRING,
     payment_type: DataTypes.STRING,

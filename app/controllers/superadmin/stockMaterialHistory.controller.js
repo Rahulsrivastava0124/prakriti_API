@@ -11,7 +11,7 @@ const { StocksMaterialCollection } = require("@resources/superadmin/StocksMateri
 const { StockHistoriesCollection } = require("@resources/superadmin/StockHistoriesCollection");
 const { getOrderCartData } = require("@library/orderCart");
 const StockModel = db.stocks;
-const { isEmpty, priceFormat, convertUnitToGram, addLog, weightFormat, arrayColumn } = require("@helpers/helper");
+const { isEmpty, priceFormat, convertUnitToGram, addLog, weightFormat, arrayColumn, ucWords, displayAmount, formatDateTime } = require("@helpers/helper");
 const { getTotalStockPriceByUser, getWorkingUserID, isSuperAdmin, getStockUserID, isManager, updateOrCreate, sendNotification } = require("@library/common");
 const productsModel = db.products;
 const cartModel = db.carts;
@@ -38,6 +38,60 @@ const PurchaseProductMaterialModel = db.purchase_product_materials;
  * @param req
  * @param res
  */
+/**
+ * A user's metal payments still awaiting approval, shaped like stock-history
+ * rows (see StockHistoriesCollection). Their own ledger rows (payment_belongs):
+ * the payer sees a pending debit, the receiver a pending credit.
+ */
+const pendingMetalRows = async (userID, material_id) => {
+    const where = {
+        payment_belongs: userID,
+        payment_mode: "metal",
+        status: "pending",
+    };
+    if (!isEmpty(material_id)) where.material_id = material_id;
+    const payments = await db.payments.findAll({ where, order: [["id", "DESC"]] });
+    if (!payments.length) return [];
+
+    const ids = (key) => [...new Set(payments.map((p) => p[key]).filter(Boolean))];
+    const byId = async (model, list) =>
+        list.length ? Object.fromEntries((await model.findAll({ where: { id: list } })).map((r) => [r.id, r])) : {};
+    const users = await byId(UserModel, ids("user_id"));
+    const purities = await byId(PurityModel, ids("purity_id"));
+    /* a payment saved without a unit takes its material's (GM for gold) */
+    const materials = await byId(MaterialModel, ids("material_id"));
+    const unitOf = (p) => p.unit_id || (materials[p.material_id] ? materials[p.material_id].unit_id : null);
+    const units = await byId(UnitModel, [...new Set(payments.map(unitOf).filter(Boolean))]);
+    const saleIds = payments.filter((p) => p.table_type === "sale").map((p) => p.table_id);
+    const purchaseIds = payments.filter((p) => p.table_type === "purchase").map((p) => p.table_id);
+    const sales = await byId(db.sales, saleIds);
+    const purchases = await byId(db.purchases, purchaseIds);
+
+    return payments.map((p) => {
+        const invoice = p.table_type === "sale" ? sales[p.table_id] : purchases[p.table_id];
+        const counterparty = users[p.user_id];
+        return {
+            id: `payment-${p.id}`,
+            pending: true,
+            type: p.type,
+            type_display: ucWords(p.type || ""),
+            display_user_name: counterparty ? counterparty.name : "",
+            ref_no: invoice ? invoice.invoice_number : "",
+            payment_mode: "metal",
+            payment_mode_display: "Metal",
+            amount_display: displayAmount(p.amount),
+            metal_rate_display: isEmpty(p.metal_rate) ? "" : displayAmount(p.metal_rate),
+            purity_name: purities[p.purity_id] ? purities[p.purity_id].name : "",
+            weight: weightFormat(p.gross_weight || p.weight),
+            pakka_weight: weightFormat(p.weight),
+            unit_name: units[unitOf(p)] ? units[unitOf(p)].name : "",
+            status: "pending",
+            status_display: "Pending",
+            date: formatDateTime(p.payment_date || p.createdAt, 8),
+        };
+    });
+};
+
 exports.index = async (req, res) => {
     let { page, limit, search, material_id } = req.query;
     let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
@@ -79,11 +133,18 @@ exports.index = async (req, res) => {
             }
         ]
     }).then(async (stockH) => {
-        let result = {
-            items: StockHistoriesCollection(stockH.rows),
-            total: stockH.count,
+        let items = StockHistoriesCollection(stockH.rows);
+        let total = stockH.count;
+        /* metal payments still waiting for approval have not moved any metal
+           yet, so they are not in the history table - listed on top, marked
+           Pending, so both sides can see them (no balance change until the
+           receiver accepts and the metal moves) */
+        if (paginatorOptions.offset === 0 && isEmpty(search)) {
+            const pending = await pendingMetalRows(userID, material_id);
+            items = [...pending, ...items];
+            total += pending.length;
         }
-        res.send(formatResponse(result, 'Stock histories'));
+        res.send(formatResponse({ items, total }, 'Stock histories'));
     })
         .catch(err => {
             res.status(errorCodes.default).send(formatErrorResponse(err));
@@ -317,7 +378,9 @@ exports.transferStockMaterial = async (req, res) => {
     }
 }
 
-const transferMaterial = async (req, data) => {
+/* options.allowNegative: the caller has already decided the sender may go
+   below zero (an accepted metal payment) - never taken from a request body */
+const transferMaterial = async (req, data, options = {}) => {
     const t = await sequelize.transaction();
     try {
         // unit_id/purity_id are INTEGER columns - "" from the caller is a DB error.
@@ -420,7 +483,7 @@ const transferMaterial = async (req, data) => {
            the super admin takes the metal (e.g. metal paid against an invoice),
            the sender's stock may go negative, so the row is opened at minus
            this weight instead of the debit being skipped. */
-        if (!senderDebited && isSuperAdmin(req)) {
+        if (!senderDebited && (isSuperAdmin(req) || options.allowNegative)) {
             const quantity = data.quantity ? parseInt(data.quantity) : 0;
             const material = await MaterialModel.findByPk(data.material_id);
             if (!stock) {
@@ -1122,3 +1185,6 @@ exports.storeByProduct = async (req, res) => {
     }
 
 }
+
+/* used by payment.updateStatus to move the metal of an accepted metal payment */
+exports.transferMaterial = transferMaterial;

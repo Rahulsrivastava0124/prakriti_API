@@ -1321,6 +1321,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     where: {
       table_type: "sale",
       table_id: req.params.id,
+      status: "success", // pending/failed payments stay off the invoice
     },
     include: [
       {
@@ -2336,6 +2337,7 @@ exports.downloadInvoiceItems = async (req, res) => {
     where: {
       table_type: "sale",
       table_id: req.params.id,
+      status: "success", // pending/failed payments stay off the invoice
     },
     include: [
       {

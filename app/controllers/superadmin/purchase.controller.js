@@ -3160,6 +3160,21 @@ exports.view = async (req, res) => {
     );
     req_data = JSON.parse(req_data); */
 
+    /* current=1: a purchase made from a sale shows that sale's Total / Due
+       at today's gold rate - what Pay Now settles against (payment.store
+       re-values the sale first when paid with at_current_rate) */
+    if (["1", "true"].includes(String(req.query.current)) && purchase.sale_id) {
+      const sale = await db.sales.findOne({
+        attributes: { exclude: ["req_data"] },
+        where: { id: purchase.sale_id },
+      });
+      const live = sale ? (await liveSaleAmounts([sale])).get(sale.id) : null;
+      if (live) {
+        purchase.setDataValue("total_payable", live.total_payable);
+        purchase.setDataValue("due_amount", live.due_amount);
+      }
+    }
+
     res.send(
       formatResponse(PurchaseViewCollection(purchase), "Purchase details"),
     );
@@ -4417,6 +4432,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     where: {
       table_type: "purchase",
       table_id: req.params.id,
+      status: "success", // pending/failed payments stay off the invoice
     },
     include: [
       {
@@ -6401,6 +6417,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
     where: {
       table_type: "purchase",
       table_id: req.params.id,
+      status: "success", // pending/failed payments stay off the invoice
     },
     include: [
       {

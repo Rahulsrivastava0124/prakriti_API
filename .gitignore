@@ -140,3 +140,7 @@ public/invoices/*
 config/config.json
 config/config.json
 
+
+# local agent worktrees
+.cave/
+.claude/worktrees/

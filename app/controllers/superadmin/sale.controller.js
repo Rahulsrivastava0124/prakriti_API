@@ -5453,6 +5453,7 @@ exports.downloadInvoice = async (req, res) => {
     where: {
       table_type: "sale",
       table_id: req.params.id,
+      status: "success", // pending/failed payments stay off the invoice
     },
     include: [
       {
@@ -6840,11 +6841,16 @@ const removeCurrencyAndDecimalFromPrice = (str) => {
  * @param {*} res
  */
 exports.downloadInvoiceInfo = async (req, res) => {
-  const company = await getCompanyDetails(req.userId);
   let userID = isManager(req) ? req.userId : await getWorkingUserID(req);
+  /* The current-rate invoice is also the buyer's: an admin who bought this
+     sale downloads it from their purchase, so the buyer (user_id) may fetch
+     it too. The plain invoice stays the seller's alone. */
+  const whoMay = isCurrentRateInvoice(req)
+    ? { [Op.or]: [{ sale_by: userID }, { user_id: userID }] }
+    : { sale_by: userID };
   let sale = await SaleModel.findOne({
     //as: "sales",
-    where: { id: req.params.id, sale_by: userID },
+    where: { id: req.params.id, ...whoMay },
     include: [
       {
         model: SaleProductModel,
@@ -6928,6 +6934,10 @@ exports.downloadInvoiceInfo = async (req, res) => {
       .status(errorCodes.default)
       .send(formatErrorResponse("Sale not found"));
   }
+  /* the seller's letterhead - the buyer downloading it is not the issuer */
+  const company = await getCompanyDetails(
+    sale.sale_by == userID ? req.userId : sale.sale_by,
+  );
 
   /* "Current Invoice": the same jewellery re-costed at today's gold rate. The
      plain Invoice button keeps printing the rates frozen at sale time; this
@@ -6967,6 +6977,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
     where: {
       table_type: "sale",
       table_id: req.params.id,
+      status: "success", // pending/failed payments stay off the invoice
     },
     include: [
       {
@@ -8683,6 +8694,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
     where: {
       table_type: "sale",
       table_id: req.params.id,
+      status: "success", // pending/failed payments stay off the invoice
     },
     include: [
       {
