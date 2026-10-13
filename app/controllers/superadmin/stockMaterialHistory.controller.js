@@ -50,7 +50,17 @@ const pendingMetalRows = async (userID, material_id) => {
         status: "pending",
     };
     if (!isEmpty(material_id)) where.material_id = material_id;
-    const payments = await db.payments.findAll({ where, order: [["id", "DESC"]] });
+    let payments = await db.payments.findAll({ where, order: [["id", "DESC"]] });
+    /* an accepted request superseded by a fresh row stays "pending" for the
+       wallet's fold-away - it is settled, so not pending here */
+    if (payments.length) {
+        const settled = await db.payments.findAll({
+            attributes: ["parent_id", "payment_belongs"],
+            where: { parent_id: payments.map((p) => p.id), status: "success" },
+        });
+        const done = new Set(settled.map((c) => `${c.parent_id}:${c.payment_belongs}`));
+        payments = payments.filter((p) => !done.has(`${p.id}:${p.payment_belongs}`));
+    }
     if (!payments.length) return [];
 
     const ids = (key) => [...new Set(payments.map((p) => p[key]).filter(Boolean))];

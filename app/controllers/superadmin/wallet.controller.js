@@ -25,6 +25,19 @@ const PaymentModel = db.payments;
 const SaleModel = db.sales;
 const UserModel = db.users;
 
+/* net fine metal (grams) from accepted metal payments in this ledger:
+   received minus paid - pending/declined rows do not count */
+const metalBalance = async (userId) => {
+  const [row] = await sequelize.query(
+    `SELECT COALESCE(SUM(CASE WHEN type = 'credit' THEN weight ELSE -weight END), 0) AS fine
+       FROM payments
+      WHERE payment_belongs = :userId AND payment_type = 'gold'
+        AND status = 'success' AND deleted_at IS NULL`,
+    { replacements: { userId }, type: sequelize.QueryTypes.SELECT },
+  );
+  return parseFloat(row.fine) || 0;
+};
+
 /**
  * Wallet History
  * @param req
@@ -100,6 +113,7 @@ exports.index = async (req, res) => {
           advance: displayAmount(
             await getWalletBalance(superAdminId, "Advance")
           ),
+          metal: `${(await metalBalance(superAdminId)).toFixed(3)} GM`,
         },
       };
       res.send(formatResponse(result, "All Payments"));

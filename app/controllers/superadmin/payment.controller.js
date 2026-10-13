@@ -279,7 +279,25 @@ exports.store = async (req, res) => {
               attributes: ["id", "due_amount", "status"],
               where: { id: data.table_id, user_id: currentUserID },
             });
-      const due = invoice && invoice.status === "due" ? parseFloat(invoice.due_amount) : 0;
+      /* payments still awaiting acceptance have not lowered the stored due
+         yet - without this, repeated pending payments could each pass and
+         together pay (and move metal) far beyond what is owed */
+      const pending = invoice
+        ? parseFloat(
+            (await PaymentModel.sum("amount", {
+              where: {
+                table_type: data.table_type,
+                table_id: invoice.id,
+                payment_belongs: currentUserID,
+                status: "pending",
+              },
+            })) || 0,
+          )
+        : 0;
+      const due =
+        invoice && invoice.status === "due"
+          ? Math.max(parseFloat(invoice.due_amount) - pending, 0)
+          : 0;
       if (invoice && amount > due + 0.01) {
         return res
           .status(errorCodes.default)
@@ -2127,6 +2145,31 @@ exports.updateStatus = async (req, res) => {
         .status(errorCodes.default)
         .send(formatErrorResponse("Payment not found"));
 
+    /*
+     * Only the ledger owner may act on a request, and only once. Without the
+     * owner check any super-admin-role login (other admins included) could
+     * accept any row - even their own debit, moving metal to themselves.
+     * The claim is one conditional UPDATE, so a double click (or two tabs)
+     * cannot both pass and move the metal twice.
+     */
+    const currentUserID = isManager(req) ? req.userId : await getWorkingUserID(req);
+    if (payment.payment_belongs != currentUserID) {
+      return res
+        .status(errorCodes.default)
+        .send(formatErrorResponse("You can only accept or decline payments made to you."));
+    }
+    const [claimed] = await PaymentModel.update(
+      { can_accept: false },
+      { where: { id: payment.id, status: "pending", can_accept: true } },
+    );
+    if (!claimed) {
+      return res
+        .status(errorCodes.default)
+        .send(formatErrorResponse("This payment has already been processed."));
+    }
+    let metalMoved = false;
+
+    try {
     if (data.status == 1) {
       /*
        * An accepted metal payment moves the metal now - from the payer to the
@@ -2166,6 +2209,7 @@ exports.updateStatus = async (req, res) => {
           },
           { allowNegative: true },
         );
+        metalMoved = true;
       }
 
       // find sender-side mirrored row BEFORE inserting new accepted row
@@ -2231,6 +2275,11 @@ exports.updateStatus = async (req, res) => {
           cheque_no: payment.cheque_no || null,
           txn_id: payment.txn_id || null,
           weight: payment.weight || null,
+          gross_weight: payment.gross_weight || null,
+          metal_rate: payment.metal_rate || null,
+          material_id: payment.material_id || null,
+          purity_id: payment.purity_id || null,
+          unit_id: payment.unit_id || null,
           ref_no: data.ref_no || payment.ref_no || null,
           status: "success",
           payment_date: moment().format("YYYY-MM-DD"),
@@ -2402,6 +2451,14 @@ exports.updateStatus = async (req, res) => {
           childPayment.id,
         );
       }
+    }
+    } catch (err) {
+      /* reopen the request so it can be retried - unless the metal already
+         moved, where a retry would move it again (needs a manual look) */
+      if (!metalMoved) {
+        await PaymentModel.update({ can_accept: true }, { where: { id: payment.id, status: "pending" } });
+      }
+      throw err;
     }
 
     res.send(formatResponse("", "Updated successfully!"));
