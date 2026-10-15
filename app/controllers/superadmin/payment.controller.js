@@ -40,7 +40,9 @@ const {
   hasWalletFunds,
   walletShortfall,
   liveSaleAmounts,
+  getLiveGoldRate,
 } = require("@library/common");
+const { metalPaymentQuote } = require("@library/liveInvoicePricing");
 const {
   recalculatePaymentRemainingBalance,
 } = require("@library/paymentBalanceRecalculator");
@@ -133,6 +135,26 @@ exports.store = async (req, res) => {
       ? req.userId
       : await getWorkingUserID(req);
     let amount = parseFloat(data.amount);
+
+    /*
+     * Metal is valued here, never taken from the browser: gross weight x the
+     * purity's live karat rate - the same cached rate and the same mapping the
+     * invoice is priced with, so a metal payment and the invoice it settles
+     * cannot quote different rates (and a hand-made request cannot inflate it).
+     */
+    if (String(data.payment_mode || "").toLowerCase() === "metal" && parseFloat(data.weight) > 0) {
+      const purity = !isEmpty(data.purity_id)
+        ? await db.purities.findByPk(data.purity_id, { attributes: ["value"] })
+        : null;
+      const quote = metalPaymentQuote(data.weight, purity ? purity.value : null, await getLiveGoldRate());
+      if (!quote) {
+        return res
+          .status(errorCodes.default)
+          .send(formatErrorResponse("Today's gold rate is not available right now. Please try again."));
+      }
+      Object.assign(data, quote); // weight = gross, effective_weight = fine
+      amount = quote.amount;
+    }
 
     /*
      * A wallet must never go negative - you cannot pay out money you do not
@@ -2078,6 +2100,28 @@ exports.totalDue = async (req, res) => {
     formatResponse({
       due_amount: priceFormat(dueAmount),
       due_amount_display: displayAmount(dueAmount),
+    }),
+  );
+};
+
+/**
+ * Today's gold rate, as the API prices invoices and metal payments with it.
+ * Every screen reads the rate from here so none can quote a different one.
+ */
+exports.goldRate = async (req, res) => {
+  const live = await getLiveGoldRate();
+  if (!(live && live.rate > 0)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("Today's gold rate is not available right now."));
+  }
+  res.send(
+    formatResponse({
+      rate24: live.rate,
+      rate22: live.rate22,
+      rate18: live.rate18,
+      display: live.display,
+      at: live.at,
     }),
   );
 };

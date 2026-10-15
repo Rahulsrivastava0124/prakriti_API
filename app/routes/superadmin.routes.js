@@ -1312,6 +1312,8 @@ module.exports = (app, express, io) => {
     [authJwt.verifyToken, authJwt.isSuperAdmin],
     paymentController.walletBalance,
   );
+  /* any signed-in user: every screen quotes the API's gold rate */
+  router.get("/gold-rate", [authJwt.verifyToken], paymentController.goldRate);
   router.post(
     "/payments/update-status/:id",
     [authJwt.verifyToken, authJwt.isSuperAdmin],

@@ -410,7 +410,28 @@ const heldAtLiveRate = (sale, liveRates) => {
   return repricing;
 };
 
+/**
+ * Metal paid against an invoice is valued exactly as the invoice bills gold:
+ * gross weight x the purity's own live karat rate. Pricing paid metal some
+ * other way (fine x 24K) bought a gram back at a different price than it was
+ * sold at. The fine (24K-equivalent) weight is what moves in stock.
+ * No purity is treated as 24K. Returns null when there is no live rate.
+ */
+const metalPaymentQuote = (grossWeight, purityValue, liveRates) => {
+  const gross = num(grossWeight);
+  const purity = num(purityValue) > 0 ? num(purityValue) : 100;
+  const rate = liveRateForPurity(purity, liveRates || {});
+  if (!(rate > 0) || !(gross > 0)) return null;
+  return {
+    weight: round3(gross),
+    effective_weight: round3((gross * purity) / 100),
+    metal_rate: round2(rate),
+    amount: round2(gross * rate),
+  };
+};
+
 module.exports = {
+  metalPaymentQuote,
   heldAtLiveRate,
   withoutReturnedTotals,
   withoutReturnedProducts,
@@ -433,6 +454,14 @@ if (require.main === module) {
   assert.strictEqual(liveRateForPurity(91.6, LIVE), 13930, "22K");
   assert.strictEqual(liveRateForPurity(76, LIVE), 11398, "18K");
   assert.strictEqual(liveRateForPurity(0, LIVE), 0, "no purity → no live rate");
+
+  // ── paid metal is valued at the rate the invoice bills that purity at ──
+  assert.deepStrictEqual(metalPaymentQuote(5, 99.5, LIVE),
+    { weight: 5, effective_weight: 4.975, metal_rate: 15197, amount: 75985 }, "24K");
+  assert.deepStrictEqual(metalPaymentQuote(2, 76, LIVE),
+    { weight: 2, effective_weight: 1.52, metal_rate: 11398, amount: 22796 }, "18K");
+  assert.strictEqual(metalPaymentQuote(1, null, LIVE).amount, 15197, "no purity = 24K");
+  assert.strictEqual(metalPaymentQuote(1, 76, {}), null, "no live rate");
 
   assert.strictEqual(perGramToUnit(500, "Cent"), 1, "cent = 1/500 g");
   assert.strictEqual(perGramToUnit(11398, "GM"), 11398, "grams pass through");
