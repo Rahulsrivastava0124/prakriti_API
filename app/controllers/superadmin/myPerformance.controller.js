@@ -40,9 +40,24 @@ exports.index = async (req, res) => {
 
 const getPerformanceData = async(start_date, end_date, userId) => {
     let sale_achived = 0, visit_achived = 0, sale_achived_percent = 0, visit_achived_percent = 0, sale_due = 0, visit_due = 0, sale_target = 0, visit_target = 0;
+    /*
+     * Pick the structure in force at any point during the queried period, not
+     * just the one that was in force before it began. A structure dated
+     * mid-month used to fail this filter because start_date is the first of
+     * the month, so a user who saved a new structure effective today saw their
+     * own current-month page keep showing zeros - which is what makes the
+     * second screenshot in #11 differ from the first.
+     *
+     * end_date is already the end of the queried period, so this also works
+     * for past-month lookups: a structure effective mid-September is used for
+     * September, while an October structure stays out of September's totals.
+     */
+    /* latest effective date wins; id only breaks ties. Ordering by id alone
+       let a back-dated correction (created later, effective earlier) override
+       a structure that took effect after it. */
     let curentStructure = await SalaryStructure.findOne({
-        order:[['id', 'DESC']],
-        where: {user_id: userId, eff_date: {[Op.lte]: start_date}}
+        order:[['eff_date', 'DESC'], ['id', 'DESC']],
+        where: {user_id: userId, eff_date: {[Op.lte]: end_date}}
     });
     let incentive = 0;
     if(curentStructure){
@@ -51,13 +66,15 @@ const getPerformanceData = async(start_date, end_date, userId) => {
         incentive = curentStructure.incentive ? priceFormat(curentStructure.incentive, true) : 0;
     }
 
-    sale_achived = await PaymentModel.sum('amount', {where: {
+    /* SUM() over no rows is NULL - return 0 so the API never hands out
+       "sale_achived": null for a month with no collections */
+    sale_achived = parseFloat(await PaymentModel.sum('amount', {where: {
         table_type: "sale",
         type: "credit",
         status: "success",
         payment_belongs: userId,
         ...getDateFromToWhere(start_date, end_date, 'payment_date')
-    }});
+    }})) || 0;
 
     visit_achived = await RetailerVisitModel.count({where: {user_id: userId, ...getDateFromToWhere(start_date, end_date)}});
 
