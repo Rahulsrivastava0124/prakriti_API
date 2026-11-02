@@ -190,7 +190,15 @@ const getModelObject = async (
   let remaining_balance = 0;
   if (index == 0 && p_mode == "advance") {
     remaining_balance = await getWalletBalance(data.payment_belongs, "Advance");
-  } else remaining_balance = data.remaining_balance || 0;
+  } else if (data.remaining_balance === null || data.remaining_balance === undefined) {
+    // rows written before the updater handled NULL never got a balance; work it out
+    remaining_balance = await getWalletBalance(
+      data.payment_belongs,
+      null,
+      data.payment_type || "wallet",
+      data.id,
+    );
+  } else remaining_balance = data.remaining_balance;
   /*
    * Show "To be processed" only for actionable pending rows.
    *

@@ -2375,7 +2375,9 @@ const updateWalletRemainingBalance = async (userId, paymenId, payment_type) => {
       running += (row.type === "credit" ? 1 : -1) * parseFloat(row.amount);
     }
     const value = priceFormat(running);
-    if (Math.abs(parseFloat(row.remaining_balance) - value) >= 0.005) {
+    const stored = parseFloat(row.remaining_balance);
+    // a freshly created row has a NULL balance; NaN compares false, so test it explicitly
+    if (isNaN(stored) || Math.abs(stored - value) >= 0.005) {
       await PaymentModel.update(
         { remaining_balance: value },
         { where: { id: row.id } },

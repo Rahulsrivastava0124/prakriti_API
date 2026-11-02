@@ -8,7 +8,7 @@ const { CartCollection } = require("@resources/sales_executive/CartCollection");
 const { AddressCollection } = require("@resources/sales_executive/AddressCollection");
 const orderModel = db.orders;
 const { isEmpty, generateOrderNo, priceFormat } = require("@helpers/helper");
-const { getCartMaterialPrices, sendNotification } = require("@library/common");
+const { getCartMaterialPrices, sendNotification, insertVisit } = require("@library/common");
 const cartModel = db.carts;
 const cartMaterialsModel = db.cart_materials;
 const orderMaterialsModel = db.order_materials;
@@ -237,6 +237,17 @@ exports.placeOrder = async (req, res) => {
         await cartModel.destroy({ where: { id: { [Op.in]: cartIds } } });
         await cartMaterialsModel.destroy({ where: { cart_id: { [Op.in]: cartIds } } });
 
+      }
+
+      // an order taken for a retailer counts as a visit (once, not per cart item);
+      // no date, as date is a follow-up reminder
+      if (retailer_id) {
+        await insertVisit({
+          user_id: req.userId,
+          visit_user_id: retailer_id,
+          type: "Order",
+          notes: "Order " + generateOrderNo(order.id),
+        });
       }
 
       res.send(formatResponse({ order_id: order.id }, "Order place successfully!"));

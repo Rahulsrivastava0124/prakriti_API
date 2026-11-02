@@ -1990,12 +1990,18 @@ exports.store = async (req, res) => {
       let user = await UserModel.findByPk(data.user_id);
       if (user && isRetailer(user.role_id)) {
         let roleId = getRoleId("retailer");
-        await UserToUserModel.create({
-          user_id: req.userId,
-          to_user_id: data.user_id,
-          to_role_id: roleId,
+        // link once - a fresh row on every sale only piled up duplicates
+        await UserToUserModel.findOrCreate({
+          where: { user_id: req.userId, to_user_id: data.user_id },
+          defaults: { to_role_id: roleId },
         });
-        await insertVisit({ user_id: req.userId, visit_user_id: data.user_id });
+        // a sale to a retailer counts as a visit; no date, as date is a follow-up reminder
+        await insertVisit({
+          user_id: req.userId,
+          visit_user_id: data.user_id,
+          type: "Sale",
+          notes: "Sale " + (sale.invoice_number || "#" + sale.id),
+        });
       }
     }
 
@@ -2972,6 +2978,15 @@ exports.returnSale = async (req, res) => {
     return_status = "pending";
   }
 
+  // the return amount is editable on the form; keep it within the sale's own total
+  const returnAmount = parseFloat(data.return_amount) || 0;
+  if (returnAmount < 0 || returnAmount > parseFloat(sale.total_amount || 0)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("Return amount can't be more than the sale total."));
+  }
+  data.return_amount = returnAmount;
+
   //check has amount in wallet
   let return_amount_from_wallet = data.return_amount_from_wallet;
   if (
@@ -3700,6 +3715,15 @@ exports.returnSaleNew = async (req, res) => {
     "---------------------- return_status ----------------------",
     return_status,
   );
+
+  // the return amount is editable on the form; keep it within the sale's own total
+  const returnAmount = parseFloat(data.return_amount) || 0;
+  if (returnAmount < 0 || returnAmount > parseFloat(sale.total_amount || 0)) {
+    return res
+      .status(errorCodes.default)
+      .send(formatErrorResponse("Return amount can't be more than the sale total."));
+  }
+  data.return_amount = returnAmount;
 
   //check has amount in wallet
   let return_amount_from_wallet = data.return_amount_from_wallet;
