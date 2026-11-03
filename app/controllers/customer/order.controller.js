@@ -70,7 +70,7 @@ exports.index = async (req, res) => {
       {
         is_viewed: 1
       },
-      { where: { id: order_id } }
+      { where: conditions }
     );
   }
 
@@ -78,7 +78,8 @@ exports.index = async (req, res) => {
   orderModel
     .findAndCountAll({
       order: [["id", "DESC"]],
-      // where: conditions,
+      // only the caller's orders (placed by them, or for them by a sales executive)
+      where: conditions,
       offset: paginatorOptions.offset,
       limit: paginatorOptions.limit,
       include: [
@@ -420,15 +421,21 @@ exports.cancelOrder = async (req, res) => {
   let data = req.body;
   let order_id = data.order_id;
 
-  let existing_order = await orderModel.findOne({ where: { id: order_id } });
+  // only the caller's own orders (placed by them, or for them by a sales executive)
+  let existing_order = await orderModel.findOne({
+    where: {
+      id: order_id,
+      [Op.or]: [{ user_id: req.userId }, { sales_executive_id: req.userId }],
+    },
+  });
 
   if (!isEmpty(existing_order)) {
     await orderModel.update(
       { status: "cancelled", cancel_reason: data.cancel_reason },
-      { where: { id: order_id } }
+      { where: { id: existing_order.id } }
     );
 
-    sendNotification("order_cancel", req, { order: order });
+    sendNotification("order_cancel", req, { order: existing_order });
 
     res.send(formatResponse([], "Order cancelled successfully!"));
   } else {
