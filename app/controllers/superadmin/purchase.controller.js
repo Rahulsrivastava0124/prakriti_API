@@ -5110,7 +5110,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 38px; padding: 5px 3px;">Unit</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 50px; padding: 5px 3px;">Rate</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 600; border: 1px solid #ffffff; width: 65px; padding: 5px 3px;"><b>Making<br/>Charge</b></th>
-                                      <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 48px; padding: 5px 3px;">Tax<br/>%</th>
                                       <th rowspan="2" style="text-align: center; color: #fff; font-size: 11px; font-weight: 400; border: 1px solid #ffffff; width: 75px; padding: 5px 3px;">Amount (₹)</th>
                                   </tr>
                                   <tr style="background-color: #1E2757;">
@@ -5125,6 +5124,8 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let totalTaxableAmt = 0;
     let totalMakingCharge = 0;
     let totalTax = 0;
+    let totalMaterialTax = 0;
+    let taxPercentSet = new Set();
 
     if (purchaseData.products) {
       purchaseData.products.forEach((product) => {
@@ -5152,6 +5153,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
       let taxPercent = parseFloat(item.tax) || 0;
       totalTaxableAmt += taxableAmt;
       totalTax += (taxableAmt * taxPercent) / 100;
+      taxPercentSet.add(taxPercent);
       item.material.forEach((mat) => {
         const key = mat.name;
         if (!materialTotals[key]) {
@@ -5160,12 +5162,20 @@ exports.downloadInvoiceInfo = async (req, res) => {
             unit: mat.unit,
             rate: parseFloat(mat.rate) || 0,
             amount: 0,
+            tax: 0,
+            taxPercents: new Set(),
             isGold: key.toLowerCase().includes("gold"),
           };
         }
+        const matAmount =
+          mat.material_cost != null /* after the discount */
+            ? parseFloat(mat.material_cost) || 0
+            : (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0);
         materialTotals[key].weight += parseFloat(mat.weight) || 0;
-        materialTotals[key].amount +=
-          (mat.material_cost != null /* after the discount */ ? parseFloat(mat.material_cost) || 0 : (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0));
+        materialTotals[key].amount += matAmount;
+        materialTotals[key].tax += (matAmount * taxPercent) / 100;
+        materialTotals[key].taxPercents.add(taxPercent);
+        totalMaterialTax += (matAmount * taxPercent) / 100;
       });
 
       let materialNames = item.material.map((itm) => itm.name).join("<br/>");
@@ -5191,19 +5201,18 @@ exports.downloadInvoiceInfo = async (req, res) => {
                   <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialUnits}</td>
                   <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${materialRates}</td>
                   <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${makingCharge > 0 ? makingCharge.toFixed(2) : "-"}</td>
-                  <td style="text-align: center; font-size: 11px; font-weight: 400; padding: 6px 4px; border: 1px solid #e0e0e0;">${item.tax}%</td>
                   <td style="text-align: right; font-size: 11px; font-weight: 600; padding: 6px 4px; border: 1px solid #e0e0e0; color: #1E2746;">${item.taxableAmount.toFixed(2)}</td>
               </tr>`;
     }
 
     /* Summary rows below the table */
-    html += `<tr><td colspan="12" style="border-bottom: none; padding: 4px;"></td></tr>`;
+    html += `<tr><td colspan="11" style="border-bottom: none; padding: 4px;"></td></tr>`;
 
     /* Total Gross Weight */
     html += `<tr>
-                <td colspan="5" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; border-bottom: 1px solid #e0e0e0;">Total Gross Weight (GW)</td>
-                <td colspan="2" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #e0e0e0;">${totalGrossWeight.toFixed(3)} gm</td>
-                <td colspan="5" style="border-bottom: 1px solid #e0e0e0;"></td>
+                <td colspan="3" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; border-bottom: 1px solid #e0e0e0;">Total Gross Weight (GW)</td>
+                <td colspan="2" style="font-size: 12px; font-weight: 600; color: #1E2746; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #e0e0e0;">${totalGrossWeight.toFixed(3)} gm</td>
+                <td colspan="6" style="border-bottom: 1px solid #e0e0e0;"></td>
             </tr>`;
 
     /* Material-wise totals (gold first) */
@@ -5217,28 +5226,62 @@ exports.downloadInvoiceInfo = async (req, res) => {
       let isGold = name.toLowerCase().includes("gold");
       let fontWeight = isGold ? "600" : "400";
       let fontColor = isGold ? "#1E2746" : "#555";
+      let matTaxPct =
+        data.taxPercents.size === 1 ? `x ${[...data.taxPercents][0]}%` : "";
       html += `<tr>
-                  <td colspan="4" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; border-bottom: 1px solid #eeeeee;">${name}</td>
+                  <td colspan="3" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; border-bottom: 1px solid #eeeeee;">${name}</td>
                   <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.weight.toFixed(3)} ${data.unit}</td>
                   <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">x ${(data.weight ? data.amount / data.weight : data.rate).toFixed(2)}</td>
                   <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.amount.toFixed(2)}</td>
-                  <td colspan="2" style="border-bottom: 1px solid #eeeeee;"></td>
+                  <td style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${matTaxPct}</td>
+                  <td style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${(data.amount + data.tax).toFixed(2)}</td>
               </tr>`;
     }
 
-    /* Making Charge */
+    /* Making Charge — its tax is the remainder once material tax is out, so
+       the rows always add up to the totals below. The x N% label only shows
+       when every item shares one rate. */
+    let makingChargeTax = totalTax - totalMaterialTax;
     if (totalMakingCharge > 0) {
+      let makingTaxPct =
+        taxPercentSet.size === 1 ? `x ${[...taxPercentSet][0]}%` : "";
       html += `<tr>
-                  <td colspan="8" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px;">Making Charge</td>
+                  <td colspan="7" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px;">Making Charge</td>
                   <td colspan="2" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${totalMakingCharge.toFixed(2)}</td>
-                  <td colspan="2"></td>
+                  <td style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: center; white-space: nowrap;">${makingTaxPct}</td>
+                  <td style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${(totalMakingCharge + makingChargeTax).toFixed(2)}</td>
               </tr>`;
     }
 
-    /* Taxable Amount total */
+    /* Report Charge - right after the making charge, and part of the taxable amount */
+    const summaryReportQty = purchaseData.sale
+      ? parseInt(purchaseData.sale.report_qty) || 0
+      : 0;
+    const summaryReportRate = purchaseData.sale
+      ? parseFloat(purchaseData.sale.report_charge) || 0
+      : 0;
+    const summaryReportTaxPct = purchaseData.sale
+      ? parseFloat(purchaseData.sale.report_tax_percentage) || 0
+      : 0;
+    const summaryReportAmt = summaryReportQty * summaryReportRate;
+    const summaryReportTax = (summaryReportAmt * summaryReportTaxPct) / 100;
+    if (summaryReportAmt > 0) {
+      html += `<tr>
+                  <td colspan="7" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px;">Report Charge (${summaryReportQty} pcs x ${summaryReportRate.toFixed(2)})</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${summaryReportAmt.toFixed(2)}</td>
+                  <td style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: center; white-space: nowrap;">x ${summaryReportTaxPct}%</td>
+                  <td style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${(summaryReportAmt + summaryReportTax).toFixed(2)}</td>
+              </tr>`;
+    }
+
+    /* Total: net in the amount column, gross in the with-tax column */
+    const totalBeforeTax = totalTaxableAmt + summaryReportAmt;
+    const totalTaxAll = totalTax + summaryReportTax;
     html += `<tr style="border: none;">
-                <td colspan="9" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">Taxable Amt.</td>
-                <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">${totalTaxableAmt.toFixed(2)}</td>
+                <td colspan="7" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 4px; border-top: 2px solid #90caf9; border-bottom: none;">Total</td>
+                <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; white-space: nowrap; padding: 4px; border-top: 2px solid #90caf9; border-bottom: none;">${totalBeforeTax.toFixed(2)}</td>
+                <td style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; white-space: nowrap; padding: 4px; border-top: 2px solid #90caf9; border-bottom: none;">${totalTaxAll.toFixed(2)}</td>
+                <td style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; white-space: nowrap; padding: 4px; border-top: 2px solid #90caf9; border-bottom: none;">${(totalBeforeTax + totalTaxAll).toFixed(2)}</td>
             </tr>`;
 
     let receive_metal = 0;
@@ -5261,25 +5304,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
     let rest_metal =
       Math.round((fine_metals - receive_metal) * 100) / 100 + 0;
 
-    let totalReportCharge = 0;
-    let taxOnReportCharge = 0;
-    if (purchaseData.sale) {
-      totalReportCharge =
-        parseInt(purchaseData.sale.report_qty) *
-        parseFloat(purchaseData.sale.report_charge);
-      taxOnReportCharge =
-        (totalReportCharge *
-          parseFloat(purchaseData.sale.report_tax_percentage)) /
-        100;
-    }
-
-    if (purchaseData.sale && purchaseData.sale.report_qty > 0) {
-      html += `<tr style="border: none;">
-                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges (${parseFloat(purchaseData.sale.report_tax_percentage).toFixed(0)}%)</td>
-                  <td colspan="6" style="font-size: 12px; color: #555; padding: 2px 4px; border: none;">${purchaseData.sale.report_qty} Pics x ${parseFloat(purchaseData.sale.report_charge).toFixed(2)} =</td>
-                  <td colspan="4" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">${totalReportCharge.toFixed(2)}</td>
-              </tr>`;
-    }
 
     if (metalExists) {
       metalHtml = `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse;">`;
