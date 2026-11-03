@@ -21,6 +21,24 @@ const TaxSlabModel = db.tax_slabs;
 const PromocodeModel = db.promocodes;
 
 /**
+ * Find a cart row only if it belongs to the caller (user_id when logged in, else guest cookie_id)
+ */
+const findOwnCart = (req) => {
+  let user_id = req.userId || null;
+  let cookie_id = req.query.cookie_id || null;
+  if(!user_id && !cookie_id){
+    return null;
+  }
+  let conditions = {id: req.params.id};
+  if(user_id){
+    conditions.user_id = user_id;
+  }else{
+    conditions.cookie_id = cookie_id;
+  }
+  return cartsModel.findOne({where: conditions});
+}
+
+/**
  * Retrieve all Cart
  * @param req
  * @param res
@@ -423,7 +441,7 @@ exports.storeStock = async (req, res) => {
  * @param {*} res 
  */
 exports.update = async (req, res) => {
-  let cart = await cartsModel.findOne({where: {id: req.params.id }});
+  let cart = await findOwnCart(req);
   let data = req.body;
   if(!cart){
     return res.status(errorCodes.default).send(formatErrorResponse('Cart does not exists.'));
@@ -453,11 +471,11 @@ exports.update = async (req, res) => {
  */
 
 exports.delete = async (req, res) => {
-  let existing_cart = await cartsModel.findOne({where: {id: req.params.id }});
+  let existing_cart = await findOwnCart(req);
   
   if(!isEmpty(existing_cart)){
-    cartsModel.destroy({ where: { id: req.params.id} }).then(async result => {
-      await cartMaterialsModel.destroy({ where: { cart_id: req.params.id} });
+    cartsModel.destroy({ where: { id: existing_cart.id} }).then(async result => {
+      await cartMaterialsModel.destroy({ where: { cart_id: existing_cart.id} });
       res.send(formatResponse([], "Product removed from cart successfully"));
     }).catch(error => {
       return res.status(errorCodes.default).send(formatErrorResponse('Cart does not deleted due to some error' + error));
@@ -476,7 +494,7 @@ exports.delete = async (req, res) => {
  * @param {*} res 
  */
 exports.updateSizeMaterial = async (req, res) => {
-  let cart = await cartsModel.findOne({where: {id: req.params.id }});
+  let cart = await findOwnCart(req);
   if(!cart){
     return res.status(errorCodes.default).send(formatErrorResponse('Cart does not exists.'));
   }

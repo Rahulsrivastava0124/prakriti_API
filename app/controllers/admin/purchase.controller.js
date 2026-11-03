@@ -2475,7 +2475,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
         }
         materialTotals[key].weight += parseFloat(mat.weight) || 0;
         materialTotals[key].amount +=
-          (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0);
+          (mat.material_cost != null /* after the discount */ ? parseFloat(mat.material_cost) || 0 : (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0));
       });
 
       let materialNames = item.material.map((itm) => itm.name).join("<br/>");
@@ -2484,7 +2484,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
         .join("<br/>");
       let materialUnits = item.material.map((itm) => itm.unit).join("<br/>");
       let materialRates = item.material
-        .map((itm) => parseFloat(itm.rate).toFixed(2))
+        .map((itm) => /* rate after discount, so it matches the amount charged */ (itm.material_cost != null && parseFloat(itm.weight) ? parseFloat(itm.material_cost) / parseFloat(itm.weight) : parseFloat(itm.rate)).toFixed(2))
         .join("<br/>");
       let bgTrColor = i % 2 == 0 ? "#f5f5f5" : "#ffffff";
       let slNo = i + 1 <= 9 ? "0" + (i + 1) : i + 1;
@@ -2530,7 +2530,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
       html += `<tr>
                   <td colspan="4" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; border-bottom: 1px solid #eeeeee;">${name}</td>
                   <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.weight.toFixed(3)} ${data.unit}</td>
-                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">x ${data.rate.toFixed(2)}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">x ${(data.weight ? data.amount / data.weight : data.rate).toFixed(2)}</td>
                   <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.amount.toFixed(2)}</td>
                   <td colspan="2" style="border-bottom: 1px solid #eeeeee;"></td>
               </tr>`;
@@ -3692,7 +3692,7 @@ exports.downloadInvoiceItems = async (req, res) => {
         .map((itm) => itm.unit)
         .join("<br/ >");
       let materialRates = purchaseData.subCatItems[i].material
-        .map((itm) => itm.rate.toFixed(2))
+        .map((itm) => /* rate after discount, so it matches the amount charged */ (itm.material_cost != null && parseFloat(itm.weight) ? parseFloat(itm.material_cost) / parseFloat(itm.weight) : parseFloat(itm.rate)).toFixed(2))
         .join("<br/ >");
       let bgTrColor = i % 2 == 0 ? "#C1BDBD" : "#C4BEED";
 

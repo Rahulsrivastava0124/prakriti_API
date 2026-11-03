@@ -139,11 +139,14 @@ const getModelObject = (data) => {
                             "name" : mItem.material_name,
                             "weight" : parseFloat(mItem.weight),
                             "unit" : mItem.unit_name,
-                            "rate" : mItem.rate
+                            "rate" : mItem.rate,
+                            "material_cost" : parseFloat(mItem.material_cost) || 0
                         };
                     } else {
                         /* already exists in array */
                         subCatWiseProductMaterials[mItem.material_id].weight += parseFloat(mItem.weight);
+                        /* after the discount - the summary shows what was charged */
+                        subCatWiseProductMaterials[mItem.material_id].material_cost += parseFloat(mItem.material_cost) || 0;
                     }
                 }
             }

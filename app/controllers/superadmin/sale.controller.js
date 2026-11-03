@@ -2812,8 +2812,10 @@ exports.view = async (req, res) => {
     const applyDue = await liveLedgerDue(sale);
     /* returned pieces are no longer the customer's - bill what is held */
     allSaleProducts = [...(sale.saleProducts || [])];
-    withoutReturnedProducts(sale);
-    const repricing = repriceSaleAtLiveGold(sale, liveRates);
+    /* held pieces at today's rate, in the stored figures' terms - like the
+       invoice PDFs. Repricing the sale itself left taxable_amount and CGST/SGST
+       without the report charge and its GST, which the page takes back out. */
+    const repricing = heldAtLiveRate(sale, liveRates);
     applyDue(); // the same Due as the sales lists
     /* The page has to be able to say which rate it is showing, and to stay
        quiet when the feed gave us nothing (rate 0) rather than print a zero. */
@@ -2909,7 +2911,12 @@ exports.edit = async (req, res) => {
      rate, not the invoice's. Only the line figures move - what the customer
      actually owes is a fact of the ledger, and the return form nets the refund
      against due_amount, so the stored balance is put back. Nothing is saved. */
+  let current_bill_amount = null;
   if (isCurrentRateInvoice(req)) {
+    /* the whole bill at today's rate (held pieces, report charge and its GST,
+       less discount) - same figure as the sales lists; caps the return amount */
+    const live = (await liveSaleAmounts([sale])).get(sale.id);
+    if (live) current_bill_amount = live.total_payable;
     const due_amount = sale.due_amount;
     repriceSaleAtLiveGold(sale, await getLiveGoldRate());
     sale.setDataValue("due_amount", due_amount);
@@ -2917,7 +2924,7 @@ exports.edit = async (req, res) => {
 
   res.send(
     formatResponse(
-      await SaleEditCollection(sale, req),
+      { ...(await SaleEditCollection(sale, req)), current_bill_amount },
       "Purchase edit details",
     ),
   );
@@ -2978,12 +2985,17 @@ exports.returnSale = async (req, res) => {
     return_status = "pending";
   }
 
-  // the return amount is editable on the form; keep it within the sale's own total
+  // the return amount is editable on the form; keep it within the whole bill
+  // at today's rate (as the form does), or the stored total without a live rate
   const returnAmount = parseFloat(data.return_amount) || 0;
-  if (returnAmount < 0 || returnAmount > parseFloat(sale.total_amount || 0)) {
+  const liveBill = (await liveSaleAmounts([sale])).get(sale.id);
+  const returnCap = liveBill
+    ? parseFloat(liveBill.total_payable) || 0
+    : parseFloat(sale.total_amount || 0);
+  if (returnAmount < 0 || returnAmount > returnCap + 0.005) {
     return res
       .status(errorCodes.default)
-      .send(formatErrorResponse("Return amount can't be more than the sale total."));
+      .send(formatErrorResponse("Return amount can't be more than the bill amount."));
   }
   data.return_amount = returnAmount;
 
@@ -3716,12 +3728,17 @@ exports.returnSaleNew = async (req, res) => {
     return_status,
   );
 
-  // the return amount is editable on the form; keep it within the sale's own total
+  // the return amount is editable on the form; keep it within the whole bill
+  // at today's rate (as the form does), or the stored total without a live rate
   const returnAmount = parseFloat(data.return_amount) || 0;
-  if (returnAmount < 0 || returnAmount > parseFloat(sale.total_amount || 0)) {
+  const liveBill = (await liveSaleAmounts([sale])).get(sale.id);
+  const returnCap = liveBill
+    ? parseFloat(liveBill.total_payable) || 0
+    : parseFloat(sale.total_amount || 0);
+  if (returnAmount < 0 || returnAmount > returnCap + 0.005) {
     return res
       .status(errorCodes.default)
-      .send(formatErrorResponse("Return amount can't be more than the sale total."));
+      .send(formatErrorResponse("Return amount can't be more than the bill amount."));
   }
   data.return_amount = returnAmount;
 
@@ -7686,7 +7703,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
         }
         materialTotals[key].weight += parseFloat(mat.weight) || 0;
         materialTotals[key].amount +=
-          (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0);
+          (mat.material_cost != null /* after the discount */ ? parseFloat(mat.material_cost) || 0 : (parseFloat(mat.weight) || 0) * (parseFloat(mat.rate) || 0));
       });
 
       let materialNames = item.material.map((itm) => itm.name).join("<br/>");
@@ -7695,7 +7712,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
         .join("<br/>");
       let materialUnits = item.material.map((itm) => itm.unit).join("<br/>");
       let materialRates = item.material
-        .map((itm) => itm.rate.toFixed(2))
+        .map((itm) => /* rate after discount, so it matches the amount charged */ (itm.material_cost != null && parseFloat(itm.weight) ? parseFloat(itm.material_cost) / parseFloat(itm.weight) : parseFloat(itm.rate)).toFixed(2))
         .join("<br/>");
       let bgTrColor = i % 2 == 0 ? "#f5f5f5" : "#ffffff";
       let slNo = i + 1 <= 9 ? "0" + (i + 1) : i + 1;
@@ -7742,7 +7759,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
       html += `<tr>
                   <td colspan="4" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; border-bottom: 1px solid #eeeeee;">${name}</td>
                   <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.weight.toFixed(3)} ${data.unit}</td>
-                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">x ${data.rate.toFixed(2)}</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: center; white-space: nowrap; border-bottom: 1px solid #eeeeee;">x ${(data.weight ? data.amount / data.weight : data.rate).toFixed(2)}</td>
                   <td colspan="2" style="font-size: 12px; font-weight: ${fontWeight}; color: ${fontColor}; padding: 4px; text-align: right; white-space: nowrap; border-bottom: 1px solid #eeeeee;">${data.amount.toFixed(2)}</td>
                   <td colspan="2" style="border-bottom: 1px solid #eeeeee;"></td>
               </tr>`;
@@ -7757,10 +7774,21 @@ exports.downloadInvoiceInfo = async (req, res) => {
               </tr>`;
     }
 
+    /* Report Charge - right after the making charge, and part of the taxable amount */
+    const summaryReportAmt =
+      (parseInt(saleData.report_qty) || 0) * (parseFloat(saleData.report_charge) || 0);
+    if (summaryReportAmt > 0) {
+      html += `<tr>
+                  <td colspan="8" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px;">Report Charge (${parseInt(saleData.report_qty)} pcs x ${parseFloat(saleData.report_charge).toFixed(2)})</td>
+                  <td colspan="2" style="font-size: 12px; font-weight: 700; color: #555; padding: 4px; text-align: right; white-space: nowrap;">${summaryReportAmt.toFixed(2)}</td>
+                  <td colspan="2"></td>
+              </tr>`;
+    }
+
     /* Taxable Amount total */
     html += `<tr style="border: none;">
                 <td colspan="9" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">Taxable Amt.</td>
-                <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">${totalTaxableAmt.toFixed(2)}</td>
+                <td colspan="3" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 4px 4px 2px; border-top: 2px solid #90caf9; border-bottom: none;">${(totalTaxableAmt + summaryReportAmt).toFixed(2)}</td>
             </tr>`;
 
     let receive_metal = 0;
@@ -7793,13 +7821,6 @@ exports.downloadInvoiceInfo = async (req, res) => {
       (totalReportCharge * parseFloat(saleData.report_tax_percentage)) / 100;
     let afterTaxTotalReportCharge = totalReportCharge + taxOnReportCharge;
 
-    if (saleData.report_qty > 0) {
-      html += `<tr style="border: none;">
-                  <td colspan="2" style="font-size: 13px; font-weight: 700; color: #1E2746; padding: 2px 4px; border: none;">Report Charges (18%)</td>
-                  <td colspan="6" style="font-size: 12px; color: #555; padding: 2px 4px; border: none;">${saleData.report_qty} Pics x ${saleData.report_charge.toFixed(2)} =</td>
-                  <td colspan="4" style="font-size: 13px; font-weight: 700; color: #1E2746; text-align: right; padding: 2px 4px; border: none;">${totalReportCharge.toFixed(2)}</td>
-              </tr>`;
-    }
 
     /* Discount - Removed */
 
@@ -7884,6 +7905,15 @@ exports.downloadInvoiceInfo = async (req, res) => {
       <td style="width: 46%; padding: 3px 0;"><input type="text" value="${value}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 2px 4px;"></td>
     </tr>`;
   html += amtRow("Total", saleData.taxable_amount, true);
+  // all the tax on the bill - product GST and the report charge's GST
+  html += amtRow(
+    "Tax Amount",
+    displayAmount(
+      (parseFloat(saleData.cgst_tax) || 0) +
+        (parseFloat(saleData.sgst_tax) || 0) +
+        (parseFloat(saleData.igst_tax) || 0),
+    ),
+  );
   if (saleData.is_same_state_trnx && saleData.cgst_tax) {
     html += amtRow("CGST Amt", saleData.cgst_tax_display);
   }

@@ -279,7 +279,7 @@ exports.index = async (req, res) => {
  * @param {*} res 
  */
   exports.update = async (req, res) => {
-    let existing_cart = await cartsModel.findOne({where: {id: req.params.id }});
+    let existing_cart = await cartsModel.findOne({where: {id: req.params.id, user_id: req.userId }});
     let data = req.body;
 
     if(!isEmpty(existing_cart)){
@@ -322,11 +322,11 @@ exports.index = async (req, res) => {
  */
 
 exports.delete = async (req, res) => {
-  let existing_cart = await cartsModel.findOne({where: {id: req.params.id }});
+  let existing_cart = await cartsModel.findOne({where: {id: req.params.id, user_id: req.userId }});
   
   if(!isEmpty(existing_cart)){
-    cartsModel.destroy({ where: { id: req.params.id} }).then(async result => {
-      await cartMaterialsModel.destroy({ where: { cart_id: req.params.id} });
+    cartsModel.destroy({ where: { id: existing_cart.id} }).then(async result => {
+      await cartMaterialsModel.destroy({ where: { cart_id: existing_cart.id} });
       res.send(formatResponse([], "Product removed from cart successfully"));
     }).catch(error => {
       return res.status(errorCodes.default).send(formatErrorResponse('Cart does not deleted due to some error' + error));
