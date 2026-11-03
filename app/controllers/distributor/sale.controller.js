@@ -2228,14 +2228,34 @@ exports.downloadInvoiceInfo = async (req, res) => {
         (parseFloat(saleData.igst_tax) || 0),
     ),
   );
+  /* the report charge's GST on its own line, above CGST; the GST lines below
+     it then carry the products' share only, so the three add up to Tax Amount */
+  const pdfReportTax =
+    ((parseInt(saleData.report_qty) || 0) *
+      (parseFloat(saleData.report_charge) || 0) *
+      (parseFloat(saleData.report_tax_percentage) || 0)) /
+    100;
+  const pdfProductGst = Math.max(
+    0,
+    (parseFloat(saleData.cgst_tax) || 0) +
+      (parseFloat(saleData.sgst_tax) || 0) +
+      (parseFloat(saleData.igst_tax) || 0) -
+      pdfReportTax,
+  );
+  if (pdfReportTax > 0) {
+    html += amtRow(
+      `Report Tax (${parseFloat(saleData.report_tax_percentage) || 0}%)`,
+      displayAmount(pdfReportTax),
+    );
+  }
   if (saleData.is_same_state_trnx && saleData.cgst_tax) {
-    html += amtRow("CGST Amt", saleData.cgst_tax_display);
+    html += amtRow("CGST Amt", displayAmount(pdfProductGst / 2));
   }
   if (saleData.is_same_state_trnx && saleData.sgst_tax) {
-    html += amtRow("SGST Amt", saleData.sgst_tax_display);
+    html += amtRow("SGST Amt", displayAmount(pdfProductGst / 2));
   }
   if (!saleData.is_same_state_trnx && saleData.igst_tax) {
-    html += amtRow("IGST Amt", saleData.igst_tax_display);
+    html += amtRow("IGST Amt", displayAmount(pdfProductGst));
   }
   html += amtRow("Sub Total", saleData.total_amount);
   html += amtRow("Cash Dist", saleData.discount);

@@ -678,6 +678,16 @@ const liveSaleAmounts = async (sales) => {
     "report_tax_percentage",
   ];
   for (const sale of sales) {
+    /* a fully paid invoice is settled at the amount it was paid - today's
+       rate must not reopen it with a fresh due */
+    if (sale.status === "paid") {
+      result.set(sale.id, {
+        bill_amount: sale.bill_amount,
+        total_payable: sale.total_payable,
+        due_amount: sale.due_amount,
+      });
+      continue;
+    }
     const saleProducts = products.filter((p) => p.sale_id === sale.id);
     if (!saleProducts.length) continue;
     /* a plain stand-in, so the caller's sale instance is never touched */

@@ -62,6 +62,8 @@ const {
 
 /* The "Current Invoice" button posts current=1; accepted on the query string or
    in the body so either style of call works. */
+/* a fully paid invoice keeps the figures it was paid at - no current rate */
+const isFullyPaid = (sale) => !!sale && sale.status === "paid";
 const isCurrentRateInvoice = (req) => {
   const flag = req.query?.current ?? req.body?.current;
   return flag === true || flag === 1 || flag === "1" || flag === "true";
@@ -179,6 +181,10 @@ const liveLedgerDue = async (sale) => {
     sale.setDataValue("due_amount", amounts.due_amount);
   };
 };
+
+/* one material line in the item-details PDF: same height in every column */
+const MATERIAL_LINE_STYLE =
+  "height: 18px; line-height: 18px; margin: 0; padding: 0 4px; white-space: nowrap; font-size: 10px; font-weight: 400; text-align: left;";
 
 /* inline on a returned row's <tr> in the PDFs - every line of every cell is
    struck through, and fading (not a grey) keeps it legible on navy rows */
@@ -2807,7 +2813,7 @@ exports.view = async (req, res) => {
   let liveGold = null;
   let allSaleProducts = null;
   let liveRates = null;
-  if (isCurrentRateInvoice(req)) {
+  if (isCurrentRateInvoice(req) && !isFullyPaid(sale)) {
     liveRates = await getLiveGoldRate();
     const applyDue = await liveLedgerDue(sale);
     /* returned pieces are no longer the customer's - bill what is held */
@@ -2907,28 +2913,15 @@ exports.edit = async (req, res) => {
       .send(formatErrorResponse("Sale not found"));
   }
 
-  /* The return page asks for current=1: a return is credited at today's gold
-     rate, not the invoice's. Only the line figures move - what the customer
-     actually owes is a fact of the ledger, and the return form nets the refund
-     against due_amount, so the stored balance is put back. Nothing is saved. */
-  let current_bill_amount = null;
-  /* the total as billed, before any repricing - the return page's Total tile */
+  /* A return is credited at the rate the sale was made at, so the return
+     page gets the sale exactly as stored - no repricing at today's rate. */
+  /* the total as billed - the return page's Billed Amount and return cap */
   const billed_total_amount = sale.total_amount;
-  if (isCurrentRateInvoice(req)) {
-    /* the whole bill at today's rate (held pieces, report charge and its GST,
-       less discount) - same figure as the sales lists; caps the return amount */
-    const live = (await liveSaleAmounts([sale])).get(sale.id);
-    if (live) current_bill_amount = live.total_payable;
-    const due_amount = sale.due_amount;
-    repriceSaleAtLiveGold(sale, await getLiveGoldRate());
-    sale.setDataValue("due_amount", due_amount);
-  }
 
   res.send(
     formatResponse(
       {
         ...(await SaleEditCollection(sale, req)),
-        current_bill_amount,
         billed_total_amount,
       },
       "Purchase edit details",
@@ -2991,13 +2984,10 @@ exports.returnSale = async (req, res) => {
     return_status = "pending";
   }
 
-  // the return amount is editable on the form; keep it within the whole bill
-  // at today's rate (as the form does), or the stored total without a live rate
+  // the return amount is editable on the form; returns are credited at the
+  // sale's own rate, so keep it within the bill as stored
   const returnAmount = parseFloat(data.return_amount) || 0;
-  const liveBill = (await liveSaleAmounts([sale])).get(sale.id);
-  const returnCap = liveBill
-    ? parseFloat(liveBill.total_payable) || 0
-    : parseFloat(sale.total_amount || 0);
+  const returnCap = parseFloat(sale.total_amount || 0);
   if (returnAmount < 0 || returnAmount > returnCap + 0.005) {
     return res
       .status(errorCodes.default)
@@ -3734,13 +3724,10 @@ exports.returnSaleNew = async (req, res) => {
     return_status,
   );
 
-  // the return amount is editable on the form; keep it within the whole bill
-  // at today's rate (as the form does), or the stored total without a live rate
+  // the return amount is editable on the form; returns are credited at the
+  // sale's own rate, so keep it within the bill as stored
   const returnAmount = parseFloat(data.return_amount) || 0;
-  const liveBill = (await liveSaleAmounts([sale])).get(sale.id);
-  const returnCap = liveBill
-    ? parseFloat(liveBill.total_payable) || 0
-    : parseFloat(sale.total_amount || 0);
+  const returnCap = parseFloat(sale.total_amount || 0);
   if (returnAmount < 0 || returnAmount > returnCap + 0.005) {
     return res
       .status(errorCodes.default)
@@ -5466,7 +5453,7 @@ exports.downloadInvoice = async (req, res) => {
      plain Invoice button keeps printing the rates frozen at sale time; this
      branch reprices the loaded instance IN MEMORY ONLY - never saved - so the
      template below renders the live figures instead. */
-  const atCurrentRate = isCurrentRateInvoice(req);
+  const atCurrentRate = isCurrentRateInvoice(req) && !isFullyPaid(sale);
   let liveRepricing = null;
   let allSaleProducts = null;
   if (atCurrentRate) {
@@ -6990,7 +6977,7 @@ exports.downloadInvoiceInfo = async (req, res) => {
      plain Invoice button keeps printing the rates frozen at sale time; this
      branch reprices the loaded instance IN MEMORY ONLY — never saved — so the
      template below renders the live figures instead. */
-  const atCurrentRate = isCurrentRateInvoice(req);
+  const atCurrentRate = isCurrentRateInvoice(req) && !isFullyPaid(sale);
   let liveRepricing = null;
   let allSaleProducts = null;
   if (atCurrentRate) {
@@ -8092,7 +8079,7 @@ exports.downloadInvoiceItemList = async (req, res) => {
   /* current=1: every row at today's gold rate, returned (crossed-out) ones
      included. This document prints only row sums, so the products are
      repriced on a stand-in and no sale-level figure is touched. */
-  if (isCurrentRateInvoice(req)) {
+  if (isCurrentRateInvoice(req) && !isFullyPaid(sale)) {
     repriceSaleAtLiveGold(
       { saleProducts: sale.saleProducts || [], discount: 0, paid_amount: 0 },
       await getLiveGoldRate(),
@@ -8758,7 +8745,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
      the returned ones listed crossed out after them */
   let allSaleProducts = null;
   let liveRates = null;
-  if (isCurrentRateInvoice(req)) {
+  if (isCurrentRateInvoice(req) && !isFullyPaid(sale)) {
     liveRates = await getLiveGoldRate();
     const applyDue = await liveLedgerDue(sale);
     allSaleProducts = [...(sale.saleProducts || [])];
@@ -8769,6 +8756,20 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   if (allSaleProducts) {
     addReturnedRows(sale, allSaleProducts, liveRates, saleData);
   }
+
+  /* totals box breakdown: making (after its discount) and report charge of
+     the billed pieces; the materials are what is left of the taxable amount */
+  const itemMakingAmt = (saleData.products || [])
+    .filter((p) => !p.is_return)
+    .reduce(
+      (t, p) =>
+        t +
+        (parseFloat(p.making_charge) || 0) -
+        (parseFloat(p.making_charge_discount_amount) || 0),
+      0,
+    );
+  const itemReportAmt =
+    (parseInt(saleData.report_qty) || 0) * (parseFloat(saleData.report_charge) || 0);
 
   let payments = await PaymentModel.findAll({
     where: {
@@ -9215,14 +9216,14 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
   
                                           </tr>
                                           <tr style="vertical-align: top; background-color: #FFFFFF;${returnedRowStyle(saleData.products[i])}">
-                                              <td colspan="2" style="border-bottom: 1px solid #1E2757; padding:0;">
+                                              <td colspan="2" style="border-bottom: 1px solid #1E2757;">
                                                   
                                           `;
     for (let x = 0; x < saleData.products[i].materials.length; x++) {
-      html += `<div style="display: flex;
-                                                  margin: 5px 5px 0px 5px; text-align: left; width:150px;">
-                                                  <div style="
-                                                      line-height:1; text-align: left;">
+      /* every per-material line is one fixed-height, unwrapped line in each
+         column, so a material's name, amount, discount and cost stay level */
+      html += `<div style="${MATERIAL_LINE_STYLE}">
+                                                  <div>
                                                       <span
                                                           style="
                                                           font-size:10px;
@@ -9286,11 +9287,8 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                               </td>
                                               <td style="border-bottom:1px solid #1E2757;">`;
     for (let x = 0; x < saleData.products[i].materials.length; x++) {
-      html += `<div style="display: flex;
-                                                      width:50px;
-                                                      margin: 0px 5px 0px 0px; text-align: left;">
-                                                      <div style="
-                                                          line-height:1; text-align: left;">
+      html += `<div style="${MATERIAL_LINE_STYLE}">
+                                                      <div>
                                                           <span
                                                               style="
                                                               font-size:10px;
@@ -9307,7 +9305,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                               </td>
                                               <td style="border-bottom:1px solid #1E2757;">`;
     for (let x = 0; x < saleData.products[i].materials.length; x++) {
-      html += `<div style="width:90px;">`;
+      html += `<div style="${MATERIAL_LINE_STYLE}">`;
       if (isEmpty(saleData.products[i].materials[x].discount_amount)) {
         html += `-`;
       } else {
@@ -9336,10 +9334,7 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
                                               </td>
                                               <td style="border-bottom: 1px solid #1E2757;">`;
     for (let x = 0; x < saleData.products[i].materials.length; x++) {
-      html += `<div style="text-align: left; font-size: 10px; font-weight: 400;
-                                                      margin-top: 5px; 
-                                                      width: 40px
-                                                      line-height:1;">${removeCurrencyAndDecimalFromPrice(
+      html += `<div style="${MATERIAL_LINE_STYLE}">${removeCurrencyAndDecimalFromPrice(
                                                         saleData.products[i]
                                                           .materials[x]
                                                           .material_cost,
@@ -9432,443 +9427,94 @@ exports.downloadInvoiceItemDetails = async (req, res) => {
 
                                           </tr>`;
   }
-  html += `<tr style="
-                                              vertical-align: top;">
-                                              <td colspan="6"
-                                                  style="
-                                                  border:none;">
-
-                                              </td>
-                                              <td style="">
-                                                  <div style="padding-top:5px;">
-                                                      <h4 style="margin:
-                                                          0;
-                                                          text-align:
-                                                          left; font-size:
-                                                          12px;
-                                                          font-weight:
-                                                          600; display:
-                                                          ;">
-                                                          <div>${removeCurrencyAndDecimalFromPrice(
-                                                            totalTagPriceDisplay,
-                                                          )}</div></h4>
-                                                  </div>
-                                              </td>
-                                              
-                                              <td style="">
-                                                  <div style="padding-top:5px;">
-                                                      <h4 style="margin:
-                                                          0;
-                                                          text-align:
-                                                          left; font-size:
-                                                          12px;
-                                                          font-weight:
-                                                          600; display:
-                                                          ;">
-                                                          <div>${removeCurrencyAndDecimalFromPrice(
-                                                            totalSaveDisplay,
-                                                          )}</div></h4>
-                                                  </div>
-                                              </td>
-                                              <td colspan="3">
-                                                  <div style="float:left; margin-left: -15px; padding-top:5px;">
-                                                      <h4 style="
-                                                      margin:0;
-                                                      text-align: right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                      ">
-                                                          <div>Sub-Total </div></h4>
-                                                  </div>
-                                                  <div style="float:left; margin-left:5px;">
-                                                      <h4 style="
-                                                        margin:0;
-                                                        text-align:right;
-                                                        font-size: 12px;
-                                                        font-weight: 400;
-                                                      ">
-                                                          <div><input
-                                                              type="text"
-                                                              value="${removeCurrencyAndDecimalFromPrice(
-                                                                saleData?.taxable_amount,
-                                                              )}"
-                                                              style="width:
-                                                              80px;"></div></h4>
-                                                  </div>
-                                              </td>
-                                          </tr>`;
-
-  if (saleData.is_same_state_trnx) {
-    html += `                                 <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -15px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>CGST Amt </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.cgst_tax,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                          </tr>
-                                          <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -15px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>SGST Amt </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.sgst_tax,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                          </tr>`;
-  } else {
-    html += `                                 <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -15px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>IGST Amt </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.igst_tax,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                          </tr>`;
+  /* summary rows: the report charge with its own GST, then the Total -
+     taxable before tax, and with all the tax (products' GST + report's) */
+  const billedSubCats = (saleData.subCatItems || []).filter((r) => !r.is_return);
+  let sumTaxable = 0,
+    sumTax = 0;
+  billedSubCats.forEach((item) => {
+    const taxable = parseFloat(item.taxableAmount) || 0;
+    sumTaxable += taxable;
+    sumTax += (taxable * (parseFloat(item.tax) || 0)) / 100;
+  });
+  const reportPct = parseFloat(saleData.report_tax_percentage) || 0;
+  const reportTax = (itemReportAmt * reportPct) / 100;
+  const sumCell = "font-size: 11px; padding: 4px; white-space: nowrap; border-bottom: 1px solid #eeeeee;";
+  html += `<tr><td colspan="11" style="border:none; padding: 4px;"></td></tr>`;
+  const chargeRow = (label, amount, pct, withTax) => `<tr>
+              <td colspan="8" style="${sumCell} font-weight: 700; color: #555;">${label}</td>
+              <td style="${sumCell} font-weight: 700; color: #555; text-align: right;">${amount.toFixed(2)}</td>
+              <td style="${sumCell} font-weight: 700; color: #555; text-align: center;">${pct}</td>
+              <td style="${sumCell} font-weight: 700; color: #555; text-align: right;">${withTax.toFixed(2)}</td>
+          </tr>`;
+  if (itemReportAmt > 0) {
+    html += chargeRow(
+      `Report Charge (${parseInt(saleData.report_qty) || 0} pcs x ${(parseFloat(saleData.report_charge) || 0).toFixed(2)})`,
+      itemReportAmt,
+      `x ${reportPct}%`,
+      itemReportAmt + reportTax,
+    );
   }
+  const sumBeforeTax = sumTaxable + itemReportAmt;
+  const sumAllTax = sumTax + reportTax;
+  const totalCell = "font-size: 12px; font-weight: 700; color: #1E2746; padding: 4px; white-space: nowrap; border-top: 2px solid #90caf9; border-bottom: none;";
+  html += `<tr>
+              <td colspan="8" style="${totalCell}">Total</td>
+              <td style="${totalCell} text-align: right;">${sumBeforeTax.toFixed(2)}</td>
+              <td style="${totalCell}"></td>
+              <td style="${totalCell} text-align: right;">${(sumBeforeTax + sumAllTax).toFixed(2)}</td>
+          </tr>`;
 
-  html += `                                 <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -15px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Total Amt </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.total_amount,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -15px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Cash Dist </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.discount,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -38px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Total Payable </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.total_payable,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -48px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Payment Mode </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${
-                                                              saleData?.payment_mode
-                                                            }"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding: 0;">
-                                                <div style="float:left; ">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:left;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${
-                                                              saleData?.due_date
-                                                            }"
-                                                            style="width:
-                                                            120px;"></div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: left;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Due Date </div></h4>
-                                                </div>
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -35px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Paid Amount </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.paid_amount_display,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr style="
-                                            vertical-align: top;">
-                                            <td colspan="8"
-                                                style="
-                                                border:none; padding-top: 5px;">
-                                                <div style="float:left; margin-left:-5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:left;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value=""
-                                                            style="width:
-                                                            120px;"></div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: left;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Settlement Date </div></h4>
-                                                </div>
-                                            </td>
-                                            <td colspan="3">
-                                                <div style="float:left; margin-left: -65px; padding-top:5px;">
-                                                    <h4 style="
-                                                    margin:0;
-                                                    text-align: right;
-                                                    font-size: 12px;
-                                                    font-weight: 400;
-                                                    ">
-                                                        <div>Rest Due Amount </div></h4>
-                                                </div>
-                                                <div style="float:left; margin-left:5px;">
-                                                    <h4 style="
-                                                      margin:0;
-                                                      text-align:right;
-                                                      font-size: 12px;
-                                                      font-weight: 400;
-                                                    ">
-                                                        <div><input
-                                                            type="text"
-                                                            value="${removeCurrencyAndDecimalFromPrice(
-                                                              saleData?.due_amount_display,
-                                                            )}"
-                                                            style="width:
-                                                            80px;"></div></h4>
-                                                </div>
-                                            </td>
-                                        </tr>`;
+  /* totals box like the sale invoice, Due / Settlement Date on the left */
+  const boxRow = (label, value, bold = false) => `<tr>
+      <td style="width: 54%; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 3px 6px 3px 0; white-space: nowrap; border: none;">${label}</td>
+      <td style="width: 46%; padding: 3px 0; border: none;"><input type="text" value="${value}" style="display: block; width: 100%; box-sizing: border-box; font-size: 12px; font-weight: ${bold ? "600" : "400"}; text-align: right; padding: 2px 4px;"></td>
+    </tr>`;
+  let box = boxRow("Total", saleData.taxable_amount, true);
+  box += boxRow(
+    "Tax Amount",
+    displayAmount(
+      (parseFloat(saleData.cgst_tax) || 0) +
+        (parseFloat(saleData.sgst_tax) || 0) +
+        (parseFloat(saleData.igst_tax) || 0),
+    ),
+  );
+  box += boxRow("Sub Total", saleData.total_amount);
+  box += boxRow("Cash Dist", saleData.discount);
+  box += boxRow("Total Payable", saleData.bill_amount, true);
+  box += boxRow("Paid Amount", saleData.paid_amount);
+  if (saleData.return_amount) box += boxRow("Return Amount", saleData.return_amount);
+  box += boxRow("Rest Due Amt", saleData.due_amount_display);
+  const dateField = (label, value) => `<tr>
+      <td style="font-size: 12px; padding: 3px 6px 3px 0; white-space: nowrap; border: none;">${label}</td>
+      <td style="padding: 3px 0; border: none;"><input type="text" value="${value || ""}" style="width: 120px; font-size: 12px; padding: 2px 4px;"></td>
+    </tr>`;
+  /* pinned to the page bottom with the signature row, like the sale invoice */
+  const footerTotals = `<table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse;"><tr style="vertical-align: bottom;">
+              <td style="width: 45%; border:none; padding: 0;">
+                <table cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+                  ${dateField("Due Date :", saleData.due_date)}
+                  ${dateField("Settlement Date :", saleData.settlement_date)}
+                </table>
+              </td>
+              <td style="width: 55%; border:none; padding: 0;">
+                <table cellspacing="0" cellpadding="0" width="100%" style="border-collapse: collapse; table-layout: fixed;">${box}</table>
+              </td>
+          </tr></table>`;
 
-  html += ` <tr style="
-                                                    vertical-align: top;">
-                                                    
-                                                    <td colspan="11"
-                                                          style="
-                                                          border:none; padding: 0;">
-                                                          ${footerhtml}
-                                                      </td>
-                                                      
-  
-                                                  </tr>
+  html += `
                                               </tbody>
                                           </table>
-
-                                          
-                                          <!-- Footer -->
-                                          
-                                          
                                       </td>
                                   </tr>
-  
                               </tbody>
                           </table>
+                          <!-- room for the fixed footer, so the last rows never sit under it -->
+                          <div style="height: 300px;"></div>
+                      </div>
+                      <div style="position: fixed; bottom: 0; left: 0; right: 0; background-color: #f9f9f9; padding: 6px 15px 4px 15px; border-top: 2px solid #1E2746;">
+                          ${footerTotals}
+                          ${footerhtml}
                       </div>
                   </body>
               </html>`;
